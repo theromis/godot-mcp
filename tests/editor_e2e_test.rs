@@ -33,6 +33,15 @@ struct Editor {
 
 impl Drop for Editor {
     fn drop(&mut self) {
+        if std::thread::panicking() {
+            // A failed assertion rarely explains itself; the editor's own output usually does.
+            let log = self.log_text();
+            let start = log.len().saturating_sub(6000);
+            let start = (start..log.len())
+                .find(|&index| log.is_char_boundary(index))
+                .unwrap_or(0);
+            eprintln!("--- editor log (tail) ---\n{}", &log[start..]);
+        }
         if let Some(path) = token_path(self.port) {
             let _ = std::fs::remove_file(path);
         }
