@@ -54,7 +54,7 @@ If `GODOT_PATH` is unset or points to a missing file, the server searches a shor
 
 ### 1. Download the MCP server binary
 
-Grab the archive matching your OS/architecture from the [Releases page](https://github.com/teratron/godot-mcp/releases/latest) and extract it anywhere on disk:
+Grab the archive matching your OS/architecture from the [Releases page](https://github.com/zigenzoog/godot-mcp/releases/latest) and extract it anywhere on disk:
 
 | Platform | Asset | Contents |
 | --- | ---- | ---- |
@@ -177,18 +177,18 @@ Configure the server in your MCP settings (`.cursor/mcp.json` or equivalent):
 Copy and paste this prompt to allow an AI assistant to detect your environment and install the Godot MCP server automatically:
 
 ```text
-You are an expert systems engineer tasked with installing the Godot MCP server (https://github.com/teratron/godot-mcp) for this user. You are working in an arbitrary Godot project directory, not a clone of that repository — do not assume any of its files are already present locally.
+You are an expert systems engineer tasked with installing the Godot MCP server (https://github.com/zigenzoog/godot-mcp) for this user. You are working in an arbitrary Godot project directory, not a clone of that repository — do not assume any of its files are already present locally.
 
 Follow this exact execution plan:
 1. Environment Detection:
    - Identify the host operating system and architecture (Windows, Linux, or macOS; x86_64 or arm64).
    - **Ask the user for the exact path to their Godot executable — never guess or assume a default install location.** Official Windows builds are portable, version-named files (e.g. `Godot_v4.8.2-stable_win64.exe`) extracted wherever the user chose; there is no reliable standard path to infer this from.
    - Once given the path, run `<GODOT_PATH> --version` to confirm it is a valid, working Godot executable before proceeding.
-2. Obtain the Server Binary and Addon from the remote repository (https://github.com/teratron/godot-mcp) — do not look for a local checkout:
+2. Obtain the Server Binary and Addon from the remote repository (https://github.com/zigenzoog/godot-mcp) — do not look for a local checkout:
    - Preferred: download the release matching this OS/architecture, e.g. via
-     `gh release download --repo teratron/godot-mcp --pattern "godot-mcp-<target-triple>.*"`
-     (or the direct asset URL from https://github.com/teratron/godot-mcp/releases/latest if `gh` is unavailable), plus
-     `gh release download --repo teratron/godot-mcp --pattern "godot-mcp-addon.zip"`.
+     `gh release download --repo zigenzoog/godot-mcp --pattern "godot-mcp-<target-triple>.*"`
+     (or the direct asset URL from https://github.com/zigenzoog/godot-mcp/releases/latest if `gh` is unavailable), plus
+     `gh release download --repo zigenzoog/godot-mcp --pattern "godot-mcp-addon.zip"`.
    - Extract both into a persistent location outside the target Godot project (e.g. `%LOCALAPPDATA%\godot-mcp\` on Windows, `~/.local/share/godot-mcp/` on Linux, `~/Library/Application Support/godot-mcp/` on macOS).
 3. Install the Godot Addon:
    - Identify the user's active Godot project directory.
