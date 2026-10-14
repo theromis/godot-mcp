@@ -15,8 +15,6 @@ export_presets.cfg
 # Rust Artifacts
 target/
 **/*.rs.bk
-
-# Go Artifacts
 bin/
 dist/
 *.exe
@@ -25,7 +23,6 @@ dist/
 *.so
 *.dylib
 *.test
-*.out
 vendor/
 
 # Node.js & TypeScript Artifacts
@@ -92,8 +89,3 @@ $RECYCLE.BIN/
 .DS_Store
 .AppleDouble
 .LSOverride
-
-
-# Added by cargo
-
-/target

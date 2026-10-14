@@ -98,4 +98,3 @@ Before concluding any development task, every agent MUST verify the following ch
 
 - [ ] **Technical Language**: All code, identifiers, comments, and technical docs are in English.
 - [ ] **Communication Language**: All conversational responses and planning are in Russian.
-- [ ] **Formatting**: No horizontal rules (---) used except in footers.
