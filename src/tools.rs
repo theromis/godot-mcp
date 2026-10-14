@@ -286,7 +286,12 @@ impl ToolManager {
             options.create_new(true);
         }
         let write_result = match options.open(&target).await {
-            Ok(mut file) => file.write_all(content.as_bytes()).await,
+            Ok(mut file) => match file.write_all(content.as_bytes()).await {
+                // tokio's File writes on a worker thread and does not flush when dropped, so
+                // without this the content can be lost after the tool already reported success.
+                Ok(()) => file.flush().await,
+                Err(err) => Err(err),
+            },
             Err(err) => Err(err),
         };
         if let Err(err) = write_result {
