@@ -1,7 +1,12 @@
 use crate::error::{McpError, Result};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::Duration;
 use tokio::process::Command;
+use tokio::time::timeout;
+
+const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
+const VALIDATE_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug)]
 pub struct CliRunner {
@@ -15,10 +20,20 @@ impl CliRunner {
 
     /// Retrieve engine version directly via CLI
     pub async fn get_version(&self) -> Result<String> {
-        let output = Command::new(&self.godot_binary)
+        let mut command = Command::new(&self.godot_binary);
+        command
             .arg("--version")
-            .output()
+            .stdin(Stdio::null())
+            .kill_on_drop(true);
+        let output = timeout(VERSION_TIMEOUT, command.output())
             .await
+            .map_err(|_| {
+                McpError::Process(format!(
+                    "'{} --version' did not finish within {}s",
+                    self.godot_binary.display(),
+                    VERSION_TIMEOUT.as_secs()
+                ))
+            })?
             .map_err(|e| {
                 McpError::Process(format!(
                     "Failed to invoke Godot executable at '{}': {e}",
@@ -39,42 +54,21 @@ impl CliRunner {
     /// Launch Godot Editor for a designated project directory
     pub async fn launch_editor(&self, project_path: &Path) -> Result<u32> {
         let mut cmd = Command::new(&self.godot_binary);
-        cmd.arg("--editor")
-            .arg("--path")
-            .arg(project_path)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-
-        let child = cmd
-            .spawn()
-            .map_err(|e| McpError::Process(format!("Failed to spawn Godot Editor process: {e}")))?;
-
-        let pid = child
-            .id()
-            .ok_or_else(|| McpError::Process("Failed to obtain Godot process ID".into()))?;
-
-        Ok(pid)
+        cmd.arg("--editor").arg("--path").arg(project_path);
+        spawn_detached(&mut cmd, "Godot Editor")
     }
 
-    /// Run the game project or specific scene
+    /// Run the game project or specific scene.
+    ///
+    /// The game's own output must never reach this process's stdout, which carries the MCP
+    /// JSON-RPC stream, so all standard streams are detached.
     pub async fn run_project(&self, project_path: &Path, scene: Option<&str>) -> Result<u32> {
         let mut cmd = Command::new(&self.godot_binary);
         cmd.arg("--path").arg(project_path);
-
         if let Some(scene_file) = scene {
             cmd.arg(scene_file);
         }
-
-        let child = cmd
-            .spawn()
-            .map_err(|e| McpError::Process(format!("Failed to spawn Godot project: {e}")))?;
-
-        let pid = child
-            .id()
-            .ok_or_else(|| McpError::Process("Failed to obtain project process ID".into()))?;
-
-        Ok(pid)
+        spawn_detached(&mut cmd, "Godot project")
     }
 
     /// Validate a GDScript file syntax using headless Godot check
@@ -90,20 +84,74 @@ impl CliRunner {
             cmd.arg("--path").arg(proj);
         }
 
-        cmd.arg("--script").arg(script_path);
+        cmd.arg("--script")
+            .arg(script_path)
+            .stdin(Stdio::null())
+            .kill_on_drop(true);
 
-        let output = cmd.output().await.map_err(|e| {
-            McpError::Process(format!("Failed to run Godot script validation: {e}"))
-        })?;
+        let output = timeout(VALIDATE_TIMEOUT, cmd.output())
+            .await
+            .map_err(|_| {
+                McpError::Process(format!(
+                    "Godot script validation did not finish within {}s",
+                    VALIDATE_TIMEOUT.as_secs()
+                ))
+            })?
+            .map_err(|e| {
+                McpError::Process(format!("Failed to run Godot script validation: {e}"))
+            })?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = strip_banner(&String::from_utf8_lossy(&output.stdout));
+        let stderr = strip_banner(&String::from_utf8_lossy(&output.stderr));
 
-        if output.status.success() && stderr.trim().is_empty() {
+        if output.status.success() && stderr.is_empty() {
             Ok("GDScript validation passed successfully with no errors.".into())
         } else {
-            let combined = format!("Stdout: {stdout}\nStderr: {stderr}");
-            Err(McpError::Validation(combined.trim().to_string()))
+            let mut report = Vec::new();
+            if !stdout.is_empty() {
+                report.push(format!("Stdout: {stdout}"));
+            }
+            if !stderr.is_empty() {
+                report.push(format!("Stderr: {stderr}"));
+            }
+            if report.is_empty() {
+                report.push(format!("Godot exited with {}", output.status));
+            }
+            Err(McpError::Validation(report.join("\n")))
         }
+    }
+}
+
+fn spawn_detached(command: &mut Command, what: &str) -> Result<u32> {
+    let child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| McpError::Process(format!("Failed to spawn {what} process: {e}")))?;
+    child
+        .id()
+        .ok_or_else(|| McpError::Process(format!("Failed to obtain {what} process ID")))
+}
+
+/// Drops the engine's start-up banner ("Godot Engine v4.x ...") from captured output.
+fn strip_banner(text: &str) -> String {
+    text.lines()
+        .filter(|line| !line.starts_with("Godot Engine v"))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_banner;
+
+    #[test]
+    fn banner_is_removed_and_the_rest_is_kept() {
+        let raw = "Godot Engine v4.8.dev7.official - https://godotengine.org\n\nSCRIPT ERROR: x\n";
+        assert_eq!(strip_banner(raw), "SCRIPT ERROR: x");
+        assert_eq!(strip_banner("Godot Engine v4.5\n"), "");
     }
 }

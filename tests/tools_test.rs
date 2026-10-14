@@ -1,0 +1,211 @@
+//! Host-side tools that never need a running editor: script creation, run/launch validation.
+
+mod common;
+
+use common::{free_port, is_tool_error, project_dir, tool_text};
+use godot_mcp::bridge::BridgeClient;
+use godot_mcp::cli_runner::CliRunner;
+use godot_mcp::protocol::ToolResult;
+use godot_mcp::tools::ToolManager;
+use serde_json::{Value, json};
+use std::path::PathBuf;
+use std::sync::Arc;
+
+fn manager() -> Arc<ToolManager> {
+    Arc::new(ToolManager::new(
+        BridgeClient::new(free_port()),
+        CliRunner::new(PathBuf::from("godot-binary-that-does-not-exist")),
+    ))
+}
+
+async fn call(tool: &str, args: Value) -> ToolResult {
+    manager().call_tool(tool, args).await
+}
+
+fn text(result: &ToolResult) -> String {
+    tool_text(&json!({"result": serde_json::to_value(result).expect("serialize result")}))
+}
+
+#[tokio::test]
+async fn creates_a_script_from_a_res_path_inside_the_project() {
+    let project = project_dir();
+    let result = call(
+        "godot_create_script",
+        json!({"file_path": "res://scripts/player.gd", "extends_class": "Node2D",
+               "class_name": "Player", "project_path": project.path()}),
+    )
+    .await;
+
+    assert!(!result.is_error, "{}", text(&result));
+    let written =
+        std::fs::read_to_string(project.path().join("scripts/player.gd")).expect("script exists");
+    assert!(written.contains("extends Node2D"));
+    assert!(written.contains("class_name Player"));
+}
+
+#[tokio::test]
+async fn refuses_to_overwrite_an_existing_file_unless_asked() {
+    let project = project_dir();
+    let target = project.path().join("keep.gd");
+    std::fs::write(&target, "precious").expect("seed file");
+
+    let refused = call(
+        "godot_create_script",
+        json!({"file_path": "res://keep.gd", "project_path": project.path()}),
+    )
+    .await;
+    assert!(refused.is_error);
+    assert!(text(&refused).contains("overwrite"), "{}", text(&refused));
+    assert_eq!(std::fs::read_to_string(&target).expect("read"), "precious");
+
+    let allowed = call(
+        "godot_create_script",
+        json!({"file_path": "res://keep.gd", "project_path": project.path(), "overwrite": true}),
+    )
+    .await;
+    assert!(!allowed.is_error, "{}", text(&allowed));
+    assert!(
+        std::fs::read_to_string(&target)
+            .expect("read")
+            .starts_with("extends Node")
+    );
+}
+
+#[tokio::test]
+async fn rejects_parent_directory_segments_but_not_double_dots_in_names() {
+    let project = project_dir();
+
+    let traversal = call(
+        "godot_create_script",
+        json!({"file_path": "res://a/../b.gd", "project_path": project.path()}),
+    )
+    .await;
+    assert!(traversal.is_error);
+    assert!(!project.path().join("b.gd").exists());
+
+    let harmless = call(
+        "godot_create_script",
+        json!({"file_path": "res://my..file.gd", "project_path": project.path()}),
+    )
+    .await;
+    assert!(!harmless.is_error, "{}", text(&harmless));
+    assert!(project.path().join("my..file.gd").exists());
+}
+
+#[tokio::test]
+async fn rejects_absolute_paths_outside_the_project() {
+    let project = project_dir();
+    let outside = tempfile::tempdir().expect("outside dir");
+    let target = outside.path().join("escaped.gd");
+
+    let result = call(
+        "godot_create_script",
+        json!({"file_path": target, "project_path": project.path()}),
+    )
+    .await;
+
+    assert!(result.is_error);
+    assert!(
+        !target.exists(),
+        "file must not be written outside the project"
+    );
+}
+
+#[tokio::test]
+async fn rejects_code_injection_through_identifiers() {
+    let project = project_dir();
+
+    let bad_class = call(
+        "godot_create_script",
+        json!({"file_path": "res://a.gd", "project_path": project.path(),
+               "class_name": "Foo\nfunc _init() -> void:\n\tprint('x')"}),
+    )
+    .await;
+    assert!(bad_class.is_error);
+    assert!(!project.path().join("a.gd").exists());
+
+    let bad_base = call(
+        "godot_create_script",
+        json!({"file_path": "res://b.gd", "project_path": project.path(),
+               "extends_class": "Node\nvar injected := 1"}),
+    )
+    .await;
+    assert!(bad_base.is_error);
+    assert!(!project.path().join("b.gd").exists());
+}
+
+#[tokio::test]
+async fn only_gd_files_can_be_created() {
+    let project = project_dir();
+    let result = call(
+        "godot_create_script",
+        json!({"file_path": "res://notes.txt", "project_path": project.path()}),
+    )
+    .await;
+    assert!(result.is_error);
+    assert!(!project.path().join("notes.txt").exists());
+}
+
+#[tokio::test]
+async fn needs_a_project_when_the_editor_is_offline() {
+    let result = call("godot_create_script", json!({"file_path": "res://a.gd"})).await;
+    assert!(result.is_error);
+    assert!(text(&result).contains("project_path"), "{}", text(&result));
+}
+
+#[tokio::test]
+async fn rejects_a_project_path_without_project_godot() {
+    let empty = tempfile::tempdir().expect("empty dir");
+    let result = call(
+        "godot_create_script",
+        json!({"file_path": "res://a.gd", "project_path": empty.path()}),
+    )
+    .await;
+    assert!(result.is_error);
+    assert!(text(&result).contains("project.godot"), "{}", text(&result));
+    assert!(!empty.path().join("a.gd").exists());
+}
+
+#[tokio::test]
+async fn run_project_rejects_a_scene_that_looks_like_an_engine_option() {
+    let project = project_dir();
+    let result = call(
+        "godot_run_project",
+        json!({"project_path": project.path(), "scene": "--script"}),
+    )
+    .await;
+    assert!(result.is_error);
+    assert!(text(&result).contains("res://"), "{}", text(&result));
+}
+
+#[tokio::test]
+async fn launch_editor_requires_a_godot_project_directory() {
+    let empty = tempfile::tempdir().expect("empty dir");
+    let result = call("godot_launch_editor", json!({"project_path": empty.path()})).await;
+    assert!(result.is_error);
+    assert!(text(&result).contains("project.godot"), "{}", text(&result));
+}
+
+#[tokio::test]
+async fn validate_script_reports_a_missing_file_without_spawning_godot() {
+    let project = project_dir();
+    let result = call(
+        "godot_validate_script",
+        json!({"script_path": "res://nope.gd", "project_path": project.path()}),
+    )
+    .await;
+    assert!(result.is_error);
+    let message = text(&result);
+    assert!(message.contains("not found"), "{message}");
+    assert!(
+        !message.contains("spawn") && !message.contains("syntax"),
+        "{message}"
+    );
+}
+
+#[test]
+fn tool_text_helper_reads_error_flag() {
+    let result = ToolResult::error("boom", &["try again"]);
+    let value = json!({"result": serde_json::to_value(&result).expect("serialize")});
+    assert!(is_tool_error(&value));
+}

@@ -12,7 +12,7 @@ Agents must treat the Godot Editor as a live, stateful environment while ensurin
 
 ### 1. Dual-Mode Operation
 
-- **Live Mode (Primary)**: Connect to the Godot Editor bridge via WebSocket on `GODOT_DEBUG_PORT` (default `9333`). All scene, node, and property mutations must execute in real time.
+- **Live Mode (Primary)**: Connect to the Godot Editor bridge via WebSocket on `GODOT_DEBUG_PORT` (default `9333`). All scene, node, and property mutations must execute in real time. The bridge listens on loopback only and every command carries the shared token (`<user data dir>/godot-mcp/bridge-<port>.token` or `GODOT_MCP_TOKEN`); never add a code path that skips either.
 - **Headless Mode (Fallback)**: When the editor GUI is not running, fall back to headless CLI invocation (`godot --headless --script ...`) for batch operations, scene scaffolding, and automated testing. Never fail silently if the editor socket is temporarily unreachable; provide clear diagnostic context and suggest launching the editor or falling back to CLI.
 
 ### 2. Safety & Undo/Redo Integration
@@ -23,7 +23,8 @@ Agents must treat the Godot Editor as a live, stateful environment while ensurin
 
 ### 3. Cross-Platform Path Handling & Security
 
-- **Path Traversal**: Strictly validate all file paths against directory traversal (`../`). Paths must resolve within the target project's `res://` directory or designated export folders.
+- **Path Traversal**: Strictly validate all file paths against directory traversal (`../`). Paths must resolve within the target project's `res://` directory or designated export folders. Host-side file access goes through `src/paths.rs` (`resolve_in_project`); editor-side paths go through `to_res_path` and `find_scene_node` in `bridge_server.gd`.
+- **Argument Injection**: Never pass user-controlled strings to the Godot CLI as bare arguments (a value starting with `-` becomes an engine option) or interpolate them into generated GDScript. Validate identifiers with `is_valid_identifier` and require `res://` for scene arguments.
 - **Multi-OS Normalization**: Always handle differences in path separators across Windows (`\`), Linux (`/`), and macOS (`/`). Normalize paths before passing them to the engine or returning them via the protocol.
 - **Identifier Sanitization**: Validate node names and class identifiers using strict alphanumeric patterns (`^[A-Za-z_][A-Za-z0-9_]*$`).
 - **Resource Integrity**: Maintain Godot UID tracking (`.uid` files and `uid://` references) whenever modifying scenes or assets to prevent broken dependencies in Godot 4.x.
@@ -34,12 +35,14 @@ Agents must treat the Godot Editor as a live, stateful environment while ensurin
 
 - **Zero-Overhead Async I/O**: Use Tokio event loops for stdio JSON-RPC transport and WebSocket bridge communication.
 - **Error Handling**: Never use unhandled panics (`unwrap()` / `expect()`) in production code paths. Use explicit `Result` propagation with informative error types.
-- **Clean Stdio Separation**: All internal logging and diagnostics MUST be emitted to `stderr` using `tracing`. The `stdout` stream is strictly reserved for MCP JSON-RPC frames.
+- **Clean Stdio Separation**: All internal logging and diagnostics MUST be emitted to `stderr` using `tracing`. The `stdout` stream is strictly reserved for MCP JSON-RPC frames. Every child process spawned by the server (editor, game) gets null stdio.
+- **Concurrency**: Tool calls run as independent tasks so a slow editor command never blocks `ping` or other calls; `notifications/cancelled` aborts a running call. Never hold a lock across an editor round-trip.
 - **Standardized MCP Responses**: All errors must return an informative message and at least one actionable recovery solution.
 
 ### GDScript Standards (Editor Plugin)
 
-- Target Godot 4.3+ modern GDScript features with strict typing (`var count: int = 0`, `func get_node_by_id(id: String) -> Node:`).
+- Target Godot 4.5+ modern GDScript features with strict typing (`var count: int = 0`, `func get_node_by_id(id: String) -> Node:`). `plugin.gd` refuses to start on older editors with a clear message; raising the minimum means updating `MIN_MINOR` there, the README, and the dev `project.godot`.
+- Read command parameters untyped and validate them (see `PARAM_TYPES`): assigning a wrongly typed value to a typed variable is a script error that sends no reply and leaves the caller waiting for its timeout.
 - Utilize standard signals for asynchronous event handling.
 - Keep the plugin lightweight with zero external third-party dependencies outside the standard Godot API.
 
@@ -65,6 +68,8 @@ Before submitting or committing changes, agents must execute and pass the comple
    cargo test --all-targets
    ```
 
+   Includes `tests/version_sync_test.rs`: the version in `addons/godot_mcp/plugin.cfg` must always equal `Cargo.toml` — bump both together. New behaviour needs a test first: protocol and tool behaviour in `tests/stdio_protocol_test.rs` / `tests/tools_test.rs` (helpers in `tests/common/`), bridge client in `tests/bridge_client_test.rs`.
+
 4. **GDScript Syntax Check**:
 
    The repo root has its own minimal `project.godot` so the addon's `class_name` declarations resolve. `--path .` is required — without it the check fails with `Could not find type "GodotMcpBridgeServer"`.
@@ -72,7 +77,16 @@ Before submitting or committing changes, agents must execute and pass the comple
    ```bash
    godot --headless --path . --import   # first run only, or after script changes
    godot --headless --check-only --path . --script addons/godot_mcp/plugin.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/bridge_server.gd
    ```
+
+5. **Editor End-to-End Tests** (whenever `addons/godot_mcp/` changed; needs a Godot 4.5+ binary, ignored by default):
+
+   ```bash
+   GODOT_PATH=/path/to/godot cargo test --test editor_e2e_test -- --ignored
+   ```
+
+   Set `GODOT_CONSOLE_PATH` as well on Windows to get editor logs in failure output. A `.env` file with double-quoted Windows paths does not load (see `.env.example`) — export the variables instead.
 
 ## Tool Invocation Protocols for AI Agents
 
@@ -80,17 +94,19 @@ When interacting with a Godot project, agents must adhere to the following workf
 
 1. **Inspection Before Mutation**:
    - Always query `godot_get_scene_tree` or `godot_get_node_properties` before attempting to modify, add, or delete nodes.
-   - Confirm parent node paths exist before instantiating child nodes.
+   - Confirm parent node paths exist before instantiating child nodes. Node paths are relative to the scene root.
+   - `godot_set_node_properties` is all-or-nothing and returns the applied values; read them back instead of assuming.
 
 2. **Validation After Modification**:
-   - Run `godot_validate_script` immediately after creating or altering any `.gd` file.
+   - Run `godot_validate_script` immediately after creating or altering any `.gd` file. `godot_create_script` needs `project_path` unless the editor bridge is connected, and refuses to overwrite without `overwrite: true`.
    - Catch and resolve syntax errors before attempting to run scenes.
 
 3. **Visual Verification**:
-   - Use `godot_capture_viewport` or `godot_capture_camera` to visually inspect scene changes, layouts, and rendering quality when performing level design or UI assembly.
+   - Use `godot_capture_viewport` to visually inspect scene changes, layouts, and rendering quality when performing level design or UI assembly.
 
 4. **Runtime Monitoring**:
-   - Always monitor `godot_get_debug_log` during and after invoking `godot_run_project` to ensure no runtime errors or shader warnings occur.
+   - After `godot_run_project`, check `godot_get_run_status` and stop the run with `godot_stop_project` when done.
+   - Runtime log capture (`godot_get_debug_log`) and in-game camera capture (`godot_capture_camera`) are on the roadmap, not implemented — do not call them.
 
 ## Completion Protocol (Mandatory Checklist)
 

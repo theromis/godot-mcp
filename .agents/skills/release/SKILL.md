@@ -7,7 +7,7 @@ description: Cut a new godot-mcp release - bump the version, run QA gates, tag, 
 
 ## Overview
 
-Pushing a tag matching `v*.*.*` triggers `.github/workflows/release.yml`, which builds `godot-mcp` for Windows x86_64, Linux x86_64, macOS x86_64, and macOS aarch64, and attaches the archives to a GitHub Release. This skill walks through the steps in order — skipping the QA gate or getting the tag format wrong produces a broken or missing release.
+Pushing a tag matching `v*.*.*` triggers `.github/workflows/release.yml`, which first verifies the tag matches `Cargo.toml` and runs fmt/clippy/tests, then builds `godot-mcp` for Windows x86_64, Linux x86_64, macOS x86_64, and macOS aarch64, and attaches the archives to a GitHub Release. This skill walks through the steps in order — skipping the QA gate or getting the tag format wrong produces a broken or missing release.
 
 ## Procedure
 
@@ -19,24 +19,31 @@ Pushing a tag matching `v*.*.*` triggers `.github/workflows/release.yml`, which 
    git status --porcelain          # must be empty; stop and ask if it isn't
    cargo fmt --all -- --check
    cargo clippy --all-targets --all-features -- -D warnings
-   cargo test
+   cargo test --all-targets
    ```
 
-   If a Godot binary is reachable (`GODOT_PATH` in `.env`, or `godot` on `PATH`), also run (the repo root is itself a minimal Godot project so `class_name` resolves — `--path .` is required, and `--import` must run at least once for a fresh `.godot/` cache):
+   If a Godot 4.5+ binary is reachable (`GODOT_PATH` exported, or `godot` on `PATH`), also run (the repo root is itself a minimal Godot project so `class_name` resolves — `--path .` is required, and `--import` must run at least once for a fresh `.godot/` cache):
 
    ```bash
    godot --headless --path . --import
    godot --headless --check-only --path . --script addons/godot_mcp/plugin.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/bridge_server.gd
+   GODOT_PATH=/path/to/godot cargo test --test editor_e2e_test -- --ignored
    ```
 
    Stop and report if any check fails. Do not tag a red build.
 
-3. **Bump the version** in `Cargo.toml` (`[package] version = "X.Y.Z"`), then run `cargo build` once so `Cargo.lock`'s matching entry updates. `addons/godot_mcp/plugin.cfg` has its own independent `version` field (the GDScript addon versions separately from the Rust server) — only touch it if the user explicitly asks to keep them in sync.
+3. **Bump the version in both manifests** — the server and the addon always ship the same version:
+
+   - `Cargo.toml`: `[package] version = "X.Y.Z"`
+   - `addons/godot_mcp/plugin.cfg`: `version="X.Y.Z"`
+
+   Then run `cargo build` once so `Cargo.lock`'s matching entry updates, and `cargo test --test version_sync_test` to confirm the two versions match (the test fails if they drift).
 
 4. **Commit the bump:**
 
    ```bash
-   git add Cargo.toml Cargo.lock
+   git add Cargo.toml Cargo.lock addons/godot_mcp/plugin.cfg
    git commit -m "chore(release): bump version to vX.Y.Z"
    ```
 
@@ -56,7 +63,7 @@ Pushing a tag matching `v*.*.*` triggers `.github/workflows/release.yml`, which 
    gh run watch $(gh run list --workflow=release.yml -L 1 --json databaseId -q '.[0].databaseId')
    ```
 
-   All 5 jobs (`addon`, plus the 4 binary matrix targets `x86_64-pc-windows-msvc`, `x86_64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`) must succeed.
+   All 6 jobs (`verify`, `addon`, plus the 4 binary matrix targets `x86_64-pc-windows-msvc`, `x86_64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`) must succeed.
 
 8. **Verify the release:**
 
@@ -66,7 +73,7 @@ Pushing a tag matching `v*.*.*` triggers `.github/workflows/release.yml`, which 
 
    Confirm all 5 assets are attached: 4 binary archives (`godot-mcp-<target>.{zip,tar.gz}`) plus `godot-mcp-addon.zip` (the Godot Editor plugin, platform-independent) — see the asset table in `README.md`.
 
-9. **Optional:** refresh the local `bin/` convenience copy from `target/release` for local MCP client configs (see the "Cutting a release" note in `README.md`). This is a personal dev-environment step, not part of the release itself.
+9. **Optional:** refresh the local `bin/` convenience copy (git-ignored) from `target/release` for local MCP client configs. This is a personal dev-environment step, not part of the release itself.
 
 ## Notes
 

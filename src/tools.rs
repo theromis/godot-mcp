@@ -1,14 +1,30 @@
 use crate::bridge::BridgeClient;
 use crate::cli_runner::CliRunner;
+use crate::error::McpError;
+use crate::paths::{ensure_project_dir, is_valid_identifier, resolve_in_project};
 use crate::protocol::{Tool, ToolResult};
+use crate::validation::validate_arguments;
 use serde_json::{Value, json};
-use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use tokio::fs;
+use tokio::io::AsyncWriteExt;
+
+const PROJECT_PATH_HINTS: &[&str] = &[
+    "Pass project_path: the absolute path of a directory that contains project.godot",
+    "Or open the project in the Godot Editor with the Godot MCP Bridge plugin enabled",
+];
 
 pub struct ToolManager {
     bridge: BridgeClient,
     cli: CliRunner,
+}
+
+/// A project directory plus whether it came from the live editor.
+struct ResolvedProject {
+    dir: PathBuf,
+    from_editor: bool,
 }
 
 impl ToolManager {
@@ -18,253 +34,28 @@ impl ToolManager {
 
     /// Return the list of all registered tools with their input schemas
     pub fn list_tools() -> Vec<Tool> {
-        vec![
-            Tool {
-                name: "godot_get_version".into(),
-                description: "Retrieves the Godot Engine version and build information.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {}
-                }),
-            },
-            Tool {
-                name: "godot_get_project_info".into(),
-                description: "Inspects project configuration, name, main scene, and enabled features.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "project_path": {
-                            "type": "string",
-                            "description": "Optional project root directory. Defaults to active editor project."
-                        }
-                    }
-                }),
-            },
-            Tool {
-                name: "godot_launch_editor".into(),
-                description: "Launches the Godot Editor for a designated project directory.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "project_path": {
-                            "type": "string",
-                            "description": "Absolute path to the Godot project directory containing project.godot."
-                        }
-                    },
-                    "required": ["project_path"]
-                }),
-            },
-            Tool {
-                name: "godot_run_project".into(),
-                description: "Runs the Godot project or a specific scene in debug mode. Uses the live editor's own Play mechanism if the bridge is connected (so godot_stop_project and godot_get_run_status can control it); falls back to spawning a headless CLI process otherwise, which requires project_path.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "project_path": {
-                            "type": "string",
-                            "description": "Path to the project root directory. Only required for the headless CLI fallback (i.e. when no editor is connected)."
-                        },
-                        "scene": {
-                            "type": "string",
-                            "description": "Optional specific scene path (e.g., 'res://scenes/Main.tscn'). Defaults to the project's main scene."
-                        }
-                    }
-                }),
-            },
-            Tool {
-                name: "godot_stop_project".into(),
-                description: "Stops the project currently running via the live editor's Play mode (started by godot_run_project). Requires the editor bridge to be connected; it cannot stop a process spawned by the headless CLI fallback.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {}
-                }),
-            },
-            Tool {
-                name: "godot_get_run_status".into(),
-                description: "Reports whether a scene is currently playing via the live editor's Play mode, and which one. Requires the editor bridge to be connected.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {}
-                }),
-            },
-            Tool {
-                name: "godot_get_scene_tree".into(),
-                description: "Retrieves the complete node hierarchy of a scene open in Godot Editor.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "scene_path": {
-                            "type": "string",
-                            "description": "Optional res:// path of an open scene tab to inspect. Defaults to the currently active/focused scene tab. Use godot_get_open_scenes to list valid values."
-                        }
-                    }
-                }),
-            },
-            Tool {
-                name: "godot_get_open_scenes".into(),
-                description: "Lists the res:// paths of all scenes currently open as tabs in the editor, and which one is active.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {}
-                }),
-            },
-            Tool {
-                name: "godot_add_node".into(),
-                description: "Adds a new node to the active scene in Godot Editor with undo/redo support.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "parent_node_path": {
-                            "type": "string",
-                            "description": "Path to parent node (e.g. '.' for root or 'Player/Sprite')."
-                        },
-                        "node_type": {
-                            "type": "string",
-                            "description": "Godot class name to instantiate (e.g. 'Sprite2D', 'Camera3D', 'Node')."
-                        },
-                        "node_name": {
-                            "type": "string",
-                            "description": "Optional custom name for the new node."
-                        }
-                    },
-                    "required": ["node_type"]
-                }),
-            },
-            Tool {
-                name: "godot_remove_node".into(),
-                description: "Removes a node from the active scene tree with undo/redo support.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "node_path": {
-                            "type": "string",
-                            "description": "Path to the node to remove."
-                        }
-                    },
-                    "required": ["node_path"]
-                }),
-            },
-            Tool {
-                name: "godot_get_node_properties".into(),
-                description: "Inspects all properties, export variables, and types of a target node.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "node_path": {
-                            "type": "string",
-                            "description": "Path to target node."
-                        }
-                    },
-                    "required": ["node_path"]
-                }),
-            },
-            Tool {
-                name: "godot_set_node_properties".into(),
-                description: "Modifies exported properties or transforms on a target node in the active scene.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "node_path": {
-                            "type": "string",
-                            "description": "Path to target node."
-                        },
-                        "properties": {
-                            "type": "object",
-                            "description": "Key-value map of property names to new values."
-                        }
-                    },
-                    "required": ["node_path", "properties"]
-                }),
-            },
-            Tool {
-                name: "godot_capture_viewport".into(),
-                description: "Captures a screenshot of the active Godot 2D/3D editor viewport as a base64 image.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {}
-                }),
-            },
-            Tool {
-                name: "godot_open_scene".into(),
-                description: "Opens a scene file in the Godot Editor by its res:// path.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "scene_path": {
-                            "type": "string",
-                            "description": "Resource path to scene (e.g. 'res://scenes/level1.tscn')."
-                        }
-                    },
-                    "required": ["scene_path"]
-                }),
-            },
-            Tool {
-                name: "godot_save_scene".into(),
-                description: "Saves changes to the current open scene in Godot Editor.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {}
-                }),
-            },
-            Tool {
-                name: "godot_create_script".into(),
-                description: "Creates a new GDScript file with standard class header and optional base class.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "file_path": {
-                            "type": "string",
-                            "description": "Absolute or relative file path for the .gd script."
-                        },
-                        "extends_class": {
-                            "type": "string",
-                            "description": "Base class to extend (e.g. 'Node2D', 'CharacterBody3D'). Defaults to 'Node'."
-                        },
-                        "class_name": {
-                            "type": "string",
-                            "description": "Optional global class_name registration."
-                        }
-                    },
-                    "required": ["file_path"]
-                }),
-            },
-            Tool {
-                name: "godot_validate_script".into(),
-                description: "Performs syntax checking and static validation on a GDScript file without execution.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "script_path": {
-                            "type": "string",
-                            "description": "Path to the .gd script file."
-                        },
-                        "project_path": {
-                            "type": "string",
-                            "description": "Optional project root path for class resolution."
-                        }
-                    },
-                    "required": ["script_path"]
-                }),
-            },
-            Tool {
-                name: "godot_resave_resources".into(),
-                description: "Forces re-import and cache invalidation for updated assets and resources. Requires the editor bridge to be connected.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "paths": {
-                            "type": "array",
-                            "items": { "type": "string" },
-                            "description": "res:// paths of specific source assets to reimport (e.g. after editing them externally). Reimport runs synchronously and completes before this call returns. If omitted or empty, triggers a full project filesystem rescan instead, which runs in the background and may still be in progress when this call returns."
-                        }
-                    }
-                }),
-            },
-        ]
+        tool_catalog().to_vec()
+    }
+
+    pub fn has_tool(name: &str) -> bool {
+        tool_catalog().iter().any(|tool| tool.name == name)
     }
 
     /// Dispatch tool calls to live bridge or CLI runner
     pub async fn call_tool(self: Arc<Self>, name: &str, args: Value) -> ToolResult {
+        let Some(tool) = tool_catalog().iter().find(|tool| tool.name == name) else {
+            return ToolResult::error(
+                format!("Tool '{name}' is not recognized"),
+                &["Check tool name spelling against tools/list"],
+            );
+        };
+        if let Err(problem) = validate_arguments(&tool.input_schema, &args) {
+            return ToolResult::error(
+                format!("Invalid arguments for {name}: {problem}"),
+                &["Check the tool's inputSchema returned by tools/list and retry"],
+            );
+        }
+
         match name {
             "godot_get_version" => self.handle_get_version().await,
             "godot_get_project_info" => self.handle_bridge_call("get_project_info", args).await,
@@ -282,26 +73,31 @@ impl ToolManager {
             "godot_set_node_properties" => {
                 self.handle_bridge_call("set_node_properties", args).await
             }
-            "godot_capture_viewport" => self.handle_capture_viewport().await,
+            "godot_capture_viewport" => self.handle_capture_viewport(args).await,
             "godot_open_scene" => self.handle_bridge_call("open_scene", args).await,
             "godot_save_scene" => self.handle_bridge_call("save_scene", args).await,
             "godot_create_script" => self.handle_create_script(args).await,
             "godot_validate_script" => self.handle_validate_script(args).await,
             "godot_resave_resources" => self.handle_bridge_call("resave_resources", args).await,
             _ => ToolResult::error(
-                format!("Tool '{name}' is not recognized"),
-                &["Check tool name spelling against tools/list"],
+                format!("Tool '{name}' has no handler"),
+                &["This is a server bug; report it with the tool name"],
             ),
         }
     }
 
     async fn handle_get_version(&self) -> ToolResult {
         // Try live editor bridge first
-        if let Ok(result) = self.bridge.send_command("get_version", json!({})).await {
-            return ToolResult::text(format!(
-                "Godot Engine (Live Editor Connected):\n{}",
-                serde_json::to_string_pretty(&result).unwrap_or_default()
-            ));
+        match self.bridge.send_command("get_version", json!({})).await {
+            Ok(result) => {
+                return ToolResult::text(format!(
+                    "Godot Engine (Live Editor Connected):\n{}",
+                    serde_json::to_string_pretty(&result).unwrap_or_default()
+                ));
+            }
+            // An editor that answers with an error (e.g. a token problem) must not be hidden.
+            Err(error @ McpError::ToolExecution(_)) => return bridge_error_result(&error),
+            Err(_) => {}
         }
 
         // Fallback to CLI
@@ -322,52 +118,43 @@ impl ToolManager {
     async fn handle_bridge_call(&self, command_type: &str, params: Value) -> ToolResult {
         match self.bridge.send_command(command_type, params).await {
             Ok(res) => ToolResult::text(serde_json::to_string_pretty(&res).unwrap_or_default()),
-            Err(e) => ToolResult::error(
-                format!("{e}"),
-                &[
-                    "Launch Godot Editor with your project",
-                    "Ensure 'Godot MCP Bridge' plugin is enabled in Project Settings -> Plugins",
-                    "Verify GODOT_DEBUG_PORT in .env matches Godot bridge port (default: 9333)",
-                ],
-            ),
+            Err(error) => bridge_error_result(&error),
         }
     }
 
-    async fn handle_capture_viewport(&self) -> ToolResult {
-        match self
-            .bridge
-            .send_command("capture_viewport", json!({}))
-            .await
-        {
+    async fn handle_capture_viewport(&self, params: Value) -> ToolResult {
+        match self.bridge.send_command("capture_viewport", params).await {
             Ok(res) => {
-                if let (Some(data), Some(mime)) = (
-                    res.get("data").and_then(|v| v.as_str()),
-                    res.get("mime_type").and_then(|v| v.as_str()),
-                ) {
-                    ToolResult::image(data, mime)
-                } else {
-                    ToolResult::error("Invalid image response received from Godot viewport", &[])
+                let data = res.get("data").and_then(Value::as_str);
+                let mime = res.get("mime_type").and_then(Value::as_str);
+                match (data, mime) {
+                    (Some(data), Some(mime)) => {
+                        let note = format!(
+                            "Editor viewport capture: {}x{} px ({} view)",
+                            res.get("width").and_then(Value::as_u64).unwrap_or(0),
+                            res.get("height").and_then(Value::as_u64).unwrap_or(0),
+                            res.get("view").and_then(Value::as_str).unwrap_or("2d"),
+                        );
+                        ToolResult::image_with_text(note, data, mime)
+                    }
+                    _ => ToolResult::error(
+                        "Invalid image response received from the Godot viewport",
+                        &["Update the Godot MCP Bridge addon to the same version as the server"],
+                    ),
                 }
             }
-            Err(e) => ToolResult::error(
-                format!("Failed to capture viewport: {e}"),
-                &["Ensure Godot Editor has a scene open in 2D or 3D view"],
-            ),
+            Err(error) => bridge_error_result(&error),
         }
     }
 
     async fn handle_launch_editor(&self, args: Value) -> ToolResult {
-        let project_path_str = match args.get("project_path").and_then(|p| p.as_str()) {
-            Some(p) => p,
-            None => return ToolResult::error("Missing required parameter: project_path", &[]),
+        let Some(project_path) = str_arg(&args, "project_path") else {
+            return missing_argument("project_path");
         };
 
-        let path = PathBuf::from(project_path_str);
-        if !path.exists() {
-            return ToolResult::error(
-                format!("Project directory does not exist: {project_path_str}"),
-                &["Verify path spelling and ensure project.godot exists"],
-            );
+        let path = PathBuf::from(project_path);
+        if let Err(problem) = ensure_project_dir(&path) {
+            return ToolResult::error(problem, &["Pass the directory that contains project.godot"]);
         }
 
         match self.cli.launch_editor(&path).await {
@@ -375,105 +162,210 @@ impl ToolManager {
                 "Godot Editor launched successfully for '{}' (PID: {pid}).",
                 path.display()
             )),
-            Err(e) => ToolResult::error(format!("Failed to launch Godot Editor: {e}"), &[]),
+            Err(e) => ToolResult::error(
+                format!("Failed to launch Godot Editor: {e}"),
+                &["Verify GODOT_PATH points to a working Godot executable"],
+            ),
         }
     }
 
     async fn handle_run_project(&self, args: Value) -> ToolResult {
-        let scene = args.get("scene").and_then(|s| s.as_str());
+        let scene = str_arg(&args, "scene");
+        if let Some(scene) = scene {
+            if !scene.starts_with("res://") || scene.split(['/', '\\']).any(|part| part == "..") {
+                return ToolResult::error(
+                    format!(
+                        "Invalid scene '{scene}': scene must be a res:// path inside the project"
+                    ),
+                    &["Use a path such as res://scenes/Main.tscn"],
+                );
+            }
+        }
 
         // Prefer the live editor: it can be stopped/queried later via
         // godot_stop_project / godot_get_run_status, unlike a spawned process.
         let bridge_params = json!({ "scene_path": scene.unwrap_or("") });
-        if let Ok(result) = self.bridge.send_command("run_project", bridge_params).await {
-            return ToolResult::text(format!(
-                "Project running via live editor:\n{}",
-                serde_json::to_string_pretty(&result).unwrap_or_default()
-            ));
+        match self.bridge.send_command("run_project", bridge_params).await {
+            Ok(result) => {
+                return ToolResult::text(format!(
+                    "Project running via live editor:\n{}",
+                    serde_json::to_string_pretty(&result).unwrap_or_default()
+                ));
+            }
+            // Only a missing editor justifies spawning a separate process.
+            Err(McpError::BridgeUnavailable(_)) => {}
+            Err(error) => return bridge_error_result(&error),
         }
 
-        // Fall back to a detached headless CLI process.
-        let project_path_str = match args.get("project_path").and_then(|p| p.as_str()) {
-            Some(p) => p,
-            None => {
-                return ToolResult::error(
-                    "No editor bridge connected, and no project_path given for the headless CLI fallback",
-                    &[
-                        "Launch the Godot Editor with this project and enable the Godot MCP Bridge plugin",
-                        "Or pass project_path to run headlessly instead",
-                    ],
-                );
-            }
+        // Fall back to a detached CLI process.
+        let Some(project_path) = str_arg(&args, "project_path") else {
+            return ToolResult::error(
+                "No editor bridge connected, and no project_path given for the CLI fallback",
+                &[
+                    "Launch the Godot Editor with this project and enable the Godot MCP Bridge plugin",
+                    "Or pass project_path to run the project in a separate Godot process instead",
+                ],
+            );
         };
 
-        let path = PathBuf::from(project_path_str);
+        let path = PathBuf::from(project_path);
+        if let Err(problem) = ensure_project_dir(&path) {
+            return ToolResult::error(problem, &["Pass the directory that contains project.godot"]);
+        }
         match self.cli.run_project(&path, scene).await {
             Ok(pid) => ToolResult::text(format!(
-                "No editor bridge connected. Spawned a headless Godot process instead (PID: {pid}) for '{}'. Note: godot_stop_project and godot_get_run_status only work through the live editor bridge, not this process.",
+                "No editor bridge connected. Spawned a separate Godot process instead (PID: {pid}) for '{}'. Note: godot_stop_project and godot_get_run_status only work through the live editor bridge, not this process.",
                 path.display()
             )),
-            Err(e) => ToolResult::error(format!("Failed to run project: {e}"), &[]),
+            Err(e) => ToolResult::error(
+                format!("Failed to run project: {e}"),
+                &["Verify GODOT_PATH points to a working Godot executable"],
+            ),
         }
     }
 
     async fn handle_create_script(&self, args: Value) -> ToolResult {
-        let file_path_str = match args.get("file_path").and_then(|p| p.as_str()) {
-            Some(p) => p,
-            None => return ToolResult::error("Missing required parameter: file_path", &[]),
+        let Some(file_path) = str_arg(&args, "file_path") else {
+            return missing_argument("file_path");
         };
-
-        // Path validation against directory traversal
-        if file_path_str.contains("..") {
+        if !file_path.ends_with(".gd") {
             return ToolResult::error(
-                "Invalid path: directory traversal with '..' is strictly forbidden",
-                &["Provide a path without relative parent references"],
+                format!("Script files must have the .gd extension: {file_path}"),
+                &["Use a path such as res://scripts/player.gd"],
             );
         }
 
-        let extends_class = args
-            .get("extends_class")
-            .and_then(|c| c.as_str())
-            .unwrap_or("Node");
+        let extends_class = str_arg(&args, "extends_class").unwrap_or("Node");
+        if !is_valid_identifier(extends_class) {
+            return invalid_identifier("extends_class", extends_class);
+        }
+        let class_name = str_arg(&args, "class_name");
+        if let Some(name) = class_name {
+            if !is_valid_identifier(name) {
+                return invalid_identifier("class_name", name);
+            }
+        }
+        let overwrite = args
+            .get("overwrite")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
 
-        let class_name_decl = if let Some(cn) = args.get("class_name").and_then(|c| c.as_str()) {
-            format!("class_name {cn}\n")
-        } else {
-            String::new()
+        let project = match self.resolve_project(&args).await {
+            Ok(project) => project,
+            Err(result) => return result,
+        };
+        let target = match resolve_in_project(&project.dir, file_path) {
+            Ok(target) => target,
+            Err(problem) => {
+                return ToolResult::error(
+                    problem,
+                    &["Use a res:// path or a path relative to the project directory"],
+                );
+            }
         };
 
-        let content =
-            format!("extends {extends_class}\n{class_name_decl}\nfunc _ready() -> void:\n\tpass\n");
+        let mut content = format!("extends {extends_class}\n");
+        if let Some(name) = class_name {
+            content.push_str(&format!("class_name {name}\n"));
+        }
+        content.push_str("\nfunc _ready() -> void:\n\tpass\n");
 
-        let path = Path::new(file_path_str);
-        if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-            let _ = fs::create_dir_all(parent);
+        if let Some(parent) = target.parent() {
+            if let Err(err) = fs::create_dir_all(parent).await {
+                return ToolResult::error(
+                    format!("Failed to create directory {}: {err}", parent.display()),
+                    &["Check that the project directory is writable"],
+                );
+            }
+        }
+        let mut options = fs::OpenOptions::new();
+        options.write(true);
+        if overwrite {
+            options.create(true).truncate(true);
+        } else {
+            options.create_new(true);
+        }
+        let write_result = match options.open(&target).await {
+            Ok(mut file) => file.write_all(content.as_bytes()).await,
+            Err(err) => Err(err),
+        };
+        if let Err(err) = write_result {
+            return if err.kind() == ErrorKind::AlreadyExists {
+                ToolResult::error(
+                    format!("File already exists: {}", target.display()),
+                    &["Pass overwrite: true to replace it, or choose another file name"],
+                )
+            } else {
+                ToolResult::error(
+                    format!("Failed to write script file {}: {err}", target.display()),
+                    &["Check that the project directory is writable"],
+                )
+            };
         }
 
-        match fs::write(path, content) {
-            Ok(_) => ToolResult::text(format!(
-                "Successfully created GDScript file at '{}' extending '{}'.",
-                path.display(),
-                extends_class
-            )),
-            Err(e) => ToolResult::error(format!("Failed to write script file: {e}"), &[]),
+        let res_path = target
+            .strip_prefix(&project.dir)
+            .ok()
+            .map(|relative| format!("res://{}", relative.to_string_lossy().replace('\\', "/")));
+        if project.from_editor {
+            if let Some(res_path) = &res_path {
+                // Let the editor pick the file up (and give it a .uid) right away.
+                let _ = self
+                    .bridge
+                    .send_command("resave_resources", json!({ "paths": [res_path] }))
+                    .await;
+            }
         }
+
+        ToolResult::text(format!(
+            "Created GDScript file {} extending '{extends_class}'.",
+            res_path.unwrap_or_else(|| target.display().to_string()),
+        ))
     }
 
     async fn handle_validate_script(&self, args: Value) -> ToolResult {
-        let script_path_str = match args.get("script_path").and_then(|p| p.as_str()) {
-            Some(p) => p,
-            None => return ToolResult::error("Missing required parameter: script_path", &[]),
+        let Some(script_path) = str_arg(&args, "script_path") else {
+            return missing_argument("script_path");
         };
+        if !script_path.ends_with(".gd") {
+            return ToolResult::error(
+                format!("Only .gd scripts can be validated: {script_path}"),
+                &["Use a path such as res://scripts/player.gd"],
+            );
+        }
 
-        let script_path = PathBuf::from(script_path_str);
-        let project_path = args
-            .get("project_path")
-            .and_then(|p| p.as_str())
-            .map(PathBuf::from);
+        let project_dir =
+            if str_arg(&args, "project_path").is_some() || script_path.starts_with("res://") {
+                match self.resolve_project(&args).await {
+                    Ok(project) => Some(project.dir),
+                    Err(result) => return result,
+                }
+            } else {
+                None
+            };
+
+        let file = match &project_dir {
+            Some(dir) => match resolve_in_project(dir, script_path) {
+                Ok(file) => file,
+                Err(problem) => {
+                    return ToolResult::error(
+                        problem,
+                        &["Use a res:// path or a path inside the project directory"],
+                    );
+                }
+            },
+            None => PathBuf::from(script_path),
+        };
+        if !file.is_file() {
+            return ToolResult::error(
+                format!("Script file not found: {}", file.display()),
+                &["Check the path; res:// paths are resolved against the project directory"],
+            );
+        }
 
         match self
             .cli
-            .validate_script(project_path.as_deref(), &script_path)
+            .validate_script(project_dir.as_deref(), Path::new(script_path))
             .await
         {
             Ok(msg) => ToolResult::text(msg),
@@ -486,4 +378,342 @@ impl ToolManager {
             ),
         }
     }
+
+    /// Finds the project directory: an explicit `project_path`, else the project open in the
+    /// live editor.
+    async fn resolve_project(&self, args: &Value) -> Result<ResolvedProject, ToolResult> {
+        if let Some(project_path) = str_arg(args, "project_path") {
+            let dir = PathBuf::from(project_path);
+            return match ensure_project_dir(&dir) {
+                Ok(()) => Ok(ResolvedProject {
+                    dir,
+                    from_editor: false,
+                }),
+                Err(problem) => Err(ToolResult::error(problem, PROJECT_PATH_HINTS)),
+            };
+        }
+
+        match self
+            .bridge
+            .send_command("get_project_info", json!({}))
+            .await
+        {
+            Ok(info) => match info.get("project_dir").and_then(Value::as_str) {
+                Some(dir) => {
+                    let dir = PathBuf::from(dir);
+                    ensure_project_dir(&dir)
+                        .map_err(|problem| ToolResult::error(problem, PROJECT_PATH_HINTS))?;
+                    Ok(ResolvedProject {
+                        dir,
+                        from_editor: true,
+                    })
+                }
+                None => Err(ToolResult::error(
+                    "The editor did not report its project directory",
+                    &["Update the Godot MCP Bridge addon to the same version as the server"],
+                )),
+            },
+            Err(McpError::BridgeUnavailable(_)) => Err(ToolResult::error(
+                "Cannot tell which project to use: no project_path was given and the editor bridge is not running",
+                PROJECT_PATH_HINTS,
+            )),
+            Err(error) => Err(bridge_error_result(&error)),
+        }
+    }
+}
+
+fn str_arg<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
+    args.get(key).and_then(Value::as_str)
+}
+
+fn missing_argument(name: &str) -> ToolResult {
+    ToolResult::error(
+        format!("Missing required parameter: {name}"),
+        &["Check the tool's inputSchema returned by tools/list"],
+    )
+}
+
+fn invalid_identifier(parameter: &str, value: &str) -> ToolResult {
+    ToolResult::error(
+        format!(
+            "Invalid {parameter} {value:?}: use letters, digits and underscores only, not starting with a digit"
+        ),
+        &["Example: Node2D, CharacterBody3D, Player"],
+    )
+}
+
+/// Turns a bridge failure into a tool error whose recovery hints match what actually failed.
+fn bridge_error_result(error: &McpError) -> ToolResult {
+    match error {
+        McpError::BridgeUnavailable(detail) => ToolResult::error(
+            format!("The Godot Editor bridge is not reachable ({detail})"),
+            &[
+                "Launch Godot Editor with your project (godot_launch_editor can do it)",
+                "Ensure 'Godot MCP Bridge' plugin is enabled in Project Settings -> Plugins",
+                "Verify GODOT_DEBUG_PORT matches the bridge port (default: 9333)",
+            ],
+        ),
+        McpError::Bridge(detail) => ToolResult::error(
+            detail.clone(),
+            &[
+                "The editor may be busy (importing, modal dialog) or restarting; retry in a moment",
+                "Look for [Godot MCP] messages in the editor's Output panel",
+            ],
+        ),
+        McpError::ToolExecution(message) => {
+            ToolResult::error(message.clone(), editor_error_hints(message))
+        }
+        other => ToolResult::error(other.to_string(), &[]),
+    }
+}
+
+fn editor_error_hints(message: &str) -> &'static [&'static str] {
+    let lower = message.to_lowercase();
+    if lower.contains("unauthorized") {
+        &[
+            "Restart the MCP client so the server re-reads the bridge token",
+            "Run the MCP server and the Godot editor as the same OS user, or set the same GODOT_MCP_TOKEN for both",
+        ]
+    } else if lower.contains("no active scene") {
+        &["Open a scene first with godot_open_scene"]
+    } else if lower.contains("not found")
+        || lower.contains("does not exist")
+        || lower.contains("not currently open")
+    {
+        &["Verify the path with godot_get_scene_tree or godot_get_open_scenes"]
+    } else {
+        &["Correct the arguments according to the message above and retry"]
+    }
+}
+
+fn tool_catalog() -> &'static [Tool] {
+    static CATALOG: OnceLock<Vec<Tool>> = OnceLock::new();
+    CATALOG.get_or_init(build_catalog)
+}
+
+fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Tool {
+    let mut input_schema = json!({ "type": "object", "properties": properties });
+    if !required.is_empty() {
+        input_schema["required"] = json!(required);
+    }
+    Tool {
+        name: name.into(),
+        description: description.into(),
+        input_schema,
+    }
+}
+
+fn build_catalog() -> Vec<Tool> {
+    vec![
+        tool(
+            "godot_get_version",
+            "Retrieves the Godot Engine version and build information.",
+            json!({}),
+            &[],
+        ),
+        tool(
+            "godot_get_project_info",
+            "Reports the name, main scene, enabled features and directory of the project open in the live editor. Requires the editor bridge.",
+            json!({}),
+            &[],
+        ),
+        tool(
+            "godot_launch_editor",
+            "Launches the Godot Editor for a designated project directory.",
+            json!({
+                "project_path": {
+                    "type": "string",
+                    "description": "Absolute path to the Godot project directory containing project.godot."
+                }
+            }),
+            &["project_path"],
+        ),
+        tool(
+            "godot_run_project",
+            "Runs the Godot project or a specific scene (opens the game window). Uses the live editor's own Play mechanism if the bridge is connected (so godot_stop_project and godot_get_run_status can control it); only if no editor is running does it start a separate Godot process, which requires project_path and cannot be stopped via MCP.",
+            json!({
+                "project_path": {
+                    "type": "string",
+                    "description": "Path to the project root directory. Only required for the CLI fallback (i.e. when no editor is connected)."
+                },
+                "scene": {
+                    "type": "string",
+                    "description": "Optional specific scene path (e.g., 'res://scenes/Main.tscn'). Defaults to the project's main scene."
+                }
+            }),
+            &[],
+        ),
+        tool(
+            "godot_stop_project",
+            "Stops the project currently running via the live editor's Play mode (started by godot_run_project). Requires the editor bridge to be connected; it cannot stop a process spawned by the CLI fallback.",
+            json!({}),
+            &[],
+        ),
+        tool(
+            "godot_get_run_status",
+            "Reports whether a scene is currently playing via the live editor's Play mode, and which one. Requires the editor bridge to be connected.",
+            json!({}),
+            &[],
+        ),
+        tool(
+            "godot_get_scene_tree",
+            "Retrieves the complete node hierarchy of a scene open in Godot Editor. Node paths in the result are relative to the scene root ('.' is the root).",
+            json!({
+                "scene_path": {
+                    "type": "string",
+                    "description": "Optional res:// path of an open scene tab to inspect. Defaults to the currently active/focused scene tab. Use godot_get_open_scenes to list valid values."
+                }
+            }),
+            &[],
+        ),
+        tool(
+            "godot_get_open_scenes",
+            "Lists the res:// paths of all scenes currently open as tabs in the editor, and which one is active.",
+            json!({}),
+            &[],
+        ),
+        tool(
+            "godot_add_node",
+            "Adds a new node to the active scene in Godot Editor with undo/redo support. node_type is any instantiable Node class or a global script class_name.",
+            json!({
+                "parent_node_path": {
+                    "type": "string",
+                    "description": "Path to the parent node relative to the scene root (e.g. '.' for root or 'Player/Sprite')."
+                },
+                "node_type": {
+                    "type": "string",
+                    "description": "Godot class name to instantiate (e.g. 'Sprite2D', 'Camera3D', 'Node')."
+                },
+                "node_name": {
+                    "type": "string",
+                    "description": "Optional custom name for the new node. Godot may adjust invalid characters; the result reports the final name."
+                }
+            }),
+            &["node_type"],
+        ),
+        tool(
+            "godot_remove_node",
+            "Removes a node from the active scene tree with undo/redo support. The scene root cannot be removed.",
+            json!({
+                "node_path": {
+                    "type": "string",
+                    "description": "Path to the node to remove, relative to the scene root."
+                }
+            }),
+            &["node_path"],
+        ),
+        tool(
+            "godot_get_node_properties",
+            "Inspects the editor-visible properties of a node. Each property is returned as {type, value}, with the value in Godot's text format (e.g. 'Vector2(5, 7)').",
+            json!({
+                "node_path": {
+                    "type": "string",
+                    "description": "Path to the target node relative to the scene root ('.' or empty for the root)."
+                }
+            }),
+            &["node_path"],
+        ),
+        tool(
+            "godot_set_node_properties",
+            "Modifies properties of a node in the active scene with undo/redo support. Values are converted to the property's type: vectors, rects and colors accept arrays ([10, 20]) or objects ({\"x\": 10, \"y\": 20}), colors also accept '#rrggbb' or names, resources accept res:// paths, and any Godot literal string (e.g. 'Vector2(1, 2)') is parsed. Unknown properties or unconvertible values reject the whole call without changing anything.",
+            json!({
+                "node_path": {
+                    "type": "string",
+                    "description": "Path to the target node relative to the scene root ('.' for the root)."
+                },
+                "properties": {
+                    "type": "object",
+                    "description": "Key-value map of property names to new values."
+                }
+            }),
+            &["node_path", "properties"],
+        ),
+        tool(
+            "godot_capture_viewport",
+            "Captures a screenshot of the Godot 2D or 3D editor viewport as a PNG image. Renders the scene content (without editor gizmos or grid). Switches the editor's main screen to 2D/3D to render it, so it needs a visible (non-headless) editor with a scene open.",
+            json!({
+                "view": {
+                    "type": "string",
+                    "enum": ["auto", "2d", "3d"],
+                    "description": "Which editor viewport to capture. 'auto' (default) picks 3D for Node3D scenes and 2D otherwise."
+                },
+                "max_dimension": {
+                    "type": "integer",
+                    "description": "Downscale the image so neither side exceeds this many pixels (default 1568)."
+                }
+            }),
+            &[],
+        ),
+        tool(
+            "godot_open_scene",
+            "Opens a scene file in the Godot Editor by its res:// path (absolute paths inside the project are converted).",
+            json!({
+                "scene_path": {
+                    "type": "string",
+                    "description": "Resource path to scene (e.g. 'res://scenes/level1.tscn')."
+                }
+            }),
+            &["scene_path"],
+        ),
+        tool(
+            "godot_save_scene",
+            "Saves changes to the current open scene in Godot Editor.",
+            json!({}),
+            &[],
+        ),
+        tool(
+            "godot_create_script",
+            "Creates a new GDScript file with a standard header inside a Godot project. Refuses to overwrite an existing file unless overwrite is true.",
+            json!({
+                "file_path": {
+                    "type": "string",
+                    "description": "Path of the .gd script: a res:// path or a path relative to the project directory."
+                },
+                "extends_class": {
+                    "type": "string",
+                    "description": "Base class to extend (e.g. 'Node2D', 'CharacterBody3D'). Defaults to 'Node'."
+                },
+                "class_name": {
+                    "type": "string",
+                    "description": "Optional global class_name registration."
+                },
+                "project_path": {
+                    "type": "string",
+                    "description": "Project directory containing project.godot. Optional when the editor bridge is connected (the open project is used)."
+                },
+                "overwrite": {
+                    "type": "boolean",
+                    "description": "Replace the file if it already exists. Defaults to false."
+                }
+            }),
+            &["file_path"],
+        ),
+        tool(
+            "godot_validate_script",
+            "Performs syntax checking and static validation on a GDScript file without execution.",
+            json!({
+                "script_path": {
+                    "type": "string",
+                    "description": "Path to the .gd script file (res:// paths need a project)."
+                },
+                "project_path": {
+                    "type": "string",
+                    "description": "Optional project root path for class resolution."
+                }
+            }),
+            &["script_path"],
+        ),
+        tool(
+            "godot_resave_resources",
+            "Refreshes assets and resources the editor holds in memory after they were changed externally. Requires the editor bridge to be connected.",
+            json!({
+                "paths": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "res:// paths to refresh. Importable assets (images, audio, models, fonts) are re-imported synchronously; other files (scripts, scenes, resources) are re-scanned. If omitted or empty, triggers a full project filesystem rescan instead, which runs in the background and may still be in progress when this call returns."
+                }
+            }),
+            &[],
+        ),
+    ]
 }

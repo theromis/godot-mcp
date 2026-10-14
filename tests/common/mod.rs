@@ -1,0 +1,345 @@
+//! Shared helpers for the integration tests: an MCP stdio session that drives the real
+//! `godot-mcp` binary, and a scriptable fake Godot editor bridge.
+#![allow(dead_code)]
+
+use futures_util::{SinkExt, StreamExt};
+use serde_json::{Value, json};
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
+use tokio::net::TcpListener;
+use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tokio::time::timeout;
+use tokio_tungstenite::tungstenite::Message;
+
+/// Returns a TCP port on 127.0.0.1 that nothing is listening on right now.
+pub fn free_port() -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+    listener.local_addr().expect("local addr").port()
+}
+
+/// Creates a directory that looks like a Godot project (contains `project.godot`).
+pub fn project_dir() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("temp project");
+    std::fs::write(
+        dir.path().join("project.godot"),
+        "config_version=5\n\n[application]\n\nconfig/name=\"Test\"\n",
+    )
+    .expect("write project.godot");
+    dir
+}
+
+/// A stand-in for the Godot executable that writes noise to stdout and stderr, like a real
+/// game process would.
+pub fn fake_godot(dir: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let path = dir.join("fake_godot.bat");
+        std::fs::write(
+            &path,
+            "@echo off\r\necho NOISE_ON_STDOUT\r\necho NOISE_ON_STDERR 1>&2\r\n",
+        )
+        .expect("write fake godot");
+        path
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join("fake_godot.sh");
+        std::fs::write(
+            &path,
+            "#!/bin/sh\necho NOISE_ON_STDOUT\necho NOISE_ON_STDERR >&2\n",
+        )
+        .expect("write fake godot");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod fake godot");
+        path
+    }
+}
+
+/// Concatenated text content of a `tools/call` response.
+pub fn tool_text(response: &Value) -> String {
+    response["result"]["content"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item["text"].as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default()
+}
+
+pub fn is_tool_error(response: &Value) -> bool {
+    response["result"]["isError"].as_bool().unwrap_or(false)
+}
+
+/// An MCP client talking to a freshly spawned `godot-mcp` process over stdio.
+pub struct Session {
+    _child: Child,
+    stdin: ChildStdin,
+    stdout: Lines<BufReader<ChildStdout>>,
+    next_id: u64,
+    _cwd: tempfile::TempDir,
+}
+
+impl Session {
+    pub async fn start(bridge_port: u16, godot: &Path) -> Self {
+        Self::start_with_env(bridge_port, godot, &[]).await
+    }
+
+    pub async fn start_with_env(bridge_port: u16, godot: &Path, env: &[(&str, &str)]) -> Self {
+        let cwd = tempfile::tempdir().expect("session cwd");
+        Self::spawn(cwd, |command| {
+            command
+                .env("GODOT_PATH", godot)
+                .env("GODOT_DEBUG_PORT", bridge_port.to_string());
+            for (key, value) in env {
+                command.env(key, value);
+            }
+        })
+        .await
+    }
+
+    /// Starts the server with no GODOT_* variables in its environment but a `.env` file with
+    /// the given contents in its working directory.
+    pub async fn start_with_dotenv(contents: &str) -> Self {
+        let cwd = tempfile::tempdir().expect("session cwd");
+        std::fs::write(cwd.path().join(".env"), contents).expect("write .env");
+        Self::spawn(cwd, |_| {}).await
+    }
+
+    async fn spawn(cwd: tempfile::TempDir, configure: impl FnOnce(&mut Command)) -> Self {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_godot-mcp"));
+        for key in [
+            "GODOT_PATH",
+            "GODOT_CONSOLE_PATH",
+            "GODOT_DEBUG_PORT",
+            "GODOT_MCP_URL",
+            "GODOT_MCP_TOKEN",
+        ] {
+            command.env_remove(key);
+        }
+        // Keep the run hermetic: never pick up a real bridge token file of the developer.
+        command
+            .env("APPDATA", cwd.path())
+            .env("HOME", cwd.path())
+            .env("XDG_DATA_HOME", cwd.path());
+        configure(&mut command);
+        command
+            .current_dir(cwd.path())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true);
+
+        let mut child = command.spawn().expect("spawn godot-mcp");
+        let stdin = child.stdin.take().expect("child stdin");
+        let stdout = BufReader::new(child.stdout.take().expect("child stdout")).lines();
+        let mut session = Self {
+            _child: child,
+            stdin,
+            stdout,
+            next_id: 1,
+            _cwd: cwd,
+        };
+        // Wait until the server answers, so tests that assert on timing do not include the
+        // process start-up (a freshly built executable can take seconds to launch on Windows).
+        session
+            .request("ping", json!({}), Duration::from_secs(60))
+            .await;
+        session
+    }
+
+    pub async fn send_raw(&mut self, line: &str) {
+        self.stdin
+            .write_all(format!("{line}\n").as_bytes())
+            .await
+            .expect("write to godot-mcp stdin");
+        self.stdin.flush().await.expect("flush godot-mcp stdin");
+    }
+
+    pub async fn send(&mut self, value: &Value) {
+        self.send_raw(&value.to_string()).await;
+    }
+
+    /// Next stdout frame, or `None` if nothing arrived in time. Panics when stdout carries
+    /// anything that is not a JSON document: the channel is reserved for JSON-RPC frames.
+    pub async fn recv(&mut self, within: Duration) -> Option<Value> {
+        match timeout(within, self.stdout.next_line()).await {
+            Err(_) | Ok(Ok(None)) => None,
+            Ok(Ok(Some(line))) => Some(
+                serde_json::from_str(&line)
+                    .unwrap_or_else(|_| panic!("non-JSON line on MCP stdout: {line:?}")),
+            ),
+            Ok(Err(err)) => panic!("failed reading MCP stdout: {err}"),
+        }
+    }
+
+    /// Sends a request and waits for the response carrying the same id.
+    pub async fn request(&mut self, method: &str, params: Value, within: Duration) -> Value {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.send(&json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}))
+            .await;
+        loop {
+            let frame = self
+                .recv(within)
+                .await
+                .unwrap_or_else(|| panic!("no response to {method} within {within:?}"));
+            if frame["id"] == json!(id) {
+                return frame;
+            }
+        }
+    }
+
+    pub async fn call_tool(&mut self, name: &str, arguments: Value, within: Duration) -> Value {
+        self.request(
+            "tools/call",
+            json!({"name": name, "arguments": arguments}),
+            within,
+        )
+        .await
+    }
+}
+
+/// How the fake editor answers a single command.
+pub enum Reply {
+    Ok(Value),
+    Err(String),
+    After(Duration, Value),
+    Never,
+}
+
+/// A fake Godot editor bridge: a WebSocket server answering commands from a closure.
+pub struct MockBridge {
+    pub port: u16,
+    pub received: Arc<Mutex<Vec<Value>>>,
+    accept_task: JoinHandle<()>,
+    connections: Arc<Mutex<Vec<JoinHandle<()>>>>,
+}
+
+impl MockBridge {
+    pub async fn start<F>(handler: F) -> Self
+    where
+        F: Fn(&Value) -> Reply + Send + Sync + 'static,
+    {
+        Self::start_on(free_port(), handler).await
+    }
+
+    pub async fn start_on<F>(port: u16, handler: F) -> Self
+    where
+        F: Fn(&Value) -> Reply + Send + Sync + 'static,
+    {
+        let listener = bind_with_retry(port).await;
+        let handler = Arc::new(handler);
+        let received = Arc::new(Mutex::new(Vec::new()));
+        let connections = Arc::new(Mutex::new(Vec::new()));
+
+        let accept_task = tokio::spawn({
+            let received = received.clone();
+            let connections = connections.clone();
+            async move {
+                while let Ok((tcp, _)) = listener.accept().await {
+                    let task = tokio::spawn(serve(tcp, handler.clone(), received.clone()));
+                    connections.lock().expect("connections lock").push(task);
+                }
+            }
+        });
+
+        Self {
+            port,
+            received,
+            accept_task,
+            connections,
+        }
+    }
+
+    /// Stops accepting and drops every open connection, like an editor being closed.
+    pub fn shutdown(&self) {
+        self.accept_task.abort();
+        for task in self.connections.lock().expect("connections lock").drain(..) {
+            task.abort();
+        }
+    }
+
+    pub fn received(&self) -> Vec<Value> {
+        self.received.lock().expect("received lock").clone()
+    }
+}
+
+impl Drop for MockBridge {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
+async fn bind_with_retry(port: u16) -> TcpListener {
+    for _ in 0..40 {
+        if let Ok(listener) = TcpListener::bind(("127.0.0.1", port)).await {
+            return listener;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("could not bind mock bridge on port {port}");
+}
+
+async fn serve<F>(tcp: tokio::net::TcpStream, handler: Arc<F>, received: Arc<Mutex<Vec<Value>>>)
+where
+    F: Fn(&Value) -> Reply + Send + Sync + 'static,
+{
+    let Ok(ws) = tokio_tungstenite::accept_async(tcp).await else {
+        return;
+    };
+    let (mut sink, mut stream) = ws.split();
+    let (out_tx, mut out_rx) = mpsc::unbounded_channel::<String>();
+    let writer = tokio::spawn(async move {
+        while let Some(text) = out_rx.recv().await {
+            if sink.send(Message::Text(text.into())).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    while let Some(Ok(message)) = stream.next().await {
+        let Message::Text(text) = message else {
+            continue;
+        };
+        let Ok(command) = serde_json::from_str::<Value>(text.as_str()) else {
+            continue;
+        };
+        received
+            .lock()
+            .expect("received lock")
+            .push(command.clone());
+        let id = command["commandId"].clone();
+        match handler(&command) {
+            Reply::Ok(result) => {
+                let _ = out_tx.send(success(&id, result));
+            }
+            Reply::Err(message) => {
+                let _ = out_tx.send(
+                    json!({"commandId": id, "status": "error", "error": message}).to_string(),
+                );
+            }
+            Reply::After(delay, result) => {
+                let tx = out_tx.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(delay).await;
+                    let _ = tx.send(success(&id, result));
+                });
+            }
+            Reply::Never => {}
+        }
+    }
+    writer.abort();
+}
+
+fn success(id: &Value, result: Value) -> String {
+    json!({"commandId": id, "status": "success", "result": result}).to_string()
+}

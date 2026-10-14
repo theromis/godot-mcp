@@ -1,5 +1,9 @@
 use clap::Parser;
+use std::convert::Infallible;
 use std::path::PathBuf;
+use tracing::{debug, warn};
+
+const DEFAULT_DEBUG_PORT: u16 = 9333;
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -9,26 +13,58 @@ use std::path::PathBuf;
 )]
 pub struct Config {
     /// Path to the primary Godot executable
-    #[arg(long, env = "GODOT_PATH")]
+    #[arg(long, env = "GODOT_PATH", value_parser = parse_path)]
     pub godot_path: Option<PathBuf>,
 
-    /// Path to the Godot console wrapper executable (Windows)
-    #[arg(long, env = "GODOT_CONSOLE_PATH")]
+    /// Path to the Godot console wrapper executable (reserved, not used yet)
+    #[arg(long, env = "GODOT_CONSOLE_PATH", value_parser = parse_path)]
     pub godot_console_path: Option<PathBuf>,
 
     /// WebSocket port for Godot Editor bridge communication
-    #[arg(long, env = "GODOT_DEBUG_PORT", default_value = "9333")]
+    #[arg(long, env = "GODOT_DEBUG_PORT", default_value = "9333", value_parser = parse_port)]
     pub debug_port: u16,
 
-    /// Optional remote MCP URL when running in HTTP/SSE transport mode
+    /// Optional remote MCP URL for HTTP/SSE transport (reserved, not used yet)
     #[arg(long, env = "GODOT_MCP_URL")]
     pub mcp_url: Option<String>,
 }
 
+/// Accepts any text, including an empty one: placeholders such as `GODOT_PATH=""` in a
+/// template or an MCP client's `env` block mean "not configured", not "invalid".
+/// (clap's built-in path parser rejects empty values and the server would not start.)
+/// An empty path never exists, so the Godot binary lookup falls through to auto-detection.
+fn parse_path(raw: &str) -> Result<PathBuf, Infallible> {
+    Ok(PathBuf::from(raw))
+}
+
+/// Like `u16`, except that an empty value selects the default port.
+fn parse_port(raw: &str) -> Result<u16, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(DEFAULT_DEBUG_PORT);
+    }
+    raw.parse::<u16>().map_err(|err| format!("{err}"))
+}
+
+/// Loads a `.env` file from the working directory (or a parent) if there is one.
+///
+/// A file that exists but cannot be parsed is reported instead of silently ignored, since
+/// none of its settings would take effect. The usual cause on Windows is a path in double
+/// quotes: `"C:\Godot\Godot.exe"` is read as escape sequences, `'C:\Godot\Godot.exe'` is not.
+fn load_dotenv() {
+    match dotenvy::dotenv() {
+        Ok(path) => debug!("Loaded settings from {}", path.display()),
+        Err(err) if err.not_found() => {}
+        Err(err) => warn!(
+            "Ignoring the .env file because it could not be parsed ({err}). \
+             Put Windows paths in single quotes, e.g. GODOT_PATH='C:\\Godot\\Godot.exe'"
+        ),
+    }
+}
+
 impl Config {
     pub fn load() -> Self {
-        // Load .env file if present
-        let _ = dotenvy::dotenv();
+        load_dotenv();
         Config::parse()
     }
 

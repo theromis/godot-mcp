@@ -1,15 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct JsonRpcRequest {
-    pub jsonrpc: String,
-    pub id: Option<Value>,
-    pub method: String,
-    #[serde(default)]
-    pub params: Value,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JsonRpcResponse {
     pub jsonrpc: String,
@@ -96,6 +87,24 @@ impl ToolResult {
                 data: base64_data.into(),
                 mime_type: mime_type.into(),
             }],
+            is_error: false,
+        }
+    }
+
+    /// An image preceded by a short text note (e.g. its dimensions).
+    pub fn image_with_text(
+        note: impl Into<String>,
+        base64_data: impl Into<String>,
+        mime_type: impl Into<String>,
+    ) -> Self {
+        Self {
+            content: vec![
+                ToolContent::Text { text: note.into() },
+                ToolContent::Image {
+                    data: base64_data.into(),
+                    mime_type: mime_type.into(),
+                },
+            ],
             is_error: false,
         }
     }
