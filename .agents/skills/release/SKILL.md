@@ -33,7 +33,9 @@ Pushing a tag matching `v*.*.*` triggers `.github/workflows/release.yml`, which 
 
    Stop and report if any check fails. Do not tag a red build.
 
-3. **Bump the version in both manifests** — the server and the addon always ship the same version:
+3. **Write the release notes in `CHANGELOG.md`.** Add a `## [X.Y.Z] - YYYY-MM-DD` section above the previous one (Added / Changed / Fixed / Security, written for users: behaviour changes first) and a compare link at the bottom. The release workflow publishes this section as the GitHub Release text and fails without it; CI also fails when the version in `Cargo.toml` has no section. Check it with `bash .github/scripts/release-notes.sh vX.Y.Z`.
+
+   **Bump the version in both manifests** — the server and the addon always ship the same version:
 
    - `Cargo.toml`: `[package] version = "X.Y.Z"`
    - `addons/godot_mcp/plugin.cfg`: `version="X.Y.Z"`
@@ -43,7 +45,7 @@ Pushing a tag matching `v*.*.*` triggers `.github/workflows/release.yml`, which 
 4. **Commit the bump:**
 
    ```bash
-   git add Cargo.toml Cargo.lock addons/godot_mcp/plugin.cfg
+   git add CHANGELOG.md Cargo.toml Cargo.lock addons/godot_mcp/plugin.cfg
    git commit -m "chore(release): bump version to vX.Y.Z"
    ```
 
@@ -71,12 +73,13 @@ Pushing a tag matching `v*.*.*` triggers `.github/workflows/release.yml`, which 
    gh release view vX.Y.Z
    ```
 
-   Confirm all 5 assets are attached: 4 binary archives (`godot-mcp-<target>.{zip,tar.gz}`) plus `godot-mcp-addon.zip` (the Godot Editor plugin, platform-independent) — see the asset table in `README.md`.
+   Confirm the release text is the `CHANGELOG.md` section and all 5 assets are attached: 4 binary archives (`godot-mcp-<target>.{zip,tar.gz}`) plus `godot-mcp-addon.zip` (the Godot Editor plugin, platform-independent) — see the asset table in `README.md`.
 
 9. **Optional:** refresh the local `bin/` convenience copy (git-ignored) from `target/release` for local MCP client configs. This is a personal dev-environment step, not part of the release itself.
 
 ## Notes
 
 - Tag format must be exactly `v*.*.*` (e.g. `v0.2.0`) — the workflow only triggers on that glob.
+- Prefer pushing the branch first and tagging only after the CI run on it is green: the release workflow checks formatting, lints and unit tests on Linux only, while CI also covers Windows, macOS and a real Godot editor.
 - If the build fails after the tag is already pushed, prefer fixing forward with a new patch tag over deleting and re-pushing the same tag.
 - This procedure never force-pushes, deletes tags, or deletes releases. If the user wants any of that, treat it as a separate, explicitly-confirmed action, not part of a normal release.

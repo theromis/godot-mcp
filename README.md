@@ -161,7 +161,7 @@ GODOT_PATH=/path/to/godot cargo test --test editor_e2e_test -- --ignored
 
 CI runs all of the above on every push and pull request.
 
-**Releasing:** bump the version in `Cargo.toml` and `addons/godot_mcp/plugin.cfg` together (`tests/version_sync_test.rs` fails if they differ), commit, and push a `vX.Y.Z` tag. The release workflow builds all four platforms and attaches the archives plus `godot-mcp-addon.zip` to a GitHub Release.
+**Releasing:** add a section for the version to [CHANGELOG.md](CHANGELOG.md) (it becomes the release text), bump the version in `Cargo.toml` and `addons/godot_mcp/plugin.cfg` together (`tests/version_sync_test.rs` fails if they differ), commit, and push a `vX.Y.Z` tag once CI is green. The release workflow builds all four platforms and attaches the archives plus `godot-mcp-addon.zip` to a GitHub Release.
 
 ## License
 

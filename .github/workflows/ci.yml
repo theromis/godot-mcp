@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-24.04, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -32,10 +32,13 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --all-targets
+      - name: CHANGELOG.md documents the current version
+        if: runner.os == 'Linux'
+        run: bash .github/scripts/release-notes.sh "v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)" > /dev/null
 
   godot:
     name: Godot addon (headless editor)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
