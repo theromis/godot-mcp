@@ -42,6 +42,7 @@ Agents must treat the Godot Editor as a live, stateful environment while ensurin
 ### GDScript Standards (Editor Plugin)
 
 - Target Godot 4.5+ modern GDScript features with strict typing (`var count: int = 0`, `func get_node_by_id(id: String) -> Node:`). `plugin.gd` refuses to start on older editors with a clear message; raising the minimum means updating `MIN_MINOR` there, the README, and the dev `project.godot`.
+- Anything missing from Godot 4.5 must be called through `has_method()` + `call()` (see `is_import_running`): an unguarded call to a method the running engine lacks is a script error that sends no reply, and the analyzer only warns about it. Always run the e2e tests against the minimum supported version too; CI uses 4.5-stable.
 - Read command parameters untyped and validate them (see `PARAM_TYPES`): assigning a wrongly typed value to a typed variable is a script error that sends no reply and leaves the caller waiting for its timeout.
 - Utilize standard signals for asynchronous event handling.
 - Keep the plugin lightweight with zero external third-party dependencies outside the standard Godot API.
@@ -86,7 +87,7 @@ Before submitting or committing changes, agents must execute and pass the comple
    GODOT_PATH=/path/to/godot cargo test --test editor_e2e_test -- --ignored
    ```
 
-   Set `GODOT_CONSOLE_PATH` as well on Windows to get editor logs in failure output. A `.env` file with double-quoted Windows paths does not load (see `.env.example`) — export the variables instead.
+   Set `GODOT_CONSOLE_PATH` as well on Windows to get editor logs in failure output (the editor is started from the console binary when it is set, and `.env` values fill in variables you did not export, so set both when testing a specific Godot version). A `.env` file with double-quoted Windows paths does not load (see `.env.example`) — export the variables instead.
 
 ## Tool Invocation Protocols for AI Agents
 
