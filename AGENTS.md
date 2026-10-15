@@ -116,4 +116,14 @@ When interacting with a Godot project, agents must adhere to the following workf
 Before concluding any development task, every agent MUST verify the following checklist:
 
 - [ ] **Technical Language**: All code, identifiers, comments, and technical docs are in English.
-- [ ] **Communication Language**: All conversational responses and planning are in Russian.
+- [ ] **Verification Pipeline**: `cargo clippy`, `cargo fmt --check`, and `cargo test --all-targets` pass; the GDScript syntax check passes for every addon script.
+- [ ] **Editor End-to-End Tests**: If `addons/godot_mcp/` changed, `editor_e2e_test` and `addon_export_test` pass, including against the minimum supported Godot version (4.5-stable).
+- [ ] **Tests First**: New behaviour is covered by a test in the matching `tests/` file.
+- [ ] **Version Sync**: The version in `addons/godot_mcp/plugin.cfg` equals the one in `Cargo.toml`.
+- [ ] **Undo/Redo**: Every editor mutation is wrapped in `EditorUndoRedoManager`, and no `.tscn` / `.tres` held by the editor is overwritten on disk behind its back.
+- [ ] **Path and Input Safety**: File paths go through `resolve_in_project` / `to_res_path`, identifiers are validated, and no user-controlled string reaches the Godot CLI as a bare argument or is interpolated into generated GDScript.
+- [ ] **Bridge Security**: The bridge still listens on loopback only, and no code path skips the token check.
+- [ ] **Rust Hygiene**: No `unwrap()` / `expect()` in production paths, diagnostics go to `stderr` only, and no lock is held across an editor round-trip.
+- [ ] **Error Responses**: Every error carries an informative message and at least one actionable recovery step.
+- [ ] **GDScript Hygiene**: Strict typing is used, parameters are read untyped and validated, methods missing from Godot 4.5 are called through `has_method()` + `call()`, and the addon declares no `class_name`.
+- [ ] **Agent Workflow**: Scenes were inspected before mutation, `.gd` files were validated after changes, and any run started with `godot_run_project` was stopped.
