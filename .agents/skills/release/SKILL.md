@@ -22,13 +22,15 @@ Pushing a tag matching `v*.*.*` triggers `.github/workflows/release.yml`, which 
    cargo test --all-targets
    ```
 
-   If a Godot 4.5+ binary is reachable (`GODOT_PATH` exported, or `godot` on `PATH`), also run (the repo root is itself a minimal Godot project so `class_name` resolves — `--path .` is required, and `--import` must run at least once for a fresh `.godot/` cache):
+   If a Godot 4.5+ binary is reachable (`GODOT_PATH` exported, or `godot` on `PATH`), also run (the repo root is itself a minimal Godot project; `--import` must run at least once for a fresh `.godot/` cache):
 
    ```bash
    godot --headless --path . --import
    godot --headless --check-only --path . --script addons/godot_mcp/plugin.gd
    godot --headless --check-only --path . --script addons/godot_mcp/bridge_server.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/export_plugin.gd
    GODOT_PATH=/path/to/godot cargo test --test editor_e2e_test -- --ignored
+   GODOT_PATH=/path/to/godot cargo test --test addon_export_test -- --ignored
    ```
 
    Stop and report if any check fails. Do not tag a red build.

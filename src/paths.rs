@@ -32,6 +32,46 @@ pub fn ensure_project_dir(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Finds the project the server was started in: the first of `cwd` and its ancestors that
+/// contains `project.godot`, otherwise the only direct subdirectory of `cwd` that does (for a
+/// repository that keeps the game in a folder such as `app/`).
+pub fn find_project(cwd: &Path) -> Result<PathBuf, String> {
+    if let Some(dir) = cwd
+        .ancestors()
+        .find(|dir| dir.join("project.godot").is_file())
+    {
+        return Ok(dir.to_path_buf());
+    }
+
+    let mut children: Vec<PathBuf> = std::fs::read_dir(cwd)
+        .map(|entries| {
+            entries
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .filter(|path| path.join("project.godot").is_file())
+                .collect()
+        })
+        .unwrap_or_default();
+    children.sort();
+
+    match children.as_slice() {
+        [single] => Ok(single.clone()),
+        [] => Err(format!(
+            "No project.godot found in {} or its parent directories; pass project_path",
+            cwd.display()
+        )),
+        several => Err(format!(
+            "Several Godot projects found in {} ({}); pass project_path to choose one",
+            cwd.display(),
+            several
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
+}
+
 /// Resolves a `res://` path, a project-relative path, or an absolute path to a location
 /// inside `project`.
 ///
@@ -153,6 +193,58 @@ mod tests {
 
         let missing = empty.path().join("missing");
         assert!(ensure_project_dir(&missing).is_err());
+    }
+
+    #[test]
+    fn find_project_walks_up_from_the_working_directory() {
+        let dir = project();
+        let deep = dir.path().join("scenes").join("levels");
+        std::fs::create_dir_all(&deep).expect("mkdir");
+
+        assert_eq!(find_project(dir.path()).expect("cwd"), dir.path());
+        assert_eq!(find_project(&deep).expect("ancestor"), dir.path());
+    }
+
+    #[test]
+    fn find_project_accepts_a_single_child_project() {
+        let root = tempfile::tempdir().expect("root");
+        let app = root.path().join("app");
+        std::fs::create_dir_all(&app).expect("mkdir app");
+        std::fs::write(app.join("project.godot"), "config_version=5\n").expect("write");
+        std::fs::create_dir_all(root.path().join("docs")).expect("mkdir docs");
+
+        assert_eq!(find_project(root.path()).expect("child"), app);
+    }
+
+    #[test]
+    fn find_project_prefers_the_working_directory_over_children() {
+        let dir = project();
+        let nested = dir.path().join("demo");
+        std::fs::create_dir_all(&nested).expect("mkdir");
+        std::fs::write(nested.join("project.godot"), "config_version=5\n").expect("write");
+
+        assert_eq!(find_project(dir.path()).expect("cwd"), dir.path());
+    }
+
+    #[test]
+    fn find_project_without_a_project_asks_for_project_path() {
+        let empty = tempfile::tempdir().expect("empty");
+        let err = find_project(empty.path()).expect_err("no project");
+        assert!(err.contains("project_path"), "{err}");
+    }
+
+    #[test]
+    fn find_project_lists_several_child_projects_instead_of_guessing() {
+        let root = tempfile::tempdir().expect("root");
+        for name in ["game", "tools"] {
+            let child = root.path().join(name);
+            std::fs::create_dir_all(&child).expect("mkdir");
+            std::fs::write(child.join("project.godot"), "config_version=5\n").expect("write");
+        }
+
+        let err = find_project(root.path()).expect_err("ambiguous");
+        assert!(err.contains("game") && err.contains("tools"), "{err}");
+        assert!(err.contains("project_path"), "{err}");
     }
 
     #[cfg(unix)]

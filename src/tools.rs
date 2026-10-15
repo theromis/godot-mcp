@@ -1,7 +1,7 @@
 use crate::bridge::BridgeClient;
 use crate::cli_runner::CliRunner;
 use crate::error::McpError;
-use crate::paths::{ensure_project_dir, is_valid_identifier, resolve_in_project};
+use crate::paths::{ensure_project_dir, find_project, is_valid_identifier, resolve_in_project};
 use crate::protocol::{Tool, ToolResult};
 use crate::validation::validate_arguments;
 use serde_json::{Value, json};
@@ -13,12 +13,16 @@ use tokio::io::AsyncWriteExt;
 
 const PROJECT_PATH_HINTS: &[&str] = &[
     "Pass project_path: the absolute path of a directory that contains project.godot",
+    "Or start the MCP server from the project directory (or the folder right above it)",
     "Or open the project in the Godot Editor with the Godot MCP Bridge plugin enabled",
 ];
 
 pub struct ToolManager {
     bridge: BridgeClient,
     cli: CliRunner,
+    /// Where the server was started; the project is looked up from here when no
+    /// `project_path` is given and no editor is connected.
+    working_dir: Option<PathBuf>,
 }
 
 /// A project directory plus whether it came from the live editor.
@@ -29,7 +33,17 @@ struct ResolvedProject {
 
 impl ToolManager {
     pub fn new(bridge: BridgeClient, cli: CliRunner) -> Self {
-        Self { bridge, cli }
+        Self {
+            bridge,
+            cli,
+            working_dir: std::env::current_dir().ok(),
+        }
+    }
+
+    /// Looks up implicit projects from `dir` instead of the process working directory.
+    pub fn with_working_dir(mut self, dir: PathBuf) -> Self {
+        self.working_dir = Some(dir);
+        self
     }
 
     /// Return the list of all registered tools with their input schemas
@@ -148,14 +162,10 @@ impl ToolManager {
     }
 
     async fn handle_launch_editor(&self, args: Value) -> ToolResult {
-        let Some(project_path) = str_arg(&args, "project_path") else {
-            return missing_argument("project_path");
+        let path = match self.host_project(&args) {
+            Ok(path) => path,
+            Err(result) => return result,
         };
-
-        let path = PathBuf::from(project_path);
-        if let Err(problem) = ensure_project_dir(&path) {
-            return ToolResult::error(problem, &["Pass the directory that contains project.godot"]);
-        }
 
         match self.cli.launch_editor(&path).await {
             Ok(pid) => ToolResult::text(format!(
@@ -198,20 +208,10 @@ impl ToolManager {
         }
 
         // Fall back to a detached CLI process.
-        let Some(project_path) = str_arg(&args, "project_path") else {
-            return ToolResult::error(
-                "No editor bridge connected, and no project_path given for the CLI fallback",
-                &[
-                    "Launch the Godot Editor with this project and enable the Godot MCP Bridge plugin",
-                    "Or pass project_path to run the project in a separate Godot process instead",
-                ],
-            );
+        let path = match self.host_project(&args) {
+            Ok(path) => path,
+            Err(result) => return result,
         };
-
-        let path = PathBuf::from(project_path);
-        if let Err(problem) = ensure_project_dir(&path) {
-            return ToolResult::error(problem, &["Pass the directory that contains project.godot"]);
-        }
         match self.cli.run_project(&path, scene).await {
             Ok(pid) => ToolResult::text(format!(
                 "No editor bridge connected. Spawned a separate Godot process instead (PID: {pid}) for '{}'. Note: godot_stop_project and godot_get_run_status only work through the live editor bridge, not this process.",
@@ -384,8 +384,34 @@ impl ToolManager {
         }
     }
 
+    /// Finds the project directory without asking the editor: an explicit `project_path`,
+    /// else the project found from the server's working directory.
+    fn host_project(&self, args: &Value) -> Result<PathBuf, ToolResult> {
+        if let Some(project_path) = str_arg(args, "project_path") {
+            let dir = PathBuf::from(project_path);
+            return match ensure_project_dir(&dir) {
+                Ok(()) => Ok(dir),
+                Err(problem) => Err(ToolResult::error(
+                    problem,
+                    &["Pass the directory that contains project.godot"],
+                )),
+            };
+        }
+        self.working_dir_project()
+    }
+
+    fn working_dir_project(&self) -> Result<PathBuf, ToolResult> {
+        let Some(cwd) = &self.working_dir else {
+            return Err(ToolResult::error(
+                "No project_path was given and the server's working directory is unknown",
+                PROJECT_PATH_HINTS,
+            ));
+        };
+        find_project(cwd).map_err(|problem| ToolResult::error(problem, PROJECT_PATH_HINTS))
+    }
+
     /// Finds the project directory: an explicit `project_path`, else the project open in the
-    /// live editor.
+    /// live editor, else the project found from the server's working directory.
     async fn resolve_project(&self, args: &Value) -> Result<ResolvedProject, ToolResult> {
         if let Some(project_path) = str_arg(args, "project_path") {
             let dir = PathBuf::from(project_path);
@@ -418,10 +444,14 @@ impl ToolManager {
                     &["Update the Godot MCP Bridge addon to the same version as the server"],
                 )),
             },
-            Err(McpError::BridgeUnavailable(_)) => Err(ToolResult::error(
-                "Cannot tell which project to use: no project_path was given and the editor bridge is not running",
-                PROJECT_PATH_HINTS,
-            )),
+            // Only a missing editor justifies looking in the working directory: an editor that
+            // answers with an error may have a different project open.
+            Err(McpError::BridgeUnavailable(_)) => {
+                self.working_dir_project().map(|dir| ResolvedProject {
+                    dir,
+                    from_editor: false,
+                })
+            }
             Err(error) => Err(bridge_error_result(&error)),
         }
     }
@@ -524,22 +554,22 @@ fn build_catalog() -> Vec<Tool> {
         ),
         tool(
             "godot_launch_editor",
-            "Launches the Godot Editor for a designated project directory.",
+            "Launches the Godot Editor for a project directory. Without project_path, opens the project the server was started in (its working directory or a parent of it, or the only subdirectory that contains project.godot).",
             json!({
                 "project_path": {
                     "type": "string",
-                    "description": "Absolute path to the Godot project directory containing project.godot."
+                    "description": "Absolute path to the Godot project directory containing project.godot. Optional when the server runs inside the project."
                 }
             }),
-            &["project_path"],
+            &[],
         ),
         tool(
             "godot_run_project",
-            "Runs the Godot project or a specific scene (opens the game window). Uses the live editor's own Play mechanism if the bridge is connected (so godot_stop_project and godot_get_run_status can control it); only if no editor is running does it start a separate Godot process, which requires project_path and cannot be stopped via MCP.",
+            "Runs the Godot project or a specific scene (opens the game window). Uses the live editor's own Play mechanism if the bridge is connected (so godot_stop_project and godot_get_run_status can control it); only if no editor is running does it start a separate Godot process (for project_path, or else the project the server was started in), which cannot be stopped via MCP.",
             json!({
                 "project_path": {
                     "type": "string",
-                    "description": "Path to the project root directory. Only required for the CLI fallback (i.e. when no editor is connected)."
+                    "description": "Path to the project root directory. Only used by the CLI fallback (i.e. when no editor is connected); defaults to the project the server was started in."
                 },
                 "scene": {
                     "type": "string",
@@ -684,7 +714,7 @@ fn build_catalog() -> Vec<Tool> {
                 },
                 "project_path": {
                     "type": "string",
-                    "description": "Project directory containing project.godot. Optional when the editor bridge is connected (the open project is used)."
+                    "description": "Project directory containing project.godot. Optional: defaults to the project open in the connected editor, else the project the server was started in."
                 },
                 "overwrite": {
                     "type": "boolean",
@@ -703,7 +733,7 @@ fn build_catalog() -> Vec<Tool> {
                 },
                 "project_path": {
                     "type": "string",
-                    "description": "Optional project root path for class resolution."
+                    "description": "Optional project root path for class resolution. For res:// paths it defaults to the editor's project, else the project the server was started in."
                 }
             }),
             &["script_path"],

@@ -61,6 +61,37 @@ pub fn fake_godot(dir: &Path) -> PathBuf {
     }
 }
 
+/// A stand-in for the Godot executable that stays alive for a few seconds, like an editor.
+pub fn sleeping_godot(dir: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let path = dir.join("sleeping_godot.bat");
+        std::fs::write(
+            &path,
+            "@echo off
+ping -n 9 127.0.0.1 > nul
+",
+        )
+        .expect("write sleeping godot");
+        path
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join("sleeping_godot.sh");
+        std::fs::write(
+            &path,
+            "#!/bin/sh
+sleep 8
+",
+        )
+        .expect("write sleeping godot");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod sleeping godot");
+        path
+    }
+}
+
 /// Concatenated text content of a `tools/call` response.
 pub fn tool_text(response: &Value) -> String {
     response["result"]["content"]
@@ -120,7 +151,6 @@ impl Session {
             "GODOT_PATH",
             "GODOT_CONSOLE_PATH",
             "GODOT_DEBUG_PORT",
-            "GODOT_MCP_URL",
             "GODOT_MCP_TOKEN",
         ] {
             command.env_remove(key);

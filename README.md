@@ -8,7 +8,7 @@ A fast, cross-platform [Model Context Protocol](https://modelcontextprotocol.io)
 
 ## Installation
 
-Requirements: **Godot 4.5+** (tested with 4.8-dev) and an MCP client such as Claude Code, Claude Desktop, Cursor, VS Code, or Antigravity. No Rust toolchain needed.
+Requirements: **Godot 4.5+** and an MCP client such as Claude Code, Claude Desktop, Cursor, VS Code, or Antigravity. No Rust toolchain needed.
 
 ### Option A: let your AI assistant install it
 
@@ -42,7 +42,7 @@ Install the Godot MCP server (https://github.com/zigenzoog/godot-mcp) for this G
 | macOS Intel | `godot-mcp-x86_64-apple-darwin.tar.gz` |
 | Godot addon (required, any platform) | `godot-mcp-addon.zip` |
 
-**2. Enable the plugin.** Copy `addons/godot_mcp` from the addon archive into your project's `addons/` folder, open the project, and enable **Godot MCP Bridge** in **Project → Project Settings → Plugins**. The bridge listens on port `9333`.
+**2. Enable the plugin.** Copy `addons/godot_mcp` from the addon archive into your project's `addons/` folder, open the project, and enable **Godot MCP Bridge** in **Project → Project Settings → Plugins**. The bridge listens on port `9333`. The addon is editor-only and leaves itself out of exported games while the plugin is enabled; if you export with it disabled, add `addons/godot_mcp/*` to the export preset's exclude filter.
 
 **3. Register the server** in your MCP client, pointing `command` at the extracted binary and `GODOT_PATH` at your Godot executable:
 
@@ -82,7 +82,7 @@ The server reads its settings from CLI flags, the environment (e.g. the MCP clie
 | `GODOT_PATH` | `--godot-path` | auto-detect | Godot executable. If unset or missing, the server tries a few common install locations, then `godot` on `PATH`. Set it explicitly. |
 | `GODOT_DEBUG_PORT` | `--debug-port` | `9333` | Editor bridge port. |
 | `GODOT_MCP_TOKEN` | | generated | Shared secret for the bridge. Normally unnecessary, see [Security](#security). |
-| `GODOT_CONSOLE_PATH`, `GODOT_MCP_URL` | | | Reserved for planned features; currently unused. |
+| `GODOT_CONSOLE_PATH` | `--godot-console-path` | | Windows console wrapper. Unused by the server; the editor end-to-end tests use it for editor logs. |
 
 An empty value counts as "not set", so placeholders in a copied `.env.example` or an MCP client's `env` block are harmless.
 
@@ -101,12 +101,14 @@ The plugin picks its port from the project setting `godot_mcp/bridge_port` if yo
 
 "Editor" means the tool needs a running Godot editor with the plugin enabled.
 
+`project_path` can be omitted when the server runs inside the project: tools then use the project open in the editor, else the first folder with a `project.godot` from the server's working directory upwards, else the only subfolder that has one (such as `app/`).
+
 | Tool | Needs | What it does |
 | --- | --- | --- |
 | `godot_get_version` | — | Engine version, from the editor or the Godot binary. |
 | `godot_get_project_info` | Editor | Name, main scene, and features of the open project. |
-| `godot_launch_editor` | — | Launches the editor for a project directory. |
-| `godot_run_project` | — | Plays the main scene or a given `res://` scene. With the editor, uses its Play mode (stoppable). Without it, starts a separate game process (requires `project_path`, can't be stopped via MCP). |
+| `godot_launch_editor` | — | Launches the editor for `project_path`, or for the project the server runs in. |
+| `godot_run_project` | — | Plays the main scene or a given `res://` scene. With the editor, uses its Play mode (stoppable). Without it, starts a separate game process for `project_path` or the project the server runs in (can't be stopped via MCP). |
 | `godot_stop_project` | Editor | Stops the editor's Play mode. |
 | `godot_get_run_status` | Editor | Whether a scene is playing, and which one. |
 | `godot_get_open_scenes` | Editor | Open scene tabs and the active one. |
@@ -118,7 +120,7 @@ The plugin picks its port from the project setting `godot_mcp/bridge_port` if yo
 | `godot_get_node_properties` | Editor | Reads a node's editor-visible properties as `{type, value}` in Godot's text format. |
 | `godot_set_node_properties` | Editor | Sets properties (undoable), converting values to the property's type: `[10, 20]` or `{"x": 10, "y": 20}` for vectors, `"#ff0000"` for colors, `res://` paths for resources. The whole call is rejected if any property is unknown or unconvertible. |
 | `godot_capture_viewport` | Editor with a window | Screenshot of the 2D or 3D editor viewport as PNG (`view`, `max_dimension` options). Switches the editor to that main screen; doesn't work with `--headless`. |
-| `godot_create_script` | — | Writes a `.gd` file from an `extends` / `class_name` / `_ready()` template into the project (`res://` path, plus `project_path` when no editor is connected). Refuses to overwrite unless `overwrite: true`. |
+| `godot_create_script` | — | Writes a `.gd` file from an `extends` / `class_name` / `_ready()` template into the project (`res://` path; the project is `project_path`, the editor's, or the one the server runs in). Refuses to overwrite unless `overwrite: true`. |
 | `godot_validate_script` | — | Syntax-checks a `.gd` file with `godot --headless --check-only`. |
 | `godot_resave_resources` | Editor | Refreshes the given `res://` files after external edits: assets are re-imported (synchronous), other files re-scanned. Without paths, rescans the whole project (background). |
 
@@ -137,7 +139,7 @@ Not implemented yet:
 - Runtime log streaming and stack traces (`godot_get_debug_log`, `godot_get_stack_trace`)
 - In-game camera capture (`godot_capture_camera`)
 - Scene creation (`godot_create_scene`) and script read/update/attach tools
-- HTTP/SSE transport (`GODOT_MCP_URL`) and console log capture (`GODOT_CONSOLE_PATH`)
+- HTTP/SSE transport and console log capture
 
 ## Development
 
@@ -148,15 +150,18 @@ cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-targets
 
-# GDScript check. The repo root is a minimal Godot project that gives the addon's
-# class_name declarations somewhere to resolve.
+# GDScript check. The repo root is a minimal Godot project (the addon declares no class_name).
 godot --headless --path . --import    # first run, or after adding scripts
 godot --headless --check-only --path . --script addons/godot_mcp/plugin.gd
 godot --headless --check-only --path . --script addons/godot_mcp/bridge_server.gd
+godot --headless --check-only --path . --script addons/godot_mcp/export_plugin.gd
 
 # End-to-end tests: start a real headless editor with the addon (needs Godot 4.5+).
 # On Windows, put the path in GODOT_PATH; GODOT_CONSOLE_PATH adds editor logs to failures.
 GODOT_PATH=/path/to/godot cargo test --test editor_e2e_test -- --ignored
+
+# The addon must stay out of exported games: a real pack export (no export templates needed).
+GODOT_PATH=/path/to/godot cargo test --test addon_export_test -- --ignored
 ```
 
 CI runs all of the above on every push and pull request.

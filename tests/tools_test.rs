@@ -2,24 +2,33 @@
 
 mod common;
 
-use common::{free_port, is_tool_error, project_dir, tool_text};
+use common::{fake_godot, free_port, is_tool_error, project_dir, tool_text};
 use godot_mcp::bridge::BridgeClient;
 use godot_mcp::cli_runner::CliRunner;
 use godot_mcp::protocol::ToolResult;
 use godot_mcp::tools::ToolManager;
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-fn manager() -> Arc<ToolManager> {
-    Arc::new(ToolManager::new(
-        BridgeClient::new(free_port()),
-        CliRunner::new(PathBuf::from("godot-binary-that-does-not-exist")),
-    ))
+/// A manager whose working directory is `cwd`, with no editor and the given Godot binary.
+fn manager_in(cwd: &Path, godot: PathBuf) -> Arc<ToolManager> {
+    Arc::new(
+        ToolManager::new(BridgeClient::new(free_port()), CliRunner::new(godot))
+            .with_working_dir(cwd.to_path_buf()),
+    )
 }
 
+/// Runs a tool from an empty working directory, so no project is found implicitly (the test
+/// process itself runs in this repository, which has a project.godot of its own).
 async fn call(tool: &str, args: Value) -> ToolResult {
-    manager().call_tool(tool, args).await
+    let cwd = tempfile::tempdir().expect("working dir");
+    manager_in(
+        cwd.path(),
+        PathBuf::from("godot-binary-that-does-not-exist"),
+    )
+    .call_tool(tool, args)
+    .await
 }
 
 fn text(result: &ToolResult) -> String {
@@ -200,6 +209,99 @@ async fn validate_script_reports_a_missing_file_without_spawning_godot() {
     assert!(
         !message.contains("spawn") && !message.contains("syntax"),
         "{message}"
+    );
+}
+
+#[tokio::test]
+async fn create_script_finds_the_project_from_the_working_directory() {
+    let project = project_dir();
+    let cwd = project.path().join("scripts");
+    std::fs::create_dir_all(&cwd).expect("mkdir");
+    let result = manager_in(&cwd, PathBuf::from("godot-binary-that-does-not-exist"))
+        .call_tool("godot_create_script", json!({"file_path": "res://a.gd"}))
+        .await;
+
+    assert!(!result.is_error, "{}", text(&result));
+    assert!(project.path().join("a.gd").is_file());
+}
+
+#[tokio::test]
+async fn an_explicit_project_path_wins_over_the_working_directory() {
+    let here = project_dir();
+    let there = project_dir();
+    let result = manager_in(
+        here.path(),
+        PathBuf::from("godot-binary-that-does-not-exist"),
+    )
+    .call_tool(
+        "godot_create_script",
+        json!({"file_path": "res://a.gd", "project_path": there.path()}),
+    )
+    .await;
+
+    assert!(!result.is_error, "{}", text(&result));
+    assert!(there.path().join("a.gd").is_file());
+    assert!(!here.path().join("a.gd").exists());
+}
+
+#[tokio::test]
+async fn launch_editor_uses_the_project_in_a_child_of_the_working_directory() {
+    let root = tempfile::tempdir().expect("root");
+    let app = root.path().join("app");
+    std::fs::create_dir_all(&app).expect("mkdir");
+    std::fs::write(app.join("project.godot"), "config_version=5\n").expect("project.godot");
+    let godot = fake_godot(root.path());
+
+    let result = manager_in(root.path(), godot)
+        .call_tool("godot_launch_editor", json!({}))
+        .await;
+
+    assert!(!result.is_error, "{}", text(&result));
+    assert!(
+        text(&result).contains(&app.display().to_string()),
+        "{}",
+        text(&result)
+    );
+}
+
+#[tokio::test]
+async fn launch_editor_without_any_project_asks_for_project_path() {
+    let result = call("godot_launch_editor", json!({})).await;
+    assert!(result.is_error);
+    assert!(text(&result).contains("project_path"), "{}", text(&result));
+}
+
+#[tokio::test]
+async fn run_project_without_an_editor_runs_the_working_directory_project() {
+    let project = project_dir();
+    let godot = fake_godot(project.path());
+
+    let result = manager_in(project.path(), godot)
+        .call_tool("godot_run_project", json!({}))
+        .await;
+
+    assert!(!result.is_error, "{}", text(&result));
+    assert!(text(&result).contains("Spawned"), "{}", text(&result));
+}
+
+#[tokio::test]
+async fn run_project_without_an_editor_or_a_project_asks_for_project_path() {
+    let result = call("godot_run_project", json!({})).await;
+    assert!(result.is_error);
+    assert!(text(&result).contains("project_path"), "{}", text(&result));
+}
+
+#[test]
+fn launch_editor_schema_no_longer_requires_project_path() {
+    let tools = ToolManager::list_tools();
+    let launch = tools
+        .iter()
+        .find(|tool| tool.name == "godot_launch_editor")
+        .expect("launch tool");
+    assert!(
+        launch.input_schema.get("required").is_none(),
+        "{}",
+        launch.input_schema
     );
 }
 

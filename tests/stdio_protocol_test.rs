@@ -265,11 +265,21 @@ async fn empty_settings_are_treated_as_unset() {
     let mut session = Session::start_with_env(
         free_port(),
         std::path::Path::new(""),
-        &[
-            ("GODOT_CONSOLE_PATH", ""),
-            ("GODOT_MCP_URL", ""),
-            ("GODOT_DEBUG_PORT", ""),
-        ],
+        &[("GODOT_CONSOLE_PATH", ""), ("GODOT_DEBUG_PORT", "")],
+    )
+    .await;
+
+    let reply = session.request("tools/list", json!({}), FAST).await;
+    assert!(reply["result"]["tools"].is_array());
+}
+
+#[tokio::test]
+async fn a_removed_setting_left_in_the_environment_is_ignored() {
+    // GODOT_MCP_URL was a reserved placeholder until 0.3.0; old .env files may still set it.
+    let mut session = Session::start_with_env(
+        free_port(),
+        std::path::Path::new(""),
+        &[("GODOT_MCP_URL", "http://localhost:1234")],
     )
     .await;
 

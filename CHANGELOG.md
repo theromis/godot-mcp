@@ -4,6 +4,39 @@ All notable changes to godot-mcp. The server and the Godot addon always ship wit
 version number. The section for a version is used as the text of its GitHub Release, so every
 release needs one (the release workflow fails without it).
 
+## [Unreleased]
+
+### Added
+
+- The addon leaves itself out of exported games: a new `export_plugin.gd`, registered by the
+  plugin, skips every file in the addon folder. It only acts while the plugin is enabled; with it
+  disabled, exclude `addons/godot_mcp/*` in the export preset.
+- `project_path` is optional when the server runs inside the project. Without it, tools use the
+  project open in the editor, else the first folder with a `project.godot` from the server's
+  working directory upwards, else the only subfolder that has one. This applies to
+  `godot_launch_editor` (where `project_path` is no longer required), the CLI fallback of
+  `godot_run_project`, `godot_create_script` and `res://` paths in `godot_validate_script`.
+
+### Changed
+
+- `bridge_server.gd` no longer declares `class_name GodotMcpBridgeServer` (nothing used it; the
+  plugin loads the script by path). A global class would stay in every exported game's class list
+  even though the addon's files are left out of the export.
+
+### Fixed
+
+- A launched editor or game no longer keeps the server's stdin, stdout and stderr pipes open on
+  Windows. An MCP client that waited for the server's stderr to close after stopping it used to
+  wait until the editor was closed too.
+- Ctrl+C in the MCP client's terminal no longer closes an editor or game started by
+  `godot_launch_editor` or `godot_run_project`: they now start detached from the client's console
+  (Windows) and in a process group of their own (all platforms).
+
+### Removed
+
+- The unused `GODOT_MCP_URL` setting (`--mcp-url`). A leftover `GODOT_MCP_URL` in the environment
+  or a `.env` file is ignored, but passing `--mcp-url` now stops the server with an error.
+
 ## [0.3.0] - 2026-10-14
 
 Hardening release. The server and the addon changed together: update both (the addon archive is

@@ -69,22 +69,24 @@ Before submitting or committing changes, agents must execute and pass the comple
    cargo test --all-targets
    ```
 
-   Includes `tests/version_sync_test.rs`: the version in `addons/godot_mcp/plugin.cfg` must always equal `Cargo.toml` — bump both together. New behaviour needs a test first: protocol and tool behaviour in `tests/stdio_protocol_test.rs` / `tests/tools_test.rs` (helpers in `tests/common/`), bridge client in `tests/bridge_client_test.rs`.
+   Includes `tests/version_sync_test.rs`: the version in `addons/godot_mcp/plugin.cfg` must always equal `Cargo.toml` — bump both together. New behaviour needs a test first: protocol and tool behaviour in `tests/stdio_protocol_test.rs` / `tests/tools_test.rs` (helpers in `tests/common/`), bridge client in `tests/bridge_client_test.rs`, keeping the addon out of exports in `tests/addon_export_test.rs`, launched processes staying independent of the server in `tests/detach_test.rs`.
 
 4. **GDScript Syntax Check**:
 
-   The repo root has its own minimal `project.godot` so the addon's `class_name` declarations resolve. `--path .` is required — without it the check fails with `Could not find type "GodotMcpBridgeServer"`.
+   The repo root has its own minimal `project.godot` (it also makes the addon loadable as a plugin for manual testing). The addon declares no `class_name` on purpose: a global class would be listed in every exported game's class list while its script is left out of the export, so keep addon scripts free of `class_name` and load them by path.
 
    ```bash
    godot --headless --path . --import   # first run only, or after script changes
    godot --headless --check-only --path . --script addons/godot_mcp/plugin.gd
    godot --headless --check-only --path . --script addons/godot_mcp/bridge_server.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/export_plugin.gd
    ```
 
 5. **Editor End-to-End Tests** (whenever `addons/godot_mcp/` changed; needs a Godot 4.5+ binary, ignored by default):
 
    ```bash
    GODOT_PATH=/path/to/godot cargo test --test editor_e2e_test -- --ignored
+   GODOT_PATH=/path/to/godot cargo test --test addon_export_test -- --ignored
    ```
 
    Set `GODOT_CONSOLE_PATH` as well on Windows to get editor logs in failure output (the editor is started from the console binary when it is set, and `.env` values fill in variables you did not export, so set both when testing a specific Godot version). A `.env` file with double-quoted Windows paths does not load (see `.env.example`) — export the variables instead.
@@ -99,7 +101,7 @@ When interacting with a Godot project, agents must adhere to the following workf
    - `godot_set_node_properties` is all-or-nothing and returns the applied values; read them back instead of assuming.
 
 2. **Validation After Modification**:
-   - Run `godot_validate_script` immediately after creating or altering any `.gd` file. `godot_create_script` needs `project_path` unless the editor bridge is connected, and refuses to overwrite without `overwrite: true`.
+   - Run `godot_validate_script` immediately after creating or altering any `.gd` file. Without `project_path`, `godot_create_script` uses the editor's project, else the project the server was started in; it refuses to overwrite without `overwrite: true`.
    - Catch and resolve syntax errors before attempting to run scenes.
 
 3. **Visual Verification**:

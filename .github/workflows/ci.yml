@@ -58,6 +58,10 @@ jobs:
         run: |
           $GODOT_PATH --headless --check-only --path . --script addons/godot_mcp/plugin.gd
           $GODOT_PATH --headless --check-only --path . --script addons/godot_mcp/bridge_server.gd
+          $GODOT_PATH --headless --check-only --path . --script addons/godot_mcp/export_plugin.gd
 
       - name: End-to-end tests against a real editor
         run: cargo test --test editor_e2e_test -- --ignored --test-threads=2
+
+      - name: The addon stays out of exported games
+        run: cargo test --test addon_export_test -- --ignored

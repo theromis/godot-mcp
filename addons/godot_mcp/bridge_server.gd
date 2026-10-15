@@ -1,8 +1,10 @@
 @tool
-class_name GodotMcpBridgeServer
 extends Node
 
 ## WebSocket bridge between the Godot MCP server and this editor.
+##
+## Deliberately has no class_name: plugin.gd loads it by path, and a global class would be
+## listed in every exported game's class list even though the addon's files are left out.
 ##
 ## Listens on loopback only and requires the shared token (see prepare_token) on every
 ## command, so neither other machines nor web pages can drive the editor.

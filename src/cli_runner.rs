@@ -123,6 +123,20 @@ impl CliRunner {
 }
 
 fn spawn_detached(command: &mut Command, what: &str) -> Result<u32> {
+    // Ctrl+C in the MCP client's terminal reaches every process attached to its console
+    // (Windows) or in its foreground process group (Unix), which would close the editor with
+    // unsaved work. No console and a process group of its own keep the child out of reach.
+    #[cfg(windows)]
+    {
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    }
+    #[cfg(unix)]
+    command.process_group(0);
+    #[cfg(windows)]
+    make_std_handles_private();
+
     let child = command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -132,6 +146,31 @@ fn spawn_detached(command: &mut Command, what: &str) -> Result<u32> {
     child
         .id()
         .ok_or_else(|| McpError::Process(format!("Failed to obtain {what} process ID")))
+}
+
+/// Windows lets a spawned process inherit every inheritable handle of its parent, whatever it
+/// is given as its own standard streams. The server's stdin, stdout and stderr are pipes of the
+/// MCP client, so a launched editor would keep them open for as long as it runs, and a client
+/// that waits for the server's stderr to close would wait for the editor instead.
+#[cfg(windows)]
+fn make_std_handles_private() {
+    use windows_sys::Win32::Foundation::SetHandleInformation;
+    use windows_sys::Win32::Foundation::{HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Console::{
+        GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+    };
+
+    for which in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+        // SAFETY: both calls only read or flag handles owned by this process. A missing or
+        // invalid handle makes `SetHandleInformation` fail, which is harmless here: the
+        // handle is then simply not protected, as before.
+        unsafe {
+            let handle = GetStdHandle(which);
+            if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
+                SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0);
+            }
+        }
+    }
 }
 
 /// Drops the engine's start-up banner ("Godot Engine v4.x ...") from captured output.
@@ -153,5 +192,54 @@ mod tests {
         let raw = "Godot Engine v4.8.dev7.official - https://godotengine.org\n\nSCRIPT ERROR: x\n";
         assert_eq!(strip_banner(raw), "SCRIPT ERROR: x");
         assert_eq!(strip_banner("Godot Engine v4.5\n"), "");
+    }
+
+    /// Ctrl+C in the MCP client's terminal signals its whole process group; a launched editor
+    /// must not be part of it.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn launched_processes_get_their_own_process_group() {
+        use super::CliRunner;
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::Duration;
+
+        fn process_group_of(pid: &str) -> String {
+            let output = std::process::Command::new("ps")
+                .args(["-o", "pgid=", "-p", pid])
+                .output()
+                .expect("run ps");
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        }
+
+        let dir = tempfile::tempdir().expect("temp dir");
+        let report = dir.path().join("pgid.txt");
+        let script = dir.path().join("fake_godot.sh");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nps -o pgid= -p $$ > '{0}.tmp' && mv '{0}.tmp' '{0}'\n",
+                report.display()
+            ),
+        )
+        .expect("write script");
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+
+        let pid = CliRunner::new(script)
+            .launch_editor(dir.path())
+            .await
+            .expect("spawn");
+
+        for _ in 0..100 {
+            if report.exists() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let child_group = std::fs::read_to_string(&report).expect("child reported its group");
+        assert_eq!(child_group.trim(), pid.to_string());
+        assert_ne!(
+            child_group.trim(),
+            process_group_of(&std::process::id().to_string())
+        );
     }
 }

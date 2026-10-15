@@ -16,17 +16,14 @@ pub struct Config {
     #[arg(long, env = "GODOT_PATH", value_parser = parse_path)]
     pub godot_path: Option<PathBuf>,
 
-    /// Path to the Godot console wrapper executable (reserved, not used yet)
+    /// Path to the Godot console wrapper executable. The server does not use it yet; the
+    /// editor end-to-end tests read it to show editor logs on Windows.
     #[arg(long, env = "GODOT_CONSOLE_PATH", value_parser = parse_path)]
     pub godot_console_path: Option<PathBuf>,
 
     /// WebSocket port for Godot Editor bridge communication
     #[arg(long, env = "GODOT_DEBUG_PORT", default_value = "9333", value_parser = parse_port)]
     pub debug_port: u16,
-
-    /// Optional remote MCP URL for HTTP/SSE transport (reserved, not used yet)
-    #[arg(long, env = "GODOT_MCP_URL")]
-    pub mcp_url: Option<String>,
 }
 
 /// Accepts any text, including an empty one: placeholders such as `GODOT_PATH=""` in a
@@ -176,5 +173,17 @@ impl Config {
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     fn scan_for_godot_binary() -> Option<PathBuf> {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+    use clap::Parser;
+
+    #[test]
+    fn the_unused_mcp_url_setting_is_gone() {
+        assert!(Config::try_parse_from(["godot-mcp", "--mcp-url", "http://localhost:1"]).is_err());
+        assert!(Config::try_parse_from(["godot-mcp", "--debug-port", "9333"]).is_ok());
     }
 }
