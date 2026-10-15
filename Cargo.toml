@@ -34,7 +34,10 @@ anyhow = "1.0.104"
 uuid = { version = "1.28.0", features = ["v4"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Console"] }
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Console",
+] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
