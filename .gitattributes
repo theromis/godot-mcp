@@ -3,3 +3,6 @@
 
 # Markdown files should use LF line endings
 *.md text eol=lf
+
+# Planning files are shared in the repository but are not part of source archives
+/.design export-ignore
