@@ -17,7 +17,7 @@ The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unrelease
 - [x] **Live Editor Bridge** ([l1-editor-bridge.md](specifications/l1-editor-bridge.md)) [L1]
 - [x] **Tool Catalog** ([l1-tool-catalog.md](specifications/l1-tool-catalog.md)) [L1]
 - [x] **Quality Assurance** ([l1-quality-assurance.md](specifications/l1-quality-assurance.md)) [L1]
-- [ ] **Release & Distribution** ([l1-distribution.md](specifications/l1-distribution.md)) [L1] — DS-8 open (Phase 2)
+- [x] **Release & Distribution** ([l1-distribution.md](specifications/l1-distribution.md)) [L1]
 
 ## Phase 1 — Baseline Implementation (Layer 2)
 
@@ -27,14 +27,14 @@ The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unrelease
 - [x] **Bridge Client (Rust)** ([l2-bridge-client-rust.md](specifications/l2-bridge-client-rust.md)) [L2]
 - [x] **Tool Handlers (Rust)** ([l2-tool-handlers.md](specifications/l2-tool-handlers.md)) [L2]
 - [ ] **Godot Editor Addon** ([l2-godot-editor-addon.md](specifications/l2-godot-editor-addon.md)) [L2] — token-file permission check and dev-project comment open (Phase 2)
-- [ ] **CI & Release Pipeline** ([l2-ci-release-pipeline.md](specifications/l2-ci-release-pipeline.md)) [L2] — DS-8 gap open (Phase 2)
+- [x] **CI & Release Pipeline** ([l2-ci-release-pipeline.md](specifications/l2-ci-release-pipeline.md)) [L2]
 - [ ] **Test Suite** ([l2-test-suite.md](specifications/l2-test-suite.md)) [L2] — contributor guide lacks the specification workflow (Phase 2)
 
 ## Phase 2 — Alignment & Hardening
 
 *Closes the gaps recorded by the first analysis. See [TASKS.md](TASKS.md).*
 
-- [ ] Keep the planning directory out of source archives (DS-8)
+- [x] Keep the planning directory out of source archives (DS-8)
 - [ ] Prove the token file is owner-only on Unix (BR-2)
 - [ ] Correct the stale class_name note in the development project
 - [ ] Document the specification-driven workflow for contributors

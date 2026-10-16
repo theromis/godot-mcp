@@ -22,7 +22,7 @@ duration_minutes: ~
 
 <!-- A line is `- [ ]` (open) or `- [x]` (done). A Blocked task keeps `- [ ]`: it is blocked by its `Status` in Detailed Tracking, and the `[!]` the workflows write after "Blocked" spells that status — it is not a checkbox state. -->
 
-- [ ] [T-2A01] Mark the planning directory `export-ignore` for source archives
+- [x] [T-2A01] Mark the planning directory `export-ignore` for source archives
 - [ ] [T-2B01] Test that the bridge token file is owner-only on Unix
 - [ ] [T-2C01] Correct the stale class_name note in the development project file
 - [ ] [T-2D01] Add a specification-workflow section to the contributor guide
@@ -33,11 +33,12 @@ duration_minutes: ~
 ### [T-2A01] Mark the planning directory `export-ignore` for source archives
 
 - **Spec:** l2-ci-release-pipeline.md §4 (DS-8), l1-distribution.md §3 DS-8
-- **Status:** Todo
+- **Status:** Done
 - **Assignment:** Agent
 - **Verify:** `git archive --format=tar HEAD | tar -t | grep -c '^\.design/'` prints `0` after the change is committed (non-zero before); `cargo test --all-targets` still passes.
 - **Handoff:** Update the DS-8 row of l2-ci-release-pipeline.md (remove "Gap") via `/magic.spec amend`.
 - **Notes:** Add one attribute line to `.gitattributes`. Do not touch `.gitignore`: the planning directory must stay committed so the team shares it; only its presence in tag source archives is the problem.
+- **Changes:** `.gitattributes` marks `/.design` `export-ignore`; `git archive HEAD` listed 34 planning files before and 0 after; specification updated (DS-8 gap closed, v1.0.1).
 
 ### [T-2B01] Test that the bridge token file is owner-only on Unix
 

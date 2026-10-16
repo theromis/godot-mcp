@@ -1,6 +1,6 @@
 # CI & Release Pipeline
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-distribution.md
@@ -37,7 +37,7 @@ Release mechanics are spread over several files (two workflows, a shell script, 
 | DS-5 Separate, editor-only addon | `zip -r godot-mcp-addon.zip addons/godot_mcp`; export exclusion is in the addon (see [l2-godot-editor-addon.md](l2-godot-editor-addon.md)); README documents the disabled-plugin case. |
 | DS-6 No machine-specific state | `.gitignore` excludes `.env*` (except `.env.example`), `.mcp.json`, `target/`, `bin/`, `dist/`, `.godot/`, `export_presets.cfg`, local binaries; README tells users to commit `.mcp.json.example` instead. |
 | DS-7 Human confirmation | The release skill stops before `git tag`/`git push` and requires explicit approval. |
-| DS-8 Scaffold-free artifacts | Binary and addon archives contain only built executables and `addons/godot_mcp`. The engine directories are git-ignored. **Gap:** the committed planning directory is not marked `export-ignore`, so GitHub's automatic source archives of a tag would include it. |
+| DS-8 Scaffold-free artifacts | Binary and addon archives contain only built executables and `addons/godot_mcp`. The engine directories are git-ignored. `.gitattributes` marks the planning directory `export-ignore`, so GitHub's automatic source archives of a tag leave it out. |
 
 ## 5. Detailed Design
 
@@ -57,7 +57,7 @@ addons/godot_mcp/plugin.cfg      addon version
 
 ## 6. Implementation Notes
 
-- Open: add an `export-ignore` attribute for the planning directory to close the DS-8 gap (product-file change; plan it as a task).
+- `git archive HEAD | tar -t` listing no planning directory is the check for DS-8.
 
 ## 7. Drawbacks & Alternatives
 
@@ -83,3 +83,4 @@ addons/godot_mcp/plugin.cfg      addon version
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-16 | Agent (magic.analyze first-time) | Reverse-engineered from the workflows, script and release skill at 94e4540; DS-8 gap recorded. |
+| 1.0.1 | 2026-10-16 | Agent (magic.run) | DS-8 gap closed by the `export-ignore` attribute. |

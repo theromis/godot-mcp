@@ -4,15 +4,15 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-10-16 10:10
+**Updated:** 2026-10-16 11:58
 **Phase:** 2 — Alignment & Hardening
 **Status:** Active
 
 ## Current Position
 
-- **Task:** T-3D01 User documentation, configuration template and issue template
+- **Task:** T-2A01 Mark the planning directory export-ignore
 - **Spec:** l2-ci-release-pipeline.md §4 (DS-8)
-- **Next Action:** Execute T-2A01 Mark the planning directory `export-ignore` for source archives via /magic.run main
+- **Next Action:** T-2B01 Test that the bridge token file is owner-only on Unix
 
 ## Progress
 
