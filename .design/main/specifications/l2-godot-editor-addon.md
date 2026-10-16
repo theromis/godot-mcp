@@ -1,0 +1,94 @@
+# Godot Editor Addon
+
+**Version:** 1.0.0
+**Status:** Stable
+**Layer:** implementation
+**Implements:** l1-editor-bridge.md
+
+## Overview
+
+The editor side of the live bridge, written in GDScript and shipped as `addons/godot_mcp`: an `EditorPlugin` that gates on the engine version and starts the bridge node, the bridge node itself (listener, secret, parameter validation, command handlers), and an export plugin that keeps the addon out of exported games.
+
+## Related Specifications
+
+- [l1-editor-bridge.md](l1-editor-bridge.md) - Parent concept.
+- [l2-bridge-client-rust.md](l2-bridge-client-rust.md) - The server-side peer.
+- [l1-distribution.md](l1-distribution.md) - DS-5: shipped as a separate archive.
+
+## 1. Motivation
+
+GDScript fails differently from Rust: assigning a wrongly typed value to a typed variable, or calling a method the running engine lacks, raises a script error that aborts the handler without a reply, and the caller only sees a timeout. The conventions below exist to prevent exactly that.
+
+## 2. Constraints & Assumptions
+
+- Target: Godot 4.5+; `plugin.gd` refuses to start the bridge on older editors (`MIN_MAJOR`/`MIN_MINOR`). Raising the floor means updating that constant, the README, and the development `project.godot` together.
+- Observed conventions:
+  - Strict static typing for locals, members and return types.
+  - No `class_name` in any addon script: a global class would be listed in every exported game's class list while its script is left out. Scripts are loaded by path.
+  - Command parameters are read untyped and validated against `PARAM_TYPES` before a handler runs.
+  - APIs missing from 4.5 are called through `has_method()` + `call()` (example: `EditorFileSystem.is_importing`).
+  - No third-party dependencies; standard Godot API only.
+  - Log lines are prefixed `[Godot MCP]`; connect/disconnect logs only when the project setting `godot_mcp/verbose` is true.
+- The repository root is a minimal Godot project (`project.godot`) so the addon can be enabled and syntax-checked in isolation.
+
+## 4. Invariant Compliance
+
+| L1 Invariant | Implementation |
+| --- | --- |
+| BR-1 Loopback only | `TCPServer.listen(port, "127.0.0.1")`. |
+| BR-2 Shared secret | `prepare_token`: `GODOT_MCP_TOKEN` if set, else 24 random bytes hex-encoded, written to `OS.get_data_dir()/godot-mcp/bridge-{port}.token` with owner-only permissions and deleted in `stop_server`. `handle_message` rejects any message whose `token` is not a string equal to the secret, before reading anything else. |
+| BR-3 Exactly one reply | Malformed JSON and non-object payloads get an error reply; `type`/`params` are type-checked by hand; `validate_params` checks each declared parameter (JSON null treated as absent, int accepted for float); unknown types get "Unknown command type"; `send_json` falls back to a short error reply when the full reply cannot be sent. WebSocket buffers are 4 MiB inbound and 32 MiB outbound. |
+| BR-4 Correlated commands | Every reply echoes `commandId` (non-string ids are stringified). |
+| BR-5 Undoable mutations | `add_node`, `remove_node` and `set_node_properties` each create one `EditorUndoRedoManager` action in the scene's history; remove records the child index and every owned descendant so undo restores order and ownership; the new or removed node is kept alive by an undo/do reference. |
+| BR-6 Scene confinement | `find_scene_node` accepts a result only if it is the edited root or a descendant of it; `.`/empty means the root; removing the root is refused; reported paths are `root.get_path_to(node)`. |
+| BR-7 All-or-nothing updates | `set_node_properties` converts every value first (`convert_property_value`: numbers, vectors/rects/colors from arrays or objects, colors from strings, `res://` resources, packed arrays, Godot literals via `str_to_var`), rejects the whole call on any unknown property or conversion error, then applies all values in one action and replies with values read back. |
+| BR-8 Fast, classified failures | Errors are replied as `status: error` with a human-readable message; the server classifies them. |
+| BR-9 Version gate | `plugin.gd` compares `Engine.get_version_info()` with 4.5 and prints an error instead of starting. |
+| BR-10 Editor-only | `export_plugin.gd` (registered before the bridge so it works even if the bridge fails) skips every file under its own directory; its name sorts before the built-in "GDScript" export plugin, which would otherwise remap `.gd` files first and end the chain. |
+| BR-11 Project-confined paths | `to_res_path` normalizes separators, localizes absolute paths, and rejects anything outside `res://` or containing a `..` segment; used by `open_scene`, `get_scene_tree`, `run_project` and `resave_resources`. |
+
+## 5. Detailed Design
+
+### 5.1 Files
+
+```plaintext
+addons/godot_mcp/
+├── plugin.cfg          name, version (must equal the server's), entry script
+├── plugin.gd           EditorPlugin: version gate, export plugin, bridge node lifecycle
+├── bridge_server.gd    bridge node: listener, secret, validation, handlers, replies
+├── export_plugin.gd    EditorExportPlugin: skip the addon folder on export
+└── *.gd.uid            Godot UID sidecars (committed)
+```
+
+### 5.2 Handler Notes
+
+- `capture_viewport`: refuses headless editors; switches the main screen to 2D or 3D (`auto` picks 3D for a `Node3D` root), waits two frames, forces a draw (an idle editor in low-processor mode would otherwise never redraw), rejects images under 16 px, downscales to `max_dimension` (default 1568) with Lanczos, returns base64 PNG with width, height and view.
+- `resave_resources`: refuses while an import is running (guarded 4.5-safe call); with no paths starts a background `scan()`; otherwise re-imports importable files synchronously and calls `update_file` for others; reports reimported, refreshed, missing and invalid paths.
+- `add_node`: native classes must derive from `Node` and be instantiable; global script classes are looked up in the project's class list; non-Node script instances are freed.
+- `get_node_properties`: only properties with editor usage; values in Godot text form, truncated at 2000 characters.
+
+## 6. Implementation Notes
+
+- Known limitation: the owner-only permission on the token file is set through `FileAccess.set_unix_permissions` and has not been verified on a multi-user Linux host.
+- Known limitation: the bridge processes commands on the editor's main thread; a synchronous re-import blocks other commands until it finishes.
+- When `undo_redo` is not injected (only possible outside the plugin) mutations apply directly; the plugin always injects it.
+
+## 7. Drawbacks & Alternatives
+
+- **A GDExtension in Rust** for the editor side: shared types with the server, but a compiled artifact per platform and engine version; GDScript keeps the addon portable and dependency-free.
+
+## Canonical References
+
+| Alias | Path | Purpose |
+| --- | --- | --- |
+| `[PLUGIN]` | `addons/godot_mcp/plugin.gd` | Version gate and lifecycle |
+| `[BRIDGE]` | `addons/godot_mcp/bridge_server.gd` | Listener and command handlers |
+| `[EXPORT]` | `addons/godot_mcp/export_plugin.gd` | Export exclusion |
+| `[CFG]` | `addons/godot_mcp/plugin.cfg` | Addon metadata and version |
+| `[DEVPROJ]` | `project.godot` | Development project enabling the addon |
+
+## Document History
+
+| Version | Date | Author | Description |
+| --- | --- | --- | --- |
+| 1.0.0 | 2026-10-16 | Agent (magic.analyze first-time) | Reverse-engineered from the addon at 94e4540; known limitations carried over from the 2026-10-14 QA report's open items. |

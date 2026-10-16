@@ -39,3 +39,13 @@ export_presets.cfg
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# SDD engine (installed from a release archive, not committed)
+/.magic/
+/.*/skills/magic-*/
+/.*/*/magic*.md
+
+## Generated graph artifacts
+/.design/*graph*.*
+/.design/*cache*/
+/.design/wiki/

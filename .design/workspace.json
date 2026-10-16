@@ -1,0 +1,16 @@
+{
+  "default": "main",
+  "workspaces": {
+    "main": {
+      "description": "godot-mcp: the Rust MCP server, the Godot editor addon, their tests and the release pipeline"
+    }
+  },
+  "finalization": {
+    "enabled": true,
+    "autoBump": true,
+    "autoChangelog": false
+  },
+  "archival": {
+    "enabled": true
+  }
+}
