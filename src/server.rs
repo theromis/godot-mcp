@@ -43,12 +43,16 @@ enum Incoming {
 
 impl McpServer {
     pub fn new(config: &Config) -> Self {
+        // The catalog is built on first use, so the feedback mode must be known before it.
+        ToolManager::configure_catalog(config.feedback);
         let godot_bin = config.resolve_godot_path();
         info!("Using Godot binary at: {}", godot_bin.display());
 
         let bridge = BridgeClient::new(config.debug_port);
         let cli = CliRunner::new(godot_bin);
-        let tool_manager = Arc::new(ToolManager::new(bridge, cli));
+        let tool_manager = Arc::new(
+            ToolManager::new(bridge, cli).with_feedback(config.feedback, config.gh_path.clone()),
+        );
 
         Self { tool_manager }
     }
@@ -97,7 +101,7 @@ impl McpServer {
                     self.spawn_tool_call(&mut tasks, &in_flight, &out_tx, id, &params);
                 }
                 Incoming::Request { id, method, params } => {
-                    send(&out_tx, &Self::handle_request(id, &method, &params));
+                    send(&out_tx, &self.handle_request(id, &method, &params));
                 }
             }
         }
@@ -112,7 +116,7 @@ impl McpServer {
     }
 
     /// Requests that are answered immediately, without touching the editor.
-    fn handle_request(id: Value, method: &str, params: &Value) -> JsonRpcResponse {
+    fn handle_request(&self, id: Value, method: &str, params: &Value) -> JsonRpcResponse {
         match method {
             "initialize" => {
                 let requested = params.get("protocolVersion").and_then(Value::as_str);
@@ -120,17 +124,26 @@ impl McpServer {
                     .iter()
                     .find(|supported| Some(**supported) == requested)
                     .unwrap_or(&SUPPORTED_PROTOCOL_VERSIONS[0]);
-                JsonRpcResponse::success(
-                    id,
-                    json!({
-                        "protocolVersion": version,
-                        "capabilities": { "tools": { "listChanged": false } },
-                        "serverInfo": {
-                            "name": "godot-mcp",
-                            "version": env!("CARGO_PKG_VERSION")
-                        }
-                    }),
-                )
+                let client = params.get("clientInfo");
+                let client_field = |key: &str| {
+                    client
+                        .and_then(|info| info.get(key))
+                        .and_then(Value::as_str)
+                };
+                self.tool_manager
+                    .note_client(client_field("name"), client_field("version"));
+                let mut result = json!({
+                    "protocolVersion": version,
+                    "capabilities": { "tools": { "listChanged": false } },
+                    "serverInfo": {
+                        "name": "godot-mcp",
+                        "version": env!("CARGO_PKG_VERSION")
+                    }
+                });
+                if let Some(guidance) = self.tool_manager.guidance() {
+                    result["instructions"] = json!(guidance);
+                }
+                JsonRpcResponse::success(id, result)
             }
             "ping" => JsonRpcResponse::success(id, json!({})),
             "tools/list" => {
@@ -171,6 +184,8 @@ impl McpServer {
             return;
         };
         if !ToolManager::has_tool(name) {
+            // A request for a tool that does not exist is a request for a missing capability.
+            self.tool_manager.record_unknown_tool(name);
             send(
                 out_tx,
                 &JsonRpcResponse::error(id, INVALID_PARAMS, format!("Unknown tool: {name}")),

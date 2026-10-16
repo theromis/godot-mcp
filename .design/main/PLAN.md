@@ -1,13 +1,13 @@
 # Implementation Plan
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Generated:** 2026-10-16
-**Based on:** .design/main/INDEX.md v1.1.0
+**Based on:** .design/main/INDEX.md v1.2.0
 **Status:** Active
 
 ## Overview
 
-The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unreleased changes at commit 94e4540), so Phases 0 and 1 describe what is already implemented and verified. Phase 2 closes the gaps the first analysis found: a shipped-artifact hygiene gap, a stale comment, an unverified security property, and contributor guidance for the specification-driven workflow. Roadmap concepts wait in the Backlog until their open questions are answered.
+The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unreleased changes at commit 94e4540), so Phases 0 and 1 describe what is already implemented and verified. Phase 2 closes the gaps the first analysis found: a shipped-artifact hygiene gap, a stale comment, an unverified security property, and contributor guidance for the specification-driven workflow. Phase 3 adds the agent feedback channel: tools that let an agent record what is missing or broken and hand the maintainers a scrubbed report as text or as an approved issue submission. Roadmap concepts wait in the Backlog until their open questions are answered.
 
 ## Phase 0 — Requirements (Layer 1: Concept)
 
@@ -38,6 +38,14 @@ The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unrelease
 - [ ] Prove the token file is owner-only on Unix (BR-2)
 - [ ] Correct the stale class_name note in the development project
 - [ ] Document the specification-driven workflow for contributors
+
+## Phase 3 — Agent Feedback Channel (Layers 1 and 2)
+
+*Specified together: the concept first, then its Rust realization. See [TASKS.md](TASKS.md).*
+
+- [x] **Agent Feedback Channel** ([l1-agent-feedback.md](specifications/l1-agent-feedback.md)) [L1]
+- [x] **Agent Feedback Channel (Rust)** ([l2-agent-feedback-rust.md](specifications/l2-agent-feedback-rust.md)) [L2]
+- [x] Record, scrub, draft and submit with the human's approval; documented for users and covered by tests
 
 ## Backlog
 

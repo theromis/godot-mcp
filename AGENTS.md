@@ -111,6 +111,11 @@ When interacting with a Godot project, agents must adhere to the following workf
    - After `godot_run_project`, check `godot_get_run_status` and stop the run with `godot_stop_project` when done.
    - Runtime log capture (`godot_get_debug_log`) and in-game camera capture (`godot_capture_camera`) are on the roadmap, not implemented — do not call them.
 
+5. **Feedback to the Maintainers**:
+   - When godot-mcp itself blocks or misleads you (a tool fails for a reason its message does not explain, a needed capability has no tool, a description or schema is wrong), record it with `godot_note_feedback` in English: what you tried, what came back, what you expected, one problem per note. Do not note your own mistakes or problems in the user's project.
+   - When the request is completed or abandoned, and notes exist, call `godot_draft_feedback`, show the user the complete report, and offer: copy it, open the link, submit it, or discard it.
+   - Never call `godot_submit_feedback` without the user's explicit yes in the conversation.
+
 ## Completion Protocol (Mandatory Checklist)
 
 Before concluding any development task, every agent MUST verify the following checklist:

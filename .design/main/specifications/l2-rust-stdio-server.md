@@ -1,6 +1,6 @@
 # Rust Stdio Server
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-mcp-server.md
@@ -14,6 +14,7 @@ The Tokio-based realization of the MCP server core: process entry point, logging
 - [l1-mcp-server.md](l1-mcp-server.md) - Parent concept.
 - [l2-tool-handlers.md](l2-tool-handlers.md) - The tool manager the session dispatches to.
 - [l2-bridge-client-rust.md](l2-bridge-client-rust.md) - Constructed at start-up from the configured port.
+- [l2-agent-feedback-rust.md](l2-agent-feedback-rust.md) - Feedback settings, client info capture and guidance in `initialize`, unknown tool requests recorded by the session loop. [ADDED]
 
 ## 1. Motivation
 
@@ -35,7 +36,7 @@ Records how the concept's guarantees map onto this crate so a change to the sess
 | MCP-4 Cancellation | In-flight tasks are registered in a map keyed by the JSON text of the request id (registration happens under the lock before the task can finish); `notifications/cancelled` removes the entry and aborts the task, so no response is sent. |
 | MCP-5 Error contract | `parse_message` maps input to parse error (-32700), invalid request (-32600), method not found (-32601) and invalid params (-32602); tool failures are `ToolResult::error(message, hints)` with an "Actionable recovery suggestions" list and `isError: true`. |
 | MCP-6 Version negotiation | `SUPPORTED_PROTOCOL_VERSIONS` (newest first); the requested version is echoed when present in the list, else the first entry. |
-| MCP-7 Forgiving configuration | Path flags use an infallible parser (empty means unset), the port parser maps an empty value to 9333; `.env` parse errors are logged as a warning with the single-quote hint and otherwise ignored; the removed `--mcp-url` flag is rejected while a stale `GODOT_MCP_URL` variable is ignored. |
+| MCP-7 Forgiving configuration | Path flags use an infallible parser (empty means unset), the port parser maps an empty value to 9333; `.env` parse errors are logged as a warning with the single-quote hint and otherwise ignored; the removed `--mcp-url` flag is rejected while a stale `GODOT_MCP_URL` variable is ignored. `GODOT_MCP_FEEDBACK` accepts `off`, `draft` and `full` in any case, and an unknown value logs a warning and selects `full`; `GODOT_MCP_GH_PATH` is parsed like the other path settings. [ADDED] |
 | MCP-8 No crash paths | All fallible operations return `McpError`; `util::lock` recovers poisoned mutexes; serialization failures of a tool result become an internal-error tool result. |
 | MCP-9 Graceful shutdown | On stdin EOF the loop awaits every remaining task, then drops the writer channel and waits for the writer to flush. |
 
@@ -47,9 +48,12 @@ Records how the concept's guarantees map onto this crate so a change to the sess
 src/
 ├── main.rs        entry: logging to stderr, Config::load, McpServer::run_stdio
 ├── lib.rs         module exports (integration tests link against the library)
-├── server.rs      session loop, message classification, task registry, writer
+├── server.rs      session loop, message classification, task registry, writer, initialize answer (with feedback guidance)
 ├── protocol.rs    JsonRpcResponse/Error, Tool, ToolResult, ToolContent (text, image)
-├── config.rs      flags + env + .env, Godot binary auto-detection per OS
+├── config.rs      flags + env + .env, Godot binary auto-detection per OS, feedback mode and gh path
+├── feedback.rs    scrubber, fingerprint, link builder of the agent feedback channel (see l2-agent-feedback-rust.md)
+├── journal.rs     agent feedback journal and report builder (see l2-agent-feedback-rust.md)
+├── issues.rs      GitHub client runner for feedback submission (see l2-agent-feedback-rust.md)
 ├── error.rs       McpError: BridgeUnavailable, Bridge, Process, Protocol, ToolExecution, Validation, Io, Json
 └── util.rs        poison-tolerant mutex lock
 ```
@@ -99,3 +103,4 @@ src/
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-16 | Agent (magic.analyze first-time) | Reverse-engineered from the code at 94e4540. |
+| 1.1.0 | 2026-10-16 | Agent (magic.spec) | [ADDED] Two modules and two settings of the feedback channel in the module map and the configuration row; link to its implementation. |

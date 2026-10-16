@@ -153,7 +153,7 @@ fn spawn_detached(command: &mut Command, what: &str) -> Result<u32> {
 /// MCP client, so a launched editor would keep them open for as long as it runs, and a client
 /// that waits for the server's stderr to close would wait for the editor instead.
 #[cfg(windows)]
-fn make_std_handles_private() {
+pub(crate) fn make_std_handles_private() {
     use windows_sys::Win32::Foundation::SetHandleInformation;
     use windows_sys::Win32::Foundation::{HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Console::{

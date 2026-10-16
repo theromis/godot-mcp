@@ -85,6 +85,12 @@ impl BridgeClient {
         self
     }
 
+    /// The shared secret this client sends, so that text that may reach a public place can be
+    /// cleaned of it.
+    pub fn secret(&self) -> Option<String> {
+        read_token(self.port)
+    }
+
     /// Sends a command to the Godot Editor and waits for its response.
     pub async fn send_command(&self, cmd_type: &str, params: Value) -> Result<Value> {
         let connection = self.connection().await?;

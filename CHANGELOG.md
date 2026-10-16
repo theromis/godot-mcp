@@ -8,6 +8,12 @@ release needs one (the release workflow fails without it).
 
 ### Added
 
+- A feedback channel from the AI to the maintainers. `godot_note_feedback` records something missing,
+  broken or misleading while the AI works, `godot_draft_feedback` turns the notes into one report
+  (versions, platform, related failures; paths, tokens and mentions removed) and shows it to you,
+  and `godot_submit_feedback` publishes it as a GitHub issue through your own `gh` after you agree.
+  You can also just copy the text or open the prefilled link. Nothing leaves your machine without
+  your approval. `GODOT_MCP_FEEDBACK` (`off`, `draft`, `full`) and `GODOT_MCP_GH_PATH` control it.
 - The addon leaves itself out of exported games: a new `export_plugin.gd`, registered by the
   plugin, skips every file in the addon folder. It only acts while the plugin is enabled; with it
   disabled, exclude `addons/godot_mcp/*` in the export preset.

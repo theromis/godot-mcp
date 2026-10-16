@@ -83,6 +83,8 @@ The server reads its settings from CLI flags, the environment (e.g. the MCP clie
 | `GODOT_DEBUG_PORT` | `--debug-port` | `9333` | Editor bridge port. |
 | `GODOT_MCP_TOKEN` | | generated | Shared secret for the bridge. Normally unnecessary, see [Security](#security). |
 | `GODOT_CONSOLE_PATH` | `--godot-console-path` | | Windows console wrapper. Unused by the server; the editor end-to-end tests use it for editor logs. |
+| `GODOT_MCP_FEEDBACK` | `--feedback` | `full` | Feedback channel for the maintainers: `off`, `draft` (the AI can write a report but never send one) or `full`. See [Feedback](#feedback-to-the-maintainers). |
+| `GODOT_MCP_GH_PATH` | `--gh-path` | `gh` on `PATH` | The [GitHub CLI](https://cli.github.com) used when you let the AI submit a report. Set it when your MCP client does not see `gh` on its `PATH`. |
 
 An empty value counts as "not set", so placeholders in a copied `.env.example` or an MCP client's `env` block are harmless.
 
@@ -123,6 +125,21 @@ The plugin picks its port from the project setting `godot_mcp/bridge_port` if yo
 | `godot_create_script` | — | Writes a `.gd` file from an `extends` / `class_name` / `_ready()` template into the project (`res://` path; the project is `project_path`, the editor's, or the one the server runs in). Refuses to overwrite unless `overwrite: true`. |
 | `godot_validate_script` | — | Syntax-checks a `.gd` file with `godot --headless --check-only`. |
 | `godot_resave_resources` | Editor | Refreshes the given `res://` files after external edits: assets are re-imported (synchronous), other files re-scanned. Without paths, rescans the whole project (background). |
+| `godot_note_feedback` | — | The AI records something missing, broken or misleading in godot-mcp itself. Kept in memory only. |
+| `godot_draft_feedback` | — | Turns the notes into one report for the maintainers and shows it to you. Sends nothing. |
+| `godot_submit_feedback` | — | Publishes a draft as a GitHub issue, only after you said yes. Not available in `draft` mode. |
+
+## Feedback to the maintainers
+
+While it works, the AI can note what is missing, broken or misleading in godot-mcp itself: a tool that fails for no clear reason, a capability no tool offers, a description that is wrong. When your request is done, it builds one report and shows it to you. You decide what happens next:
+
+- **Copy it** and open an issue yourself, or open the prefilled new-issue link the AI gives you.
+- **Let the AI submit it.** It publishes the issue through your own signed-in [GitHub CLI](https://cli.github.com) (`gh auth login`), under your GitHub account. This needs your explicit yes in the conversation.
+- **Discard it.**
+
+What is recorded: the AI's own notes, and from the server only the versions (server, addon, Godot), platform, whether the editor was reachable, the first line of recent failures of the tools a note names, and the names of tools the AI asked for that do not exist. Never gathered: project name, scene, script or resource contents, screenshots, environment values, the bridge token. Everything stays in memory until you approve a submission, and absolute paths, tokens and `@mentions` are removed from the text. The report will be public, so read it before you agree; the redaction is a safety net, not a guarantee.
+
+To tighten it, set `GODOT_MCP_FEEDBACK=draft` (the AI can write reports but has no way to send one) or `off` (the feature does not exist). If your MCP client lets you pre-approve tools, do not pre-approve `godot_submit_feedback`: a per-call prompt is the only check outside the AI's own judgement.
 
 ## How it works
 

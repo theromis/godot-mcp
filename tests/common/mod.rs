@@ -152,6 +152,8 @@ impl Session {
             "GODOT_CONSOLE_PATH",
             "GODOT_DEBUG_PORT",
             "GODOT_MCP_TOKEN",
+            "GODOT_MCP_FEEDBACK",
+            "GODOT_MCP_GH_PATH",
         ] {
             command.env_remove(key);
         }
@@ -372,4 +374,125 @@ where
 
 fn success(id: &Value, result: Value) -> String {
     json!({"commandId": id, "status": "success", "result": result}).to_string()
+}
+
+/// The stand-in for the GitHub command-line client: an example target of this package. A test
+/// run that did not build it (`cargo test --test ...` builds only the named test) builds it here,
+/// once, with the profile of the running test; an up-to-date build costs a moment.
+pub fn fake_gh() -> PathBuf {
+    static PATH: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    PATH.get_or_init(|| {
+        let exe = std::env::current_exe().expect("test executable path");
+        let profile_dir = exe
+            .parent()
+            .and_then(Path::parent)
+            .expect("profile directory")
+            .to_path_buf();
+        let name = if cfg!(windows) {
+            "fake_gh.exe"
+        } else {
+            "fake_gh"
+        };
+        let built = profile_dir.join("examples").join(name);
+        {
+            let mut command = std::process::Command::new(env!("CARGO"));
+            command
+                .args(["build", "--example", "fake_gh", "--manifest-path"])
+                .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"));
+            match profile_dir.file_name().and_then(|name| name.to_str()) {
+                Some("debug") | None => {}
+                Some("release") => {
+                    command.arg("--release");
+                }
+                Some(other) => {
+                    command.args(["--profile", other]);
+                }
+            }
+            let status = command.status().expect("run cargo for the fake gh example");
+            assert!(status.success(), "building the fake gh example failed");
+        }
+        assert!(built.exists(), "fake gh not found at {}", built.display());
+        built
+    })
+    .clone()
+}
+
+/// Environment pairs as the `&str` pairs the session helpers take.
+pub fn as_pairs(owned: &[(String, String)]) -> Vec<(&str, &str)> {
+    owned
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect()
+}
+
+/// A scripted stand-in for `gh`: what it answers is set through its environment, and what it
+/// was called with is read back from the files it writes.
+pub struct FakeGh {
+    dir: tempfile::TempDir,
+    script: Vec<(String, String)>,
+}
+
+impl FakeGh {
+    pub fn new() -> Self {
+        Self {
+            dir: tempfile::tempdir().expect("fake gh directory"),
+            script: Vec::new(),
+        }
+    }
+
+    /// Sets one scripting variable (`FAKE_GH_CREATE_STDOUT`, `FAKE_GH_LIST_EXIT`, ...).
+    pub fn script(mut self, key: &str, value: &str) -> Self {
+        self.script.push((key.to_string(), value.to_string()));
+        self
+    }
+
+    fn log_path(&self) -> PathBuf {
+        self.dir.path().join("calls.log")
+    }
+
+    fn body_path(&self) -> PathBuf {
+        self.dir.path().join("body.txt")
+    }
+
+    /// Variables that make a process run the stand-in as scripted and record into this object.
+    pub fn env_pairs(&self) -> Vec<(String, String)> {
+        let mut pairs = vec![
+            (
+                "FAKE_GH_LOG".to_string(),
+                self.log_path().to_string_lossy().into_owned(),
+            ),
+            (
+                "FAKE_GH_BODY".to_string(),
+                self.body_path().to_string_lossy().into_owned(),
+            ),
+        ];
+        pairs.extend(self.script.clone());
+        pairs
+    }
+
+    /// The same, plus the setting that makes the server use the stand-in as its `gh`.
+    pub fn server_env(&self) -> Vec<(String, String)> {
+        let mut pairs = self.env_pairs();
+        pairs.push((
+            "GODOT_MCP_GH_PATH".to_string(),
+            fake_gh().to_string_lossy().into_owned(),
+        ));
+        pairs
+    }
+
+    /// Every invocation so far, as its argument list.
+    pub fn calls(&self) -> Vec<Vec<String>> {
+        let Ok(log) = std::fs::read_to_string(self.log_path()) else {
+            return Vec::new();
+        };
+        log.split("[call]\n")
+            .skip(1)
+            .map(|block| block.lines().map(str::to_string).collect())
+            .collect()
+    }
+
+    /// Standard input of the last `issue create`, if there was one.
+    pub fn body(&self) -> Option<String> {
+        std::fs::read_to_string(self.body_path()).ok()
+    }
 }

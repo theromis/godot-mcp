@@ -24,6 +24,73 @@ pub struct Config {
     /// WebSocket port for Godot Editor bridge communication
     #[arg(long, env = "GODOT_DEBUG_PORT", default_value = "9333", value_parser = parse_port)]
     pub debug_port: u16,
+
+    /// Agent feedback channel: `off`, `draft` (notes and drafts only) or `full` (adds
+    /// submission after the human's approval)
+    #[arg(long = "feedback", env = "GODOT_MCP_FEEDBACK", default_value = "full", value_parser = parse_feedback_mode)]
+    pub feedback: FeedbackMode,
+
+    /// Path of the GitHub command-line client used to submit feedback reports; `gh` on `PATH`
+    /// when unset
+    #[arg(long = "gh-path", env = "GODOT_MCP_GH_PATH", value_parser = parse_path)]
+    pub gh_path: Option<PathBuf>,
+}
+
+/// How much of the agent feedback channel the human allows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FeedbackMode {
+    /// No feedback tools and no guidance.
+    Off,
+    /// Notes and drafts; the agent can never publish.
+    Draft,
+    /// Adds submission, which the human still has to approve.
+    #[default]
+    Full,
+}
+
+impl FeedbackMode {
+    /// Reads a mode name in any case; `None` for anything else.
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "off" => Some(Self::Off),
+            "draft" => Some(Self::Draft),
+            "full" => Some(Self::Full),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Draft => "draft",
+            Self::Full => "full",
+        }
+    }
+
+    /// Whether the note and draft tools exist.
+    pub fn enabled(self) -> bool {
+        self != Self::Off
+    }
+
+    /// Whether the submit tool exists.
+    pub fn submits(self) -> bool {
+        self == Self::Full
+    }
+}
+
+/// An empty value means "not set" and an unknown one is reported and ignored: a setting that
+/// is wrong must never keep the server from starting.
+fn parse_feedback_mode(raw: &str) -> Result<FeedbackMode, Infallible> {
+    if raw.trim().is_empty() {
+        return Ok(FeedbackMode::default());
+    }
+    Ok(FeedbackMode::parse(raw).unwrap_or_else(|| {
+        warn!(
+            "Ignoring GODOT_MCP_FEEDBACK={raw:?}: use off, draft or full. Using {}.",
+            FeedbackMode::default().as_str()
+        );
+        FeedbackMode::default()
+    }))
 }
 
 /// Accepts any text, including an empty one: placeholders such as `GODOT_PATH=""` in a
@@ -178,8 +245,53 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-    use super::Config;
+    use super::{Config, FeedbackMode};
     use clap::Parser;
+    use std::path::PathBuf;
+
+    #[test]
+    fn the_feedback_mode_defaults_to_full_and_accepts_any_case() {
+        assert_eq!(parse(&[]).feedback, FeedbackMode::Full);
+        for (text, mode) in [
+            ("off", FeedbackMode::Off),
+            ("OFF", FeedbackMode::Off),
+            ("Draft", FeedbackMode::Draft),
+            (" full ", FeedbackMode::Full),
+        ] {
+            assert_eq!(parse(&["--feedback", text]).feedback, mode, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn an_empty_or_unknown_feedback_mode_selects_full_instead_of_stopping_the_server() {
+        assert_eq!(parse(&["--feedback", ""]).feedback, FeedbackMode::Full);
+        assert_eq!(parse(&["--feedback", "bogus"]).feedback, FeedbackMode::Full);
+    }
+
+    #[test]
+    fn the_feedback_modes_have_stable_names() {
+        assert_eq!(FeedbackMode::Off.as_str(), "off");
+        assert_eq!(FeedbackMode::Draft.as_str(), "draft");
+        assert_eq!(FeedbackMode::Full.as_str(), "full");
+        assert!(FeedbackMode::Full.submits() && !FeedbackMode::Draft.submits());
+        assert!(FeedbackMode::Draft.enabled() && !FeedbackMode::Off.enabled());
+    }
+
+    #[test]
+    fn the_gh_path_is_optional_and_an_empty_value_is_accepted() {
+        assert_eq!(parse(&[]).gh_path, None);
+        assert_eq!(
+            parse(&["--gh-path", "/opt/gh"]).gh_path,
+            Some(PathBuf::from("/opt/gh"))
+        );
+        assert_eq!(parse(&["--gh-path", ""]).gh_path, Some(PathBuf::from("")));
+    }
+
+    fn parse(args: &[&str]) -> Config {
+        let mut full = vec!["godot-mcp"];
+        full.extend_from_slice(args);
+        Config::try_parse_from(full).expect("valid arguments")
+    }
 
     #[test]
     fn the_unused_mcp_url_setting_is_gone() {

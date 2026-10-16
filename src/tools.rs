@@ -1,6 +1,8 @@
 use crate::bridge::BridgeClient;
 use crate::cli_runner::CliRunner;
+use crate::config::FeedbackMode;
 use crate::error::McpError;
+use crate::journal::EvidenceKind;
 use crate::paths::{ensure_project_dir, find_project, is_valid_identifier, resolve_in_project};
 use crate::protocol::{Tool, ToolResult};
 use crate::validation::validate_arguments;
@@ -10,6 +12,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+
+mod feedback;
 
 const PROJECT_PATH_HINTS: &[&str] = &[
     "Pass project_path: the absolute path of a directory that contains project.godot",
@@ -23,6 +27,7 @@ pub struct ToolManager {
     /// Where the server was started; the project is looked up from here when no
     /// `project_path` is given and no editor is connected.
     working_dir: Option<PathBuf>,
+    feedback: feedback::FeedbackState,
 }
 
 /// A project directory plus whether it came from the live editor.
@@ -37,7 +42,20 @@ impl ToolManager {
             bridge,
             cli,
             working_dir: std::env::current_dir().ok(),
+            feedback: feedback::FeedbackState::new(FeedbackMode::default(), None),
         }
+    }
+
+    /// Sets how much of the agent feedback channel is active and where the GitHub client is.
+    pub fn with_feedback(mut self, mode: FeedbackMode, gh_path: Option<PathBuf>) -> Self {
+        self.feedback = feedback::FeedbackState::new(mode, gh_path);
+        self
+    }
+
+    /// Chooses which feedback tools the catalog holds. Call it once at start-up, before the
+    /// catalog is first read; a later call has no effect.
+    pub fn configure_catalog(mode: FeedbackMode) {
+        let _ = CATALOG_MODE.set(mode);
     }
 
     /// Looks up implicit projects from `dir` instead of the process working directory.
@@ -64,13 +82,15 @@ impl ToolManager {
             );
         };
         if let Err(problem) = validate_arguments(&tool.input_schema, &args) {
-            return ToolResult::error(
+            let result = ToolResult::error(
                 format!("Invalid arguments for {name}: {problem}"),
                 &["Check the tool's inputSchema returned by tools/list and retry"],
             );
+            self.observe(name, &result, EvidenceKind::InvalidArguments);
+            return result;
         }
 
-        match name {
+        let result = match name {
             "godot_get_version" => self.handle_get_version().await,
             "godot_get_project_info" => self.handle_bridge_call("get_project_info", args).await,
             "godot_launch_editor" => self.handle_launch_editor(args).await,
@@ -93,11 +113,16 @@ impl ToolManager {
             "godot_create_script" => self.handle_create_script(args).await,
             "godot_validate_script" => self.handle_validate_script(args).await,
             "godot_resave_resources" => self.handle_bridge_call("resave_resources", args).await,
+            feedback::NOTE => self.handle_note_feedback(args).await,
+            feedback::DRAFT => self.handle_draft_feedback(args).await,
+            feedback::SUBMIT => self.handle_submit_feedback(args).await,
             _ => ToolResult::error(
                 format!("Tool '{name}' has no handler"),
                 &["This is a server bug; report it with the tool name"],
             ),
-        }
+        };
+        self.observe(name, &result, EvidenceKind::Error);
+        result
     }
 
     async fn handle_get_version(&self) -> ToolResult {
@@ -387,6 +412,12 @@ impl ToolManager {
     /// Finds the project directory without asking the editor: an explicit `project_path`,
     /// else the project found from the server's working directory.
     fn host_project(&self, args: &Value) -> Result<PathBuf, ToolResult> {
+        let dir = self.locate_host_project(args)?;
+        self.feedback.remember_project(&dir);
+        Ok(dir)
+    }
+
+    fn locate_host_project(&self, args: &Value) -> Result<PathBuf, ToolResult> {
         if let Some(project_path) = str_arg(args, "project_path") {
             let dir = PathBuf::from(project_path);
             return match ensure_project_dir(&dir) {
@@ -413,6 +444,12 @@ impl ToolManager {
     /// Finds the project directory: an explicit `project_path`, else the project open in the
     /// live editor, else the project found from the server's working directory.
     async fn resolve_project(&self, args: &Value) -> Result<ResolvedProject, ToolResult> {
+        let project = self.locate_project(args).await?;
+        self.feedback.remember_project(&project.dir);
+        Ok(project)
+    }
+
+    async fn locate_project(&self, args: &Value) -> Result<ResolvedProject, ToolResult> {
         if let Some(project_path) = str_arg(args, "project_path") {
             let dir = PathBuf::from(project_path);
             return match ensure_project_dir(&dir) {
@@ -521,9 +558,12 @@ fn editor_error_hints(message: &str) -> &'static [&'static str] {
     }
 }
 
+/// Which feedback tools the catalog holds; set once at start-up by `configure_catalog`.
+static CATALOG_MODE: OnceLock<FeedbackMode> = OnceLock::new();
+
 fn tool_catalog() -> &'static [Tool] {
     static CATALOG: OnceLock<Vec<Tool>> = OnceLock::new();
-    CATALOG.get_or_init(build_catalog)
+    CATALOG.get_or_init(|| build_catalog(CATALOG_MODE.get().copied().unwrap_or_default()))
 }
 
 fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Tool {
@@ -538,8 +578,8 @@ fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> 
     }
 }
 
-fn build_catalog() -> Vec<Tool> {
-    vec![
+fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
+    let mut tools = vec![
         tool(
             "godot_get_version",
             "Retrieves the Godot Engine version and build information.",
@@ -750,5 +790,7 @@ fn build_catalog() -> Vec<Tool> {
             }),
             &[],
         ),
-    ]
+    ];
+    tools.extend(feedback::catalog(feedback_mode));
+    tools
 }

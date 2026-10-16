@@ -1,6 +1,6 @@
 # Tool Catalog
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** concept
 
@@ -12,6 +12,7 @@ Defines the set of MCP tools godot-mcp offers, how each one chooses between the 
 
 - [l1-mcp-server.md](l1-mcp-server.md) - Session, error contract and cancellation the tools run under.
 - [l1-editor-bridge.md](l1-editor-bridge.md) - Commands behind the editor-backed tools.
+- [l1-agent-feedback.md](l1-agent-feedback.md) - The feedback tools of this catalog and the rules specific to them (FB-1 to FB-11). [ADDED]
 - [l2-tool-handlers.md](l2-tool-handlers.md) - Implementation of this concept.
 - [l1-content-authoring.md](l1-content-authoring.md) - Planned tools for creating scenes and editing scripts (Draft).
 - [l1-runtime-observability.md](l1-runtime-observability.md) - Planned tools for runtime logs and in-game capture (Draft).
@@ -25,6 +26,7 @@ Agents call tools without seeing the implementation; a tool's contract has to be
 - A tool is "editor-backed" when it needs a running editor with the bridge enabled, "host-side" when it runs without one, and "live-first" when it prefers the editor and falls back to the engine binary.
 - The headless engine is only invoked for: version lookup, script validation, editor launch, and running the project.
 - Tool names are stable public API (`godot_*`); renaming one is a breaking change.
+- The three feedback tools are host tools that follow, besides the rules below, those of [l1-agent-feedback.md](l1-agent-feedback.md). The human can switch them off or reduce them to two by configuration, so which feedback tools `tools/list` shows is fixed at start-up by that setting. [ADDED]
 
 ## 3. Core Invariants
 
@@ -62,6 +64,9 @@ Agents call tools without seeing the implementation; a tool's contract has to be
 | `godot_create_script` | host | disk | `.gd` from a fixed template; no overwrite by default |
 | `godot_validate_script` | host | no | Headless syntax check |
 | `godot_resave_resources` | editor | editor file system | Re-import / refresh after external edits |
+| `godot_note_feedback` | host | session memory | Records one observation for the maintainers |
+| `godot_draft_feedback` | host (asks the editor or engine for its version) | session memory | Assembles a report from notes; no network |
+| `godot_submit_feedback` | host | public issue | Publishes a draft after the human's approval; only when feedback mode is `full` |
 
 ### 5.2 Live-First Decision
 
@@ -97,3 +102,4 @@ graph TD
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-16 | Agent (magic.analyze first-time) | Reverse-engineered from the code at 94e4540; rationale from the 2026-10-14 simulation QA report (script writes outside the project, engine option injection, fallback masking editor errors, Ctrl+C killing launched editors, inherited stdio handles on Windows). |
+| 1.1.0 | 2026-10-16 | Agent (magic.spec) | [ADDED] Three feedback tools in the catalog table, a constraint on their configuration-dependent presence, and the link to the feedback concept. |

@@ -1,8 +1,8 @@
 # Master Task Index (Registry)
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Generated:** 2026-10-16
-**Based on:** .design/main/PLAN.md v1.0.0
+**Based on:** .design/main/PLAN.md v1.1.0
 **Based on RULES:** .design/RULES.md v1.4.0
 **Execution Mode:** Parallel
 **Status:** Active
@@ -18,6 +18,7 @@ Tactical registry of all phases and their statuses. Check individual phase files
 | Phase | Description | Status |
 | --- | --- | --- |
 | [Phase 2](tasks/phase-2.md) | Close the gaps found by the first analysis: source-archive hygiene, token-file permissions proof, stale dev-project comment, contributor guidance for the specification workflow | `Todo` |
+| [Phase 3](archives/tasks/phase-3.md) | Agent feedback channel: note, draft and approved submission tools with scrubbing, a stand-in `gh` for tests, user documentation and an issue template | `Done (Archived)` |
 
 ## Meta Information
 

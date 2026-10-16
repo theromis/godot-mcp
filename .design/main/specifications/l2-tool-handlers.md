@@ -1,6 +1,6 @@
 # Tool Handlers (Rust)
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-tool-catalog.md
@@ -14,6 +14,7 @@ The Rust realization of the tool catalog: the static catalog with input schemas,
 - [l1-tool-catalog.md](l1-tool-catalog.md) - Parent concept.
 - [l2-bridge-client-rust.md](l2-bridge-client-rust.md) - Transport for editor-backed tools.
 - [l2-rust-stdio-server.md](l2-rust-stdio-server.md) - Session that calls `ToolManager::call_tool`.
+- [l2-agent-feedback-rust.md](l2-agent-feedback-rust.md) - The feedback tools routed here and the outcome recording done after every call. [ADDED]
 
 ## 1. Motivation
 
@@ -60,6 +61,12 @@ src/
 4. Reuse `resolve_in_project`, `is_valid_identifier` and `bridge_error_result`; never build engine arguments or script text from raw caller strings.
 5. Update the README tool table.
 
+### 5.3 Feedback Hooks [ADDED]
+
+- `call_tool` hands every outcome to the feedback journal after the handler has returned: a failed argument check as `invalid_arguments`, an error result as `error`, and a per-tool call and failure count. Calls to the three feedback tools are not recorded. Recording never alters the result.
+- The three feedback tools are routed like host tools and appear in the catalog according to the configured feedback mode.
+- Details, limits and the order of work are in [l2-agent-feedback-rust.md](l2-agent-feedback-rust.md) (5.2).
+
 ## 7. Drawbacks & Alternatives
 
 - **A full JSON-Schema validator crate**: more complete, but the catalog uses a small subset; the hand-written checker gives clearer messages and no extra dependency.
@@ -79,3 +86,4 @@ src/
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-16 | Agent (magic.analyze first-time) | Reverse-engineered from the code at 94e4540. |
+| 1.1.0 | 2026-10-16 | Agent (magic.spec) | [ADDED] Section 5.3 on the feedback hooks in dispatch and the catalog; link to the feedback implementation. |

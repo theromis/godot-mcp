@@ -307,3 +307,118 @@ async fn unparsable_dotenv_is_ignored_instead_of_stopping_the_server() {
     let reply = session.request("ping", json!({}), FAST).await;
     assert!(reply["result"].is_object());
 }
+
+#[test]
+fn an_unknown_feedback_mode_falls_back_with_a_warning_on_stderr_only() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let cwd = tempfile::tempdir().expect("working directory");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_godot-mcp"))
+        .current_dir(cwd.path())
+        .env_remove("GODOT_PATH")
+        .env_remove("GODOT_DEBUG_PORT")
+        .env("GODOT_MCP_FEEDBACK", "bogus")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("start the server");
+    let mut stdin = child.stdin.take().expect("server stdin");
+    writeln!(stdin, r#"{{"jsonrpc":"2.0","id":1,"method":"ping"}}"#).expect("send ping");
+    drop(stdin);
+    let output = child.wait_with_output().expect("server output");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        serde_json::from_str::<serde_json::Value>(line)
+            .unwrap_or_else(|_| panic!("non-JSON line on stdout: {line:?}"));
+    }
+    assert!(stdout.contains(r#""id":1"#), "{stdout}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("GODOT_MCP_FEEDBACK") && stderr.contains("bogus"),
+        "{stderr}"
+    );
+}
+
+const FEEDBACK_TOOLS: [&str; 3] = [
+    "godot_note_feedback",
+    "godot_draft_feedback",
+    "godot_submit_feedback",
+];
+
+async fn listed_feedback_tools(mode: Option<&str>) -> Vec<String> {
+    let env: Vec<(&str, &str)> = mode
+        .map(|mode| ("GODOT_MCP_FEEDBACK", mode))
+        .into_iter()
+        .collect();
+    let mut session = Session::start_with_env(free_port(), &no_godot(), &env).await;
+    let reply = session.request("tools/list", json!({}), FAST).await;
+    reply["result"]["tools"]
+        .as_array()
+        .expect("tool list")
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .filter(|name| FEEDBACK_TOOLS.contains(name))
+        .map(str::to_string)
+        .collect()
+}
+
+#[tokio::test]
+async fn the_feedback_tools_listed_follow_the_mode() {
+    assert_eq!(listed_feedback_tools(None).await, FEEDBACK_TOOLS);
+    assert_eq!(listed_feedback_tools(Some("full")).await, FEEDBACK_TOOLS);
+    assert_eq!(
+        listed_feedback_tools(Some("draft")).await,
+        &FEEDBACK_TOOLS[..2]
+    );
+    assert!(listed_feedback_tools(Some("off")).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_tool_that_the_mode_removed_is_unknown() {
+    let mut session =
+        Session::start_with_env(free_port(), &no_godot(), &[("GODOT_MCP_FEEDBACK", "draft")]).await;
+    let reply = session
+        .call_tool(
+            "godot_submit_feedback",
+            json!({"draft_id": "d1", "confirmed": true}),
+            FAST,
+        )
+        .await;
+    assert_eq!(reply["error"]["code"], -32602);
+}
+
+async fn guidance(mode: Option<&str>) -> Option<String> {
+    let env: Vec<(&str, &str)> = mode
+        .map(|mode| ("GODOT_MCP_FEEDBACK", mode))
+        .into_iter()
+        .collect();
+    let mut session = Session::start_with_env(free_port(), &no_godot(), &env).await;
+    let reply = session
+        .request("initialize", json!({"protocolVersion": "2025-06-18"}), FAST)
+        .await;
+    reply["result"]["instructions"].as_str().map(str::to_string)
+}
+
+#[tokio::test]
+async fn initialize_carries_short_guidance_that_names_the_tools_of_the_mode() {
+    for mode in [None, Some("full")] {
+        let text = guidance(mode).await.expect("guidance in full mode");
+        assert!(text.split_whitespace().count() <= 150, "{text}");
+        for tool in FEEDBACK_TOOLS {
+            assert!(text.contains(tool), "{tool} in {text}");
+        }
+        assert!(text.contains("explicit yes"), "{text}");
+    }
+
+    let text = guidance(Some("draft"))
+        .await
+        .expect("guidance in draft mode");
+    assert!(text.split_whitespace().count() <= 150, "{text}");
+    assert!(text.contains("godot_note_feedback") && text.contains("godot_draft_feedback"));
+    assert!(!text.contains("godot_submit_feedback"), "{text}");
+
+    assert!(guidance(Some("off")).await.is_none());
+}
