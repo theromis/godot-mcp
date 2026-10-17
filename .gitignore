@@ -40,9 +40,12 @@ export_presets.cfg
 Thumbs.db
 Desktop.ini
 
+# Skills
+/.*/skills/
+!/.*/skills/release
+
 # SDD engine
 /.magic/
-/.*/skills/
 /.*/skills/magic-*/
 /.*/*/magic*.md
 
@@ -50,6 +53,3 @@ Desktop.ini
 /.design/*graph*.*
 /.design/*cache*/
 /.design/wiki/
-
-# Skills
-!/.*/skills/release
