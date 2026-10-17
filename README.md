@@ -69,7 +69,7 @@ Install the Godot MCP server (https://github.com/zigenzoog/godot-mcp) for this G
 | VS Code | `.vscode/mcp.json` (uses a top-level `servers` key instead of `mcpServers`) |
 | Antigravity / others | the client's MCP settings file |
 
-On Windows, escape backslashes in JSON: `"C:\\Tools\\godot-mcp\\godot-mcp.exe"`.
+On Windows, escape backslashes in JSON: `"C:\\Program Files\\godot-mcp\\godot-mcp.exe"`.
 
 Both paths are machine-specific. Don't commit a `.mcp.json` with real paths: commit a `.mcp.json.example` with placeholders, add `.mcp.json` to `.gitignore`, and let each developer copy it locally.
 
@@ -88,7 +88,7 @@ The server reads its settings from CLI flags, the environment (e.g. the MCP clie
 
 An empty value counts as "not set", so placeholders in a copied `.env.example` or an MCP client's `env` block are harmless.
 
-In a `.env` file, put **Windows paths in single quotes** (`GODOT_PATH='C:\Tools\Godot\Godot.exe'`). In double quotes a backslash starts an escape sequence and the whole file fails to load; the server logs a warning when that happens. See [.env.example](.env.example).
+In a `.env` file, put **Windows paths in single quotes** (`GODOT_PATH='C:\Program Files\Godot\Godot.exe'`). In double quotes a backslash starts an escape sequence and the whole file fails to load; the server logs a warning when that happens. See [.env.example](.env.example).
 
 The plugin picks its port from the project setting `godot_mcp/bridge_port` if you add one, otherwise from the editor's own `GODOT_DEBUG_PORT` environment variable, otherwise `9333`. Keep it equal to the server's port. Add the project setting `godot_mcp/verbose` = `true` to log every client connection in the editor's Output panel.
 
