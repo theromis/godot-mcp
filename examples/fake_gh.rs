@@ -52,7 +52,7 @@ fn main() {
             (
                 "FAKE_GH_CREATE",
                 "FAKE_GH_DELAY_MS",
-                "https://github.com/zigenzoog/godot-mcp/issues/1\n",
+                "https://github.com/zenzoog/godot-mcp/issues/1\n",
             )
         }
         _ => {

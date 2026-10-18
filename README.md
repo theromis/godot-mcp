@@ -15,13 +15,13 @@ Requirements: **Godot 4.5+** and an MCP client such as Claude Code, Claude Deskt
 Open your Godot project in the assistant and paste:
 
 ```text
-Install the Godot MCP server (https://github.com/zigenzoog/godot-mcp) for this Godot project. Use the GitHub release, not a local clone of that repository.
+Install the Godot MCP server (https://github.com/zenzoog/godot-mcp) for this Godot project. Use the GitHub release, not a local clone of that repository.
 
 1. Detect the OS and CPU architecture (Windows, Linux, or macOS; x86_64 or arm64).
 2. Ask me for the full path to my Godot executable. Never guess it: Windows builds are portable, version-named files (e.g. Godot_v4.5-stable_win64.exe) stored wherever I put them. Run `<path> --version` to confirm it works.
-3. Download the server archive for this platform and godot-mcp-addon.zip from https://github.com/zigenzoog/godot-mcp/releases/latest, e.g.:
-   gh release download --repo zigenzoog/godot-mcp --pattern "godot-mcp-<target-triple>.*"
-   gh release download --repo zigenzoog/godot-mcp --pattern "godot-mcp-addon.zip"
+3. Download the server archive for this platform and godot-mcp-addon.zip from https://github.com/zenzoog/godot-mcp/releases/latest, e.g.:
+   gh release download --repo zenzoog/godot-mcp --pattern "godot-mcp-<target-triple>.*"
+   gh release download --repo zenzoog/godot-mcp --pattern "godot-mcp-addon.zip"
    Extract the server to a permanent folder outside the project: %LOCALAPPDATA%\godot-mcp\ (Windows), ~/.local/share/godot-mcp/ (Linux), ~/Library/Application Support/godot-mcp/ (macOS).
 4. Copy addons/godot_mcp from the addon archive into <project>/addons/godot_mcp and enable it in project.godot:
    [editor_plugins]
@@ -32,7 +32,7 @@ Install the Godot MCP server (https://github.com/zigenzoog/godot-mcp) for this G
 
 ### Option B: install manually
 
-**1. Download** the server for your platform and the addon from the [latest release](https://github.com/zigenzoog/godot-mcp/releases/latest):
+**1. Download** the server for your platform and the addon from the [latest release](https://github.com/zenzoog/godot-mcp/releases/latest):
 
 | Platform | Asset |
 | --- | --- |

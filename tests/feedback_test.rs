@@ -256,7 +256,7 @@ async fn a_draft_shows_the_whole_report_and_every_way_to_deliver_it() {
     assert!(text.contains("## Report details"), "{text}");
     assert!(text.contains("gmfb"), "{text}");
     assert!(
-        text.contains("Link: https://github.com/zigenzoog/godot-mcp/issues/new?title="),
+        text.contains("Link: https://github.com/zenzoog/godot-mcp/issues/new?title="),
         "{text}"
     );
     assert!(text.contains("Copy: always available"), "{text}");
@@ -521,7 +521,7 @@ async fn a_chosen_title_is_prefixed_and_a_bad_selection_names_the_known_ids() {
 use godot_mcp::issues::{IssueClient, RepoAddress};
 use godot_mcp::journal::Outcome;
 
-const ISSUE_PREFIX: &str = "https://github.com/zigenzoog/godot-mcp/issues/";
+const ISSUE_PREFIX: &str = "https://github.com/zenzoog/godot-mcp/issues/";
 
 async fn started(gh: &FakeGh) -> Session {
     let env = gh.server_env();
@@ -618,7 +618,7 @@ async fn an_unknown_draft_lists_the_known_ones() {
 async fn a_confirmed_draft_is_published_exactly_as_shown_and_only_once() {
     let gh = FakeGh::new().script(
         "FAKE_GH_CREATE_STDOUT",
-        format!("Creating issue in zigenzoog/godot-mcp\n\n{ISSUE_PREFIX}42\n").as_str(),
+        format!("Creating issue in zenzoog/godot-mcp\n\n{ISSUE_PREFIX}42\n").as_str(),
     );
     let mut session = started(&gh).await;
     let draft = drafted(&mut session).await;
@@ -638,7 +638,7 @@ async fn a_confirmed_draft_is_published_exactly_as_shown_and_only_once() {
                 "issue".to_string(),
                 "list".into(),
                 "--repo".into(),
-                "zigenzoog/godot-mcp".into(),
+                "zenzoog/godot-mcp".into(),
                 "--state".into(),
                 "all".into(),
                 "--search".into(),
@@ -652,7 +652,7 @@ async fn a_confirmed_draft_is_published_exactly_as_shown_and_only_once() {
                 "issue".to_string(),
                 "create".into(),
                 "--repo".into(),
-                "zigenzoog/godot-mcp".into(),
+                "zenzoog/godot-mcp".into(),
                 format!("--title={title}"),
                 "--body-file".into(),
                 "-".into(),
@@ -905,7 +905,7 @@ async fn a_title_that_looks_like_an_option_is_still_one_argument() {
         .find(|call| call[1] == "create")
         .expect("a create call");
     assert_eq!(create.len(), 7, "{create:?}");
-    assert_eq!(create[3], "zigenzoog/godot-mcp");
+    assert_eq!(create[3], "zenzoog/godot-mcp");
     assert_eq!(create[4], "--title=[agent-feedback] --web --repo evil/repo");
 }
 
