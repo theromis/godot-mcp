@@ -7,7 +7,7 @@ authors = ["Oleg Alexandrov <alexandrovoleg.ru@gmail.com>"]
 description = "High-performance Model Context Protocol (MCP) server for the Godot Game Engine"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/zenzoog/godot-mcp"
+repository = "https://github.com/zeegzoog/godot-mcp"
 
 [dependencies]
 tokio = { version = "1.53.3", features = [

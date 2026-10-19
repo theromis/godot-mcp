@@ -354,28 +354,28 @@ mod tests {
     use super::*;
 
     fn repo() -> RepoAddress {
-        RepoAddress::parse("https://github.com/zenzoog/godot-mcp").expect("repository")
+        RepoAddress::parse("https://github.com/zeegzoog/godot-mcp").expect("repository")
     }
 
     #[test]
     fn the_repository_address_is_read_from_the_manifest_url() {
         for url in [
-            "https://github.com/zenzoog/godot-mcp",
-            "https://github.com/zenzoog/godot-mcp.git",
-            "https://github.com/zenzoog/godot-mcp/",
-            "  https://github.com/zenzoog/godot-mcp  ",
+            "https://github.com/zeegzoog/godot-mcp",
+            "https://github.com/zeegzoog/godot-mcp.git",
+            "https://github.com/zeegzoog/godot-mcp/",
+            "  https://github.com/zeegzoog/godot-mcp  ",
         ] {
             let parsed = RepoAddress::parse(url).unwrap_or_else(|| panic!("{url}"));
-            assert_eq!(parsed.slug(), "zenzoog/godot-mcp", "{url}");
+            assert_eq!(parsed.slug(), "zeegzoog/godot-mcp", "{url}");
         }
         let parsed = repo();
         assert_eq!(
             parsed.new_issue_url(),
-            "https://github.com/zenzoog/godot-mcp/issues/new"
+            "https://github.com/zeegzoog/godot-mcp/issues/new"
         );
         assert_eq!(
             parsed.issue_prefix(),
-            "https://github.com/zenzoog/godot-mcp/issues/"
+            "https://github.com/zeegzoog/godot-mcp/issues/"
         );
     }
 
@@ -410,7 +410,7 @@ mod tests {
                 "issue",
                 "list",
                 "--repo",
-                "zenzoog/godot-mcp",
+                "zeegzoog/godot-mcp",
                 "--state",
                 "all",
                 "--search",
@@ -432,7 +432,7 @@ mod tests {
                 "issue",
                 "create",
                 "--repo",
-                "zenzoog/godot-mcp",
+                "zeegzoog/godot-mcp",
                 "--title=--web is not an option",
                 "--body-file",
                 "-",
@@ -448,12 +448,12 @@ mod tests {
     fn a_created_issue_is_recognized_by_its_address_on_the_last_line() {
         let outcome = interpret_create(
             true,
-            "\nCreating issue in zenzoog/godot-mcp\n\nhttps://github.com/zenzoog/godot-mcp/issues/42\n\n",
+            "\nCreating issue in zeegzoog/godot-mcp\n\nhttps://github.com/zeegzoog/godot-mcp/issues/42\n\n",
             "",
             &repo(),
         );
         assert!(
-            matches!(&outcome, Outcome::Created(address) if address == "https://github.com/zenzoog/godot-mcp/issues/42"),
+            matches!(&outcome, Outcome::Created(address) if address == "https://github.com/zeegzoog/godot-mcp/issues/42"),
             "{outcome:?}"
         );
     }
@@ -463,10 +463,10 @@ mod tests {
         for stdout in [
             "",
             "Created!",
-            "https://github.com/zenzoog/godot-mcp/issues/",
-            "https://github.com/zenzoog/godot-mcp/issues/abc",
+            "https://github.com/zeegzoog/godot-mcp/issues/",
+            "https://github.com/zeegzoog/godot-mcp/issues/abc",
             "https://github.com/other/repo/issues/7",
-            "https://github.com/zenzoog/godot-mcp/pull/7",
+            "https://github.com/zeegzoog/godot-mcp/pull/7",
         ] {
             let outcome = interpret_create(true, stdout, "", &repo());
             assert!(
@@ -536,12 +536,12 @@ mod tests {
     #[test]
     fn a_duplicate_counts_only_when_the_body_holds_the_fingerprint() {
         let json = r#"[
-            {"number": 3, "title": "other", "url": "https://github.com/zenzoog/godot-mcp/issues/3", "body": "unrelated"},
-            {"number": 9, "title": "same", "url": "https://github.com/zenzoog/godot-mcp/issues/9", "body": "text\n- Fingerprint: gmfb0123456789ab\n"}
+            {"number": 3, "title": "other", "url": "https://github.com/zeegzoog/godot-mcp/issues/3", "body": "unrelated"},
+            {"number": 9, "title": "same", "url": "https://github.com/zeegzoog/godot-mcp/issues/9", "body": "text\n- Fingerprint: gmfb0123456789ab\n"}
         ]"#;
         assert_eq!(
             parse_duplicates(json, "gmfb0123456789ab", &repo()).expect("parsed"),
-            Some("https://github.com/zenzoog/godot-mcp/issues/9".to_string())
+            Some("https://github.com/zeegzoog/godot-mcp/issues/9".to_string())
         );
         assert_eq!(
             parse_duplicates(json, "gmfbffffffffffff", &repo()).expect("parsed"),
