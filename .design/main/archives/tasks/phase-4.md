@@ -1,10 +1,16 @@
 ---
 phase: 4
 name: "Godot Release Lines & Community Health"
-status: Todo
+status: Done
 subsystem: "release lines (branches, workflows, release skill), addons/godot_mcp version gate, SECURITY.md, CONTRIBUTING.md"
 requires: [2]
-provides: []
+provides:
+  - "Release lines godot-v4.5, godot-v4.6, godot-v4.7 and the development line on master (Godot 4.8)"
+  - "Line identity in the version string with a sync test; addon version gate warns on newer Godot"
+  - "Line-aware CI and release workflow with release-line.sh"
+  - "Releases 0.5.0 for Godot 4.5, 4.6 and 4.7"
+  - "Release skill for carrying and releasing lines; SECURITY.md and CONTRIBUTING.md"
+  - "A configured GODOT_PATH is used as given"
 key_files:
   created: []
   modified: []
@@ -15,7 +21,7 @@ duration_minutes: ~
 # Stage 4 Tasks — Godot Release Lines & Community Health
 
 **Phase:** 4
-**Status:** Todo
+**Status:** Done
 **Strategic Goal:** godot-mcp is maintained as one release line per Godot minor version (branches `godot-v4.5`, `godot-v4.6`, `godot-v4.7`) plus the development line on `master` (Godot 4.8); every line proves itself against its own Godot build, the release skill carries shared changes to every affected line and releases each line on its own, and the security policy and contributor guide tell people and AI agents how to report and how to contribute.
 
 ## Atomic Checklist
@@ -33,9 +39,9 @@ duration_minutes: ~
 - [x] [T-4D01] Rewrite the release skill around the lines
 - [x] [T-4E01] Commit the line-aware development line and cut the three release branches
 - [x] [T-4E02] Call `is_importing` directly on the development line and line 4.7
-- [ ] [T-4F01] Turn on private vulnerability reporting and protect the release branches
-- [ ] [T-4F02] Publish the branches
-- [ ] [T-4F03] Publish the first line releases (0.5.0)
+- [x] [T-4F01] Turn on private vulnerability reporting and protect the release branches
+- [x] [T-4F02] Publish the branches
+- [x] [T-4F03] Publish the first line releases (0.5.0)
 - [x] [T-4T01] Validate Phase 4 on every line against the specifications
 
 ## Detailed Tracking
@@ -165,30 +171,36 @@ duration_minutes: ~
 ### [T-4F01] Turn on private vulnerability reporting and protect the release branches
 
 - **Spec:** l2-community-health-files.md §5.4; l2-release-branches.md §5.8
-- **Status:** Blocked [!]
+- **Status:** Done
 - **Assignment:** User (repository settings)
 - **Verify:** `gh api repos/zeegzoog/godot-mcp/private-vulnerability-reporting` returns `{"enabled":true}`; a branch rule for `godot-v*` blocks deletion and force pushes (`gh api repos/zeegzoog/godot-mcp/rulesets` lists it, or the branch protection page shows it).
 - **Handoff:** T-4F02.
 - **Notes:** The agent lists the steps; it does not change settings.
   Private vulnerability reporting: done by the user (confirmed enabled on 2026-10-20). Remaining: the ruleset for `godot-v*` (no deletion, no force push), instructions given; tick when `gh api repos/zeegzoog/godot-mcp/rulesets` lists it.
+- **Changes:** Private vulnerability reporting enabled and ruleset 'Protect Godot release lines' (godot-v*: no deletion, no force push) active; both done by the user.
+
 
 ### [T-4F02] Publish the branches
 
 - **Spec:** l2-release-branches.md §6 step 6; l1-distribution.md DS-7
-- **Status:** Todo
+- **Status:** Done
 - **Assignment:** Agent, after the user's explicit approval of the push
 - **Verify:** `git push origin master godot-v4.7 godot-v4.6 godot-v4.5` after approval; the latest CI run of each branch is green (`gh run list --branch <branch> -L 1`), including the Godot job with that branch's build; T-2B01's Unix token-file assertion passes in the Linux job.
 - **Handoff:** T-4F03.
 - **Notes:** Push only after T-4F01, so the reporting link in `SECURITY.md` works from the first day.
+- **Changes:** master, godot-v4.7, 4.6, 4.5 pushed after approval; CI green on all four heads (16/16 jobs), including the Linux token-file assertion.
+
 
 ### [T-4F03] Publish the first line releases (0.5.0)
 
 - **Spec:** l1-release-lines.md §5.3, §5.5; l2-release-branches.md §5.6 procedure D
-- **Status:** Todo
+- **Status:** Done
 - **Assignment:** Agent through the release skill, after the user's explicit approval of every tag
 - **Verify:** Releases `v0.5.0+godot.4.5`, `v0.5.0+godot.4.6`, `v0.5.0+godot.4.7` exist, each titled `godot-mcp 0.5.0 for Godot 4.N` with five files suffixed `-godot4.N`; only the 4.7 release is marked latest (`gh release view` / `gh release list`); afterwards the install cells of the three line tables no longer mention 0.4.0, changed on `master` and carried to every line.
 - **Handoff:** `/magic.task main update` to close the phase.
 - **Notes:** Each branch gets its own changelog section `## [0.5.0+godot.4.N] - <date>`, written for users: the tag and file names changed, which release to pick, the line gate and warning.
+- **Changes:** Releases v0.5.0+godot.4.7 (latest), 4.6, 4.5, each titled 'godot-mcp 0.5.0 for Godot 4.N' with 5 files suffixed -godot4.N; all release jobs green. The first 4.7 tag was deleted with the user's approval because the tagged commit's release workflow had an invalid tag filter ('+' is a quantifier); fixed with a guard test, carried to all lines, then re-tagged. Line tables in README and SECURITY.md now name the line releases.
+
 
 ### [T-4T01] Validate Phase 4 on every line against the specifications
 
