@@ -57,13 +57,19 @@ body_file=""
 cleanup() { [ -z "$body_file" ] || rm -f "$body_file"; }
 trap cleanup EXIT
 
+# A path the gh program can open: Git for Windows' mktemp prints /tmp/..., which a native
+# Windows gh cannot resolve; cygpath translates it there and is absent elsewhere.
+native_path() {
+	if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s\n' "$1"; fi
+}
+
 # Checks the message and writes it to a file of this script's own, named by $file. It runs in
 # this shell, not in a command substitution, so a refusal stops the whole script.
 message_file() {
 	body "$1"
 	body_file=$(mktemp)
 	printf '%s\n' "$1" >"$body_file"
-	file=$body_file
+	file=$(native_path "$body_file")
 }
 
 run() {
@@ -93,11 +99,11 @@ close)
 	number "$1"
 	message_file "$3"
 	case "$2" in
-	completed) run gh issue close "$1" -R "$repo" --reason completed --comment "$(cat "$file")" ;;
-	not-planned) run gh issue close "$1" -R "$repo" --reason "not planned" --comment "$(cat "$file")" ;;
+	completed) run gh issue close "$1" -R "$repo" --reason completed --comment "$(cat "$body_file")" ;;
+	not-planned) run gh issue close "$1" -R "$repo" --reason "not planned" --comment "$(cat "$body_file")" ;;
 	duplicate)
 		number "${4:-}"
-		run gh issue close "$1" -R "$repo" --duplicate-of "$4" --comment "$(cat "$file")"
+		run gh issue close "$1" -R "$repo" --duplicate-of "$4" --comment "$(cat "$body_file")"
 		;;
 	*) fail "close reason must be completed, not-planned or duplicate" ;;
 	esac
@@ -106,7 +112,7 @@ reopen)
 	[ $# -eq 2 ] || fail "usage: reopen <n> <body>"
 	number "$1"
 	message_file "$2"
-	run gh issue reopen "$1" -R "$repo" --comment "$(cat "$file")"
+	run gh issue reopen "$1" -R "$repo" --comment "$(cat "$body_file")"
 	;;
 label)
 	[ $# -eq 3 ] || fail "usage: label <n> add|remove <label>"

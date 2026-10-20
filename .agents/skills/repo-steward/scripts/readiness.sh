@@ -296,6 +296,9 @@ title="Release readiness: v$next ($state)"
 body_file=$(mktemp)
 trap 'rm -f "$body_file"' EXIT
 printf '%s\n' "$body" >"$body_file"
+# Git for Windows' mktemp prints /tmp/..., which a native Windows gh cannot open.
+gh_body_file=$body_file
+if command -v cygpath >/dev/null 2>&1; then gh_body_file=$(cygpath -w "$body_file"); fi
 
 if [ "$state" = none ]; then
 	if [ -n "$open" ]; then
@@ -310,14 +313,14 @@ _Kept current by the repo steward, an AI assistant working for the $repo maintai
 fi
 
 if [ -z "$open" ]; then
-	url=$(gh issue create -R "$repo" --title "$title" --label "$label" --body-file "$body_file" | tr -d '\r')
+	url=$(gh issue create -R "$repo" --title "$title" --label "$label" --body-file "$gh_body_file" | tr -d '\r')
 	echo "opened the readiness notice $url"
 	exit 0
 fi
 
 previous=$(gh issue view "$open" -R "$repo" --json body --jq .body | tr -d '\r' |
 	sed -n 's/.*kind=readiness state=\([a-z]*\).*/\1/p' | tail -n 1)
-gh issue edit "$open" -R "$repo" --title "$title" --body-file "$body_file" >/dev/null
+gh issue edit "$open" -R "$repo" --title "$title" --body-file "$gh_body_file" >/dev/null
 echo "updated the readiness notice #$open"
 if [ "$(rank "$state")" -gt "$(rank "${previous:-none}")" ]; then
 	gh issue comment "$open" -R "$repo" --body "Release readiness rose to **$state**: v$next.

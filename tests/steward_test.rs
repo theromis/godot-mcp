@@ -3,6 +3,8 @@
 //! access to the code, starts on no event an outsider can cause, and the reminder workflow
 //! watches a label the skill creates.
 
+mod common;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -507,6 +509,47 @@ fn act_posts_only_disclosed_messages_without_secrets() {
     assert!(
         !ok,
         "act.sh must refuse an item that is not a number:\n{text}"
+    );
+}
+
+/// A directory holding the stand-in GitHub client under the name `gh`, for putting first on PATH.
+fn gh_directory() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("fake gh directory");
+    let name = if cfg!(windows) { "gh.exe" } else { "gh" };
+    std::fs::copy(common::fake_gh(), dir.path().join(name)).expect("copy the fake gh");
+    dir
+}
+
+#[test]
+fn act_hands_gh_a_message_file_it_can_open() {
+    let Some(bash) = bash() else {
+        eprintln!("skipped: no bash found (Git for Windows' bash on Windows)");
+        return;
+    };
+    // A native gh on Windows cannot open the POSIX path bash's mktemp prints (/tmp/...).
+    let gh = gh_directory();
+    let record = tempfile::tempdir().expect("record directory");
+    let body_record = record.path().join("body.txt");
+    let path = std::env::join_paths(std::iter::once(gh.path().to_path_buf()).chain(
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
+    ))
+    .expect("PATH");
+    let path = path.to_string_lossy().into_owned();
+    let body_env = body_record.to_string_lossy().into_owned();
+    let message = "The answer.\n\n_Written by an AI assistant on behalf of the maintainers._\n\
+                   <!-- repo-steward:v1 kind=answer state=answered round=0 -->";
+    let (ok, text) = run_script(
+        &bash,
+        "act.sh",
+        &["comment", "1", message],
+        &[("PATH", path.as_str()), ("FAKE_GH_BODY", body_env.as_str())],
+    );
+    assert!(ok, "act.sh comment failed with the stand-in gh:\n{text}");
+    let posted = std::fs::read_to_string(&body_record).unwrap_or_default();
+    assert_eq!(
+        posted.trim_end(),
+        message,
+        "gh must receive the message through a file it can open"
     );
 }
 
