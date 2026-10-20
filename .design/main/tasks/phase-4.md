@@ -31,12 +31,12 @@ duration_minutes: ~
 - [x] [T-4C02] Write the contributor guide
 - [x] [T-4C03] Point the readme, agent guide, issue chooser and changelog at the lines and the new files
 - [x] [T-4D01] Rewrite the release skill around the lines
-- [ ] [T-4E01] Commit the line-aware development line and cut the three release branches
-- [ ] [T-4E02] Call `is_importing` directly on the development line and line 4.7
+- [x] [T-4E01] Commit the line-aware development line and cut the three release branches
+- [x] [T-4E02] Call `is_importing` directly on the development line and line 4.7
 - [ ] [T-4F01] Turn on private vulnerability reporting and protect the release branches
 - [ ] [T-4F02] Publish the branches
 - [ ] [T-4F03] Publish the first line releases (0.5.0)
-- [ ] [T-4T01] Validate Phase 4 on every line against the specifications
+- [x] [T-4T01] Validate Phase 4 on every line against the specifications
 
 ## Detailed Tracking
 
@@ -142,30 +142,35 @@ duration_minutes: ~
 ### [T-4E01] Commit the line-aware development line and cut the three release branches
 
 - **Spec:** l2-release-branches.md §5.1, §6 steps 2–3; l1-release-lines.md §5.5
-- **Status:** Todo
+- **Status:** Done
 - **Assignment:** Agent, after the user's go-ahead to commit (local only; nothing is pushed)
 - **Verify:** `master` has the line-aware product commit(s) with `.design/` committed separately; `git branch --list 'godot-v*'` lists three branches cut from that commit; each branch has one identity commit (`0.5.0+godot.4.N` in both manifests and `Cargo.lock`, `MIN_MINOR = N`, `config/features` `4.N`, `.github/godot-version` `4.5.2-stable` / `4.6.3-stable` / `4.7.2-stable`); `cargo test --test version_sync_test` passes on each branch.
 - **Handoff:** T-4E02.
 - **Notes:** Requires Phase 2 T-2C01 and Phase 4 tracks A–D done. Use one `git worktree` per branch outside the repository folder, so `master`'s working tree is never switched. Each branch's identity commit also replaces the note under the `CHANGELOG.md` introduction with the line's own ("this file lists the releases of the Godot 4.N line; releases up to 0.4.0 were one build for every Godot version").
   Waiting for the user's go-ahead to commit: tracks A–D and T-2C01 are done in `master`'s working tree, uncommitted. Commit plan: the planning files in one commit, the product changes in another, then the cut.
+- **Changes:** Product commit d25a41e and planning commit ac265ed on master; branches godot-v4.5, godot-v4.6, godot-v4.7 cut from d25a41e, one identity commit each (0.5.0+godot.4.N, minimum engine, feature tag, Godot build 4.5.2/4.6.3/4.7.2-stable, line changelog note); version_sync_test passes on each. Local only, not pushed.
+
 
 ### [T-4E02] Call `is_importing` directly on the development line and line 4.7
 
 - **Spec:** l2-release-branches.md §5.3; l2-godot-editor-addon.md §2
-- **Status:** Todo
+- **Status:** Done
 - **Assignment:** Agent
 - **Verify:** On `master` and `godot-v4.7` `is_import_running` calls `EditorFileSystem.is_importing()` without `has_method`; `godot-v4.6` and `godot-v4.5` keep the guard (`grep -n has_method addons/godot_mcp/bridge_server.gd` on each); GDScript check, `editor_e2e_test` and `addon_export_test` pass with 4.8-beta1 on `master` and 4.7.2-stable on `godot-v4.7`; the `godot-v4.7` commit carries the `(cherry picked from commit …)` line.
 - **Handoff:** T-4T01.
 - **Notes:** A shared change for two lines: commit on `master` first, then `git cherry-pick -x` onto `godot-v4.7` (procedure B). Keep the function and its comment honest for the line it is on.
+- **Changes:** master 24cc054 calls is_importing directly (API present in 4.7-stable, absent in 4.6-stable); carried to godot-v4.7 with cherry-pick -x. 4.5 and 4.6 keep the guard. With 4.8-beta1: check-only exit 0, editor_e2e 3/3, addon_export 2/2.
+
 
 ### [T-4F01] Turn on private vulnerability reporting and protect the release branches
 
 - **Spec:** l2-community-health-files.md §5.4; l2-release-branches.md §5.8
-- **Status:** Todo
+- **Status:** Blocked [!]
 - **Assignment:** User (repository settings)
 - **Verify:** `gh api repos/zeegzoog/godot-mcp/private-vulnerability-reporting` returns `{"enabled":true}`; a branch rule for `godot-v*` blocks deletion and force pushes (`gh api repos/zeegzoog/godot-mcp/rulesets` lists it, or the branch protection page shows it).
 - **Handoff:** T-4F02.
 - **Notes:** The agent lists the steps; it does not change settings.
+  Private vulnerability reporting: done by the user (confirmed enabled on 2026-10-20). Remaining: the ruleset for `godot-v*` (no deletion, no force push), instructions given; tick when `gh api repos/zeegzoog/godot-mcp/rulesets` lists it.
 
 ### [T-4F02] Publish the branches
 
@@ -188,8 +193,9 @@ duration_minutes: ~
 ### [T-4T01] Validate Phase 4 on every line against the specifications
 
 - **Spec:** l1-quality-assurance.md §3 QA-2, QA-3, QA-6; l1-release-lines.md §3; l1-community-health.md §3
-- **Status:** Todo
+- **Status:** Done
 - **Assignment:** Agent
 - **Verify:** On `master`, `godot-v4.7`, `godot-v4.6` and `godot-v4.5`: `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test --all-targets`, the GDScript check, `editor_e2e_test` and `addon_export_test` with the Windows build of the version in that branch's `.github/godot-version` — all pass; every RL and CH invariant row of the two L2 specifications is checked against the files; the SDD grep of T-4C01 over the product files changed in this phase prints nothing; `node .magic/scripts/executor.js check-prerequisites --json --workspace=main` reports `ok: true`.
 - **Handoff:** T-4F01 and the gated tasks after it.
 - **Notes:** Runs after T-4E02 and before any push. Official Windows builds 4.5.2-stable, 4.6.3-stable, 4.7.2-stable and 4.8-beta1 (editor and console) go into a folder outside the repository.
+- **Changes:** Per line with its own Windows Godot build (4.5.2, 4.6.3, 4.7.2, and 4.8-beta1 for master): fmt, clippy, check-only of three scripts, editor_e2e 3/3 and addon_export 2/2 all pass. cargo test --all-targets passes except without_an_editor_or_a_project_the_unknowns_are_said_so on every line: the server falls back to a Godot found in Program Files when GODOT_PATH points at a missing file; it also fails on the commit before this phase, so it is not caused by it. Open as a separate fix.

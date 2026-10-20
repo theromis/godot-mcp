@@ -4,15 +4,15 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-10-20 11:29
+**Updated:** 2026-10-20 11:58
 **Phase:** 2 — Alignment & Hardening (Phase 4 planned)
 **Status:** Active
 
 ## Current Position
 
-- **Task:** T-4D01 Rewrite the release skill around the lines
+- **Task:** T-4T01 Validate Phase 4 on every line against the specifications
 - **Spec:** l2-ci-release-pipeline.md §4 (DS-8)
-- **Next Action:** Execute T-2T01 Validate Phase 2 against the specifications and the verification pipeline via /magic.run main
+- **Next Action:** T-4F01 ruleset for godot-v* (user), then T-4F02 push after approval
 
 ## Progress
 
