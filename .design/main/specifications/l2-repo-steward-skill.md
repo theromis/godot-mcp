@@ -1,6 +1,6 @@
 # Repo Steward Skill (GitHub)
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-repository-stewardship.md
@@ -165,7 +165,7 @@ Board actions additionally need the `project` scope (or `STEWARD_PROJECT_TOKEN` 
 | Exclusion | `steward: skip` | maintainers only |
 | Notice | `release-readiness` | the readiness issue; never triaged |
 
-Labels are the source of truth for type and priority; the board's Priority and Type fields mirror them on every run.
+Labels are the source of truth for type and priority; the board's Priority and Kind fields mirror them on every run. The field is Kind because GitHub reserves Type for organization issue types (`createProjectV2Field` answered "Name cannot have a reserved value" on 2026-10-20).
 
 ### 5.5 Run Procedure (`SKILL.md`)
 
@@ -262,7 +262,7 @@ gh project create --owner {owner} --title "{board.title}" --format json
 gh project link {number} --owner {owner} --repo {owner}/{repo}
 gh project edit {number} --owner {owner} --visibility PUBLIC|PRIVATE --readme "$(policies)" --description "..."
 gh project field-create {number} --owner {owner} --name Priority --data-type SINGLE_SELECT --single-select-options "P0,P1,P2,P3"
-gh project field-create ... Type (Bug, Feature, Docs, Question, Chore) · Started, Finished (DATE) · Blocked (TEXT) · board.text_fields (TEXT)
+gh project field-create ... Kind (Bug, Feature, Docs, Question, Chore) · Started, Finished (DATE) · Blocked (TEXT) · board.text_fields (TEXT)
 Status options -> Triage, Backlog, Ready, In Progress, In Review, Done via updateProjectV2Field
                   (the new project's Todo becomes Backlog, In Progress and Done keep their ids)
 views: POST /orgs/{owner}/projectsV2/{number}/views (or /users/{user_id}/...)
@@ -394,3 +394,4 @@ Manual steps printed by setup (generic):
 | 1.0.0 | 2026-10-20 | Agent (magic.spec) | Created with the stewardship concept: skill layout, profile, scripts, labels, board, messages and markers, ecosystem adapters, pull request procedure, readiness, workflow templates, setup. Promoted to Stable after Post-Update Review. |
 | 1.0.1 | 2026-10-20 | Agent (magic.run) | [MODIFIED] Board writes through `board.sh item` and `status-update` (with `STEWARD_PROJECT_TOKEN`); closed not-planned items archived, not removed; the reminder workflow needs `actions: write`; readiness flags; scripts disable Git for Windows path conversion; stacking compares non-merge commits (found in the first report-mode run). |
 | 1.0.2 | 2026-10-20 | Agent (magic.run) | [MODIFIED] After a security review of the agent workflow: writes through `act.sh` (checked arguments, disclosure required, credentials refused), reads through `api.sh`, no raw `gh api` or file-reading forms for the agent, no persisted checkout credentials, denied `/proc` reads, board changes queued and applied by a separate step that alone holds `STEWARD_PROJECT_TOKEN` (`apply` refuses to run where the queue is set), third-party actions pinned by SHA; a second review: no `git` commands for the agent, scripts allowed by exact name in a read-only directory, branch names that look like options or hold `..` refused by `readiness.sh` and `api.sh`, `git log --end-of-options`, release lookup through `api.sh released-in`. |
+| 1.0.3 | 2026-10-20 | Agent (magic.run) | [MODIFIED] The board field for the item type is Kind: GitHub reserves Type (found at the first board setup). |

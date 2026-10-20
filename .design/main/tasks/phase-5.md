@@ -32,8 +32,8 @@ duration_minutes: ~
 - [x] [T-5C01] Install the steward in this repository
 - [x] [T-5C02] Contributor guide and agent guide changes
 - [x] [T-5T01] Validate Phase 5 against the specifications, with a report-mode run
-- [ ] [T-5E01] Commit and push the steward to master
-- [ ] [T-5E02] Run setup against GitHub: labels and the board
+- [x] [T-5E01] Commit and push the steward to master
+- [x] [T-5E02] Run setup against GitHub: labels and the board
 - [ ] [T-5E03] Maintainer settings that only the web interface or the owner can change
 - [ ] [T-5E04] First acting run
 
@@ -146,20 +146,24 @@ duration_minutes: ~
 ### [T-5E01] Commit and push the steward to master
 
 - **Spec:** l2-repo-steward-godot-mcp.md §6 step 3; `CONTRIBUTING.md` § For AI Agents (an agent pushes only with its user's approval)
-- **Status:** Todo
+- **Status:** Done
 - **Assignment:** User (approval), then Agent
 - **Verify:** The user's explicit yes in the conversation; then `git log -4 --oneline` shows the product commits separate from the planning commit; `git archive HEAD | tar -t | grep -c '^\.design/'` prints 0; `git push origin master`; CI green on `master` (`gh run list --branch master -L 1`), including the new tests on all three operating systems.
 - **Handoff:** T-5E02.
 - **Notes:** Conventional Commits: `feat(steward): …` for the skill, `ci(steward): …` for the workflows, `docs(contributing): …` for the guides; planning files in their own `docs(design): …` commit. The installed workflows start running after the push: readiness on the push itself (it writes the readiness issue with the workflow token), stale on its schedule; the agent workflow stays idle until `STEWARD_AGENT` is `on`.
+- **Changes:** Approved by the user. Commits `c866416` chore(steward) skill and ignore rule, `a6b1531` ci(steward) workflows, profile, forms and tests, `e3657ae` docs(contributing), `50e560d` docs(design); maintenance types, so the readiness workflow counts them as internal. Before committing, the scripts got mode 100755 and call each other through `bash` (Windows had added them as 100644; a direct call would have failed on Linux and macOS). `git archive HEAD` holds no planning file. Pushed `033b9be..50e560d`; CI green on all four jobs (Rust on ubuntu, windows, macos; Godot addon); readiness workflow green with `state=none`, no notice opened.
 
 ### [T-5E02] Run setup against GitHub: labels and the board
 
 - **Spec:** l2-repo-steward-skill.md §5.4, §5.9, §5.13; l2-repo-steward-godot-mcp.md §5.3, §6 step 4
-- **Status:** Todo
+- **Status:** Done
 - **Assignment:** User (approval), then Agent
 - **Verify:** The user's explicit yes; `gh label list` shows the labels of l2-repo-steward-godot-mcp.md §5.3; `gh project list --owner zeegzoog` shows "godot-mcp issues and pull requests", public, linked to the repository, with fields Status (six options), Priority, Type, Started, Finished, Blocked, Lines and the four views; running `board.sh ensure` a second time makes no change.
 - **Handoff:** T-5E03, then the board link goes into `CONTRIBUTING.md` (T-5C02 note) in a follow-up commit.
 - **Notes:** Outward actions on the organization: one approval covers labels, project, fields, views and README.
+- **Changes:** Approved by the user. `labels.sh`: 9 labels created (`release-readiness` had been created by the readiness workflow); a second run reports all present. `board.sh ensure` found project #1 "godot-mcp issues and pull requests", which the maintainer had created by hand (public, 9 items), and added Priority, Kind, Started, Finished, Blocked, Lines, the six Status options (Todo kept its id as Backlog), the views Flow (board by Status, sorted by Priority), Triage queue, Awaiting maintainer, Finished, the description and the policies README; a second run changed nothing. The type field is Kind: `Type` is reserved for the organization's issue types and the first attempt failed with "Name cannot have a reserved value"; script, board reference and skill spec 1.0.3 changed accordingly (not yet pushed). Board: https://github.com/orgs/zeegzoog/projects/1
+- **Attempts:**
+  - field named Type → GitHub reserves it for issue types; renamed to Kind
 
 ### [T-5E03] Maintainer settings that only the web interface or the owner can change
 

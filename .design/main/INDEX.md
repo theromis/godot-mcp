@@ -32,7 +32,7 @@ Local registry of specifications for this workspace.
 | [l2-release-branches.md](specifications/l2-release-branches.md) | How the release lines map to git branches, version strings, identity files, workflows and the release skill. Open it when cutting, carrying, releasing or editing anything line-specific. | Stable | implementation | 1.1.0 |
 | [l2-community-health-files.md](specifications/l2-community-health-files.md) | How SECURITY.md, CONTRIBUTING.md, their links and the reporting setting realize the community health concept on GitHub. Open it when editing either file or the links to them. | Stable | implementation | 1.1.0 |
 
-| [l2-repo-steward-skill.md](specifications/l2-repo-steward-skill.md) | How the portable repo-steward skill realizes stewardship on GitHub. Open it when editing the skill or installing it in another repository. | Stable | implementation | 1.0.2 |
+| [l2-repo-steward-skill.md](specifications/l2-repo-steward-skill.md) | How the portable repo-steward skill realizes stewardship on GitHub. Open it when editing the skill or installing it in another repository. | Stable | implementation | 1.0.3 |
 | [l2-repo-steward-godot-mcp.md](specifications/l2-repo-steward-godot-mcp.md) | How the steward is installed and configured in this repository, including how it treats the Godot lines. Open it when changing the steward's settings or files here. | Stable | implementation | 1.0.2 |
 <!-- Add your specifications here -->
 <!-- Description: what the specification is for and when to open it, in two sentences at most; no change history (that goes in the specification's Document History). -->
