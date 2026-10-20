@@ -11,7 +11,7 @@ Local registry of specifications for this workspace.
 
 | File | Description | Status | Layer | Version |
 | --- | --- | --- | --- | --- |
-| [l1-mcp-server.md](specifications/l1-mcp-server.md) | What the server guarantees to an MCP client: framing, concurrency, cancellation, error contract and configuration. Open it before changing how requests are read, answered or configured. | Stable | concept | 1.1.0 |
+| [l1-mcp-server.md](specifications/l1-mcp-server.md) | What the server guarantees to an MCP client: framing, concurrency, cancellation, error contract and configuration. Open it before changing how requests are read, answered or configured. | Stable | concept | 1.1.1 |
 | [l1-editor-bridge.md](specifications/l1-editor-bridge.md) | Guarantees of the server-to-editor channel: loopback, shared secret, one reply per command, undoable and scene-confined mutations. Open it before changing either side of the bridge. | Stable | concept | 1.0.0 |
 | [l1-tool-catalog.md](specifications/l1-tool-catalog.md) | The tool set and the rules every tool follows: schema validation, live-first fallback, project resolution, write and launch safety. Open it before adding or changing a tool. | Stable | concept | 1.1.0 |
 | [l1-distribution.md](specifications/l1-distribution.md) | What a release contains and the conditions for publishing one. Open it before changing versions, release notes, packaging or ignore rules. | Stable | concept | 1.1.0 |
@@ -21,7 +21,7 @@ Local registry of specifications for this workspace.
 | [l1-community-health.md](specifications/l1-community-health.md) | What the security policy and the contributor guide must say, for people and AI agents, and which changes must update them. Open it before editing either document or changing anything they describe. | Stable | concept | 1.0.0 |
 | [l1-runtime-observability.md](specifications/l1-runtime-observability.md) | Planned tools for runtime logs, stack traces and in-game camera capture. Open it when picking up that roadmap item. | Draft | concept | 0.1.0 |
 | [l1-content-authoring.md](specifications/l1-content-authoring.md) | Planned tools for creating scenes and reading, updating and attaching scripts. Open it when picking up that roadmap item. | Draft | concept | 0.1.0 |
-| [l2-rust-stdio-server.md](specifications/l2-rust-stdio-server.md) | How the Rust crate realizes the server core: session loop, configuration, error taxonomy. Open it when editing the entry point, session, protocol types or configuration code. | Stable | implementation | 1.1.0 |
+| [l2-rust-stdio-server.md](specifications/l2-rust-stdio-server.md) | How the Rust crate realizes the server core: session loop, configuration, error taxonomy. Open it when editing the entry point, session, protocol types or configuration code. | Stable | implementation | 1.2.0 |
 | [l2-bridge-client-rust.md](specifications/l2-bridge-client-rust.md) | How the server keeps, multiplexes and recovers its editor connection. Open it when editing the bridge client or its timing. | Stable | implementation | 1.0.0 |
 | [l2-godot-editor-addon.md](specifications/l2-godot-editor-addon.md) | How the GDScript addon implements the bridge, its handlers and export exclusion. Open it when editing anything in the addon. | Stable | implementation | 1.1.0 |
 | [l2-tool-handlers.md](specifications/l2-tool-handlers.md) | How the Rust tool layer enforces the catalog rules, and the steps for adding a tool. Open it when editing tools, path checks or engine invocations. | Stable | implementation | 1.1.0 |
