@@ -422,9 +422,16 @@ fn api_released_in_takes_only_a_commit_id() {
 }
 
 #[test]
-fn steward_workflows_pin_third_party_actions_to_a_commit() {
-    for name in ["steward-agent", "steward-readiness", "steward-stale"] {
-        let file = format!(".github/workflows/{name}.yml");
+fn workflows_pin_third_party_actions_to_a_commit() {
+    let mut names: Vec<String> = std::fs::read_dir(root().join(".github/workflows"))
+        .expect("workflows directory")
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .filter(|name| name.ends_with(".yml"))
+        .collect();
+    names.sort();
+    assert!(!names.is_empty(), "no workflow files found");
+    for name in names {
+        let file = format!(".github/workflows/{name}");
         for line in read(&file).lines() {
             let Some(action) = line.trim().trim_start_matches("- ").strip_prefix("uses:") else {
                 continue;
