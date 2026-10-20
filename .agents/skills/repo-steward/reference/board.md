@@ -8,13 +8,13 @@ The board is a GitHub project owned by the repository's owner, found by `board.t
 | --- | --- | --- |
 | Status | single select: Triage, Backlog, Ready, In Progress, In Review, Done | the item's real state (table below) |
 | Priority | single select: P0, P1, P2, P3 | the `priority:` label |
-| Type | single select: Bug, Feature, Docs, Question, Chore | the type label (`bug`, `enhancement`, `documentation`, `question`; Chore for maintenance pull requests) |
+| Kind | single select: Bug, Feature, Docs, Question, Chore | the type label (`bug`, `enhancement`, `documentation`, `question`; Chore for maintenance pull requests) |
 | Started | date | the day Status first became In Progress |
 | Finished | date | the day Status became Done |
 | Blocked | text | the reason, while the item is blocked; empty otherwise |
 | `board.text_fields` | text | project-specific facts the profile adds |
 
-Labels are the source of truth for type and priority; the fields mirror them on every run.
+Labels are the source of truth for type and priority; the fields mirror them on every run. The field is called Kind because GitHub reserves the name Type for organization issue types.
 
 ## Status from the Real State
 
@@ -35,7 +35,7 @@ A maintainer who moves an item by hand decides: keep their column until the real
 Make every board change through the script; it finds the ids. In the unattended workflow `STEWARD_BOARD_QUEUE` is set: the script then checks each change (this repository's items only, known fields and options) and writes it to that file, and the workflow's next step, which alone holds `STEWARD_PROJECT_TOKEN`, applies it with `board.sh apply`.
 
 ```text
-scripts/board.sh item <item url> Status=Ready Priority=P2 Type=Bug       add (safe to repeat) and set fields
+scripts/board.sh item <item url> Status=Ready Priority=P2 Kind=Bug       add (safe to repeat) and set fields
 scripts/board.sh item <item url> Status="In Progress" Started=2026-01-31  a date is YYYY-MM-DD
 scripts/board.sh item <item url> Blocked="waits for the upstream fix"    a text
 scripts/board.sh item <item url> Blocked=                                an empty value clears the field

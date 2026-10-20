@@ -85,7 +85,7 @@ valid_pair() {
 		return 1
 		;;
 	Priority) case "$value" in P0 | P1 | P2 | P3) return 0 ;; esac ;;
-	Type) case "$value" in Bug | Feature | Docs | Question | Chore) return 0 ;; esac ;;
+	Kind) case "$value" in Bug | Feature | Docs | Question | Chore) return 0 ;; esac ;;
 	Started | Finished)
 		case "$value" in "" | [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) return 0 ;; esac
 		echo "board.sh: $field must be a date as YYYY-MM-DD" >&2
@@ -249,7 +249,7 @@ ensure() {
 			run gh project link "<number>" --owner "$owner" --repo "$repo"
 			run gh project edit "<number>" --owner "$owner" --visibility "$(visibility)" \
 				--description "Issues and pull requests of $repo, kept by the repo steward" --readme "$(readme)"
-			for field in "Priority SINGLE_SELECT P0,P1,P2,P3" "Type SINGLE_SELECT Bug,Feature,Docs,Question,Chore" \
+			for field in "Priority SINGLE_SELECT P0,P1,P2,P3" "Kind SINGLE_SELECT Bug,Feature,Docs,Question,Chore" \
 				"Started DATE" "Finished DATE" "Blocked TEXT"; do
 				set -- $field
 				if [ -n "${3:-}" ]; then
@@ -290,7 +290,7 @@ ensure() {
 		[ "$dry_run" = 1 ] || echo "field created: $field"
 	done <<EOF
 Priority SINGLE_SELECT P0,P1,P2,P3
-Type SINGLE_SELECT Bug,Feature,Docs,Question,Chore
+Kind SINGLE_SELECT Bug,Feature,Docs,Question,Chore
 Started DATE
 Finished DATE
 Blocked TEXT

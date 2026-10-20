@@ -72,4 +72,4 @@ Apply exactly one `priority: Pn` label; replace a different one you set earlier,
 | Feature that is large, changes the project's direction, or touches a decision the guides leave to maintainers | Backlog, label `status: needs-maintainer` | `handover` |
 | Blocked by something outside the project (an upstream defect, a missing platform feature) | Backlog, Blocked field set, label `status: blocked` | `ack` naming the blocker |
 
-Add the issue to the board, set Status, Priority and Type (`reference/board.md`), and post the message. One message per issue per run.
+Add the issue to the board, set Status, Priority and Kind (`reference/board.md`), and post the message. One message per issue per run.
