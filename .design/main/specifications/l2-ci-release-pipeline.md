@@ -1,6 +1,6 @@
 # CI & Release Pipeline
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-distribution.md
@@ -21,7 +21,7 @@ Release mechanics are spread over several files (two workflows, a shell script, 
 
 ## 2. Constraints & Assumptions
 
-- Runners: `ubuntu-24.04` (pinned), `windows-latest`, `macos-latest`; actions `checkout@v7`, `dtolnay/rust-toolchain@stable`, `Swatinem/rust-cache@v2`, `softprops/action-gh-release@v3`.
+- Runners: `ubuntu-24.04` (pinned), `windows-latest`, `macos-latest`; GitHub's own actions by major version (`actions/checkout@v7`, `upload-artifact@v7`, `download-artifact@v8`); every other action (`dtolnay/rust-toolchain`, `Swatinem/rust-cache`, `softprops/action-gh-release`) pinned to a full commit SHA with its version in a comment, which `tests/steward_test.rs` checks for every workflow. `.github/dependabot.yml` proposes weekly updates of those pins and of the Rust dependencies. The toolchain action is given `toolchain: stable` because, pinned by SHA, it no longer learns the toolchain from its ref.
 - [MODIFIED] CI installs, for the editor job, the Godot build named in `.github/godot-version` from the official builds repository; each line names its own build ([l2-release-branches.md](l2-release-branches.md) §5.7).
 - Release profile: `lto = true`, `codegen-units = 1`, `strip = true`.
 - The changelog follows Keep a Changelog headings (`## [X.Y.Z] - YYYY-MM-DD`, `## [Unreleased]`) with compare links at the bottom.
@@ -93,3 +93,4 @@ addons/godot_mcp/plugin.cfg      addon version
 | 1.0.1 | 2026-10-16 | Agent (magic.run) | DS-8 gap closed by the `export-ignore` attribute. |
 | 1.1.0 | 2026-10-20 | Agent (magic.spec) | [MODIFIED] Line-aware: editor job reads `.github/godot-version`; DS-1, DS-3, DS-5, DS-7 rows per line; files and references updated. Stable → RFC → Stable after Post-Update Review. |
 | 1.2.0 | 2026-10-20 | Agent (magic.spec) | [MODIFIED] DS-1, DS-3, DS-5, DS-7 and the files for one release holding every supported line; CI no longer checks the changelog (the release workflow does). |
+| 1.2.1 | 2026-10-20 | Agent (magic.run) | [MODIFIED] Third-party actions pinned to commit SHAs, checked by a test; Dependabot for actions and Cargo. |
