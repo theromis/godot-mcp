@@ -1,6 +1,6 @@
 # Release Branches & Backports
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-release-lines.md
@@ -147,7 +147,7 @@ Standing rules in the skill: tagging and pushing need the explicit approval of a
 
 `.github/workflows/release.yml`:
 
-- Triggers on tags matching `v*.*.*+godot.*`.
+- Triggers on tags matching `v*.*.*godot.*`: a GitHub filter pattern cannot contain `+` (it is a quantifier, and a pattern with it invalidates the whole workflow file), so the exact tag form is enforced by `release-line.sh` in the verify job.
 - The verify job also checks: the version has build metadata `godot.M.N` and no pre-release identifier; the tagged commit is contained in `origin/godot-vM.N`.
 - File names: `godot-mcp-{target}-godot{M}.{N}.{zip|tar.gz}` and `godot-mcp-addon-godot{M}.{N}.zip`.
 - The line checks, the file-name suffix and the "latest" decision live in `.github/scripts/release-line.sh` (argument: the tag; prints the line, the suffix and `true`/`false` for latest; exits non-zero naming the violated rule), so they run locally exactly as in the workflow, like `release-notes.sh`.
@@ -197,3 +197,4 @@ Standing rules in the skill: tagging and pushing need the explicit approval of a
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-20 | Agent (magic.spec) | Created with the release lines concept; branch names, version string, identity files, carrying, workflows and skill structure. Promoted to Stable after Post-Update Review. |
 | 1.0.1 | 2026-10-20 | Agent (magic.task) | Line checks of the release workflow placed in a script that also runs locally. |
+| 1.0.2 | 2026-10-20 | Agent (magic.run) | [MODIFIED] Tag trigger without `+`: GitHub rejected the workflow file with it (found at the first release). |
