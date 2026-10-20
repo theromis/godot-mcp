@@ -4,21 +4,21 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-10-16 11:58
-**Phase:** 2 — Alignment & Hardening
+**Updated:** 2026-10-20 11:29
+**Phase:** 2 — Alignment & Hardening (Phase 4 planned)
 **Status:** Active
 
 ## Current Position
 
-- **Task:** T-2A01 Mark the planning directory export-ignore
+- **Task:** T-4D01 Rewrite the release skill around the lines
 - **Spec:** l2-ci-release-pipeline.md §4 (DS-8)
-- **Next Action:** T-2B01 Test that the bridge token file is owner-only on Unix
+- **Next Action:** Execute T-2T01 Validate Phase 2 against the specifications and the verification pipeline via /magic.run main
 
 ## Progress
 
 ```
-Phase 2: [0/5] ░░░░░░░░ 0%
-Overall: [1/2] ████░░░░ 50%
+Phase 2: [3/5] █████░░░ 60%
+Overall: [1/3] ███░░░░░ 33%
 ```
 
 ## Recent Decisions

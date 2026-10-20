@@ -24,8 +24,8 @@ duration_minutes: ~
 
 - [x] [T-2A01] Mark the planning directory `export-ignore` for source archives
 - [ ] [T-2B01] Test that the bridge token file is owner-only on Unix
-- [ ] [T-2C01] Correct the stale class_name note in the development project file
-- [ ] [T-2D01] Add a specification-workflow section to the contributor guide
+- [x] [T-2C01] Correct the stale class_name note in the development project file
+- [x] [T-2D01] Add a specification-workflow section to the contributor guide (Cancelled: moved to T-4C02)
 - [ ] [T-2T01] Validate Phase 2 against the specifications and the verification pipeline
 
 ## Detailed Tracking
@@ -43,25 +43,28 @@ duration_minutes: ~
 ### [T-2B01] Test that the bridge token file is owner-only on Unix
 
 - **Spec:** l2-godot-editor-addon.md §6 (known limitation), l1-editor-bridge.md §3 BR-2
-- **Status:** Todo
+- **Status:** Blocked [!]
 - **Assignment:** Agent
 - **Verify:** New assertion in `tests/editor_e2e_test.rs` (`bridge_is_loopback_only_and_requires_the_token`, `#[cfg(unix)]` block) that the token file mode is `0o600`; passes in the CI Linux Godot 4.5 job; fails locally when `FileAccess.set_unix_permissions` is removed from the addon (mutation check, then restored).
 - **Handoff:** If the assertion fails on 4.5, fix the addon before marking Done; then remove the limitation note via `/magic.spec amend l2-godot-editor-addon.md`.
 - **Notes:** Linux/macOS only; on Windows the block compiles out. Needs `GODOT_PATH` for local runs (see l2-test-suite.md §2).
+  Blocked: the assertion and its mutation check run only on Unix; no Linux toolchain or Linux Godot on this host. Proven by the Linux CI job once the branches are published (T-4F02); then set Done.
+- **Changes:** `#[cfg(unix)]` assertion that the token file mode is `0o600` (skipped when `GODOT_MCP_TOKEN` is set). `cargo check` and `cargo clippy -D warnings` for `x86_64-unknown-linux-gnu` pass; on Windows (Godot 4.8-beta1) the test passed 10 of 11 runs, the first run failed once without a reproducible cause.
 
 ### [T-2C01] Correct the stale class_name note in the development project file
 
 - **Spec:** l2-godot-editor-addon.md §2 (no `class_name` convention)
-- **Status:** Todo
+- **Status:** Done
 - **Assignment:** Agent
 - **Verify:** `project.godot` header comment no longer claims the addon declares `class_name`; `godot --headless --path . --import` and the three `--check-only` commands from the contributor guide still succeed.
 - **Handoff:** None.
 - **Notes:** Comment-only change. Restate the reason in plain language (the root project exists so the addon can be enabled and syntax-checked in isolation); no references to planning artifacts.
+- **Changes:** The header comment no longer claims `class_name` declarations; `--import` and the three `--check-only` commands pass on Godot 4.5.2-stable (exit 0).
 
 ### [T-2D01] Add a specification-workflow section to the contributor guide
 
 - **Spec:** l2-test-suite.md §4 (QA-1, QA-2 via the contributor checklist), l1-quality-assurance.md §3
-- **Status:** Todo
+- **Status:** Cancelled — the section belongs to the new `CONTRIBUTING.md` (§ Planning and Specifications, l2-community-health-files.md §6 note 2) and is written by T-4C02; `AGENTS.md` links to it.
 - **Assignment:** Agent
 - **Verify:** `AGENTS.md` has a section stating: planning and design go through the `/magic.*` workflow, which takes priority over ad-hoc plans; `.design/` is committed and shared; the engine (`.magic/` and the workflow wrappers) is installed locally from its release archive and is git-ignored; product files never reference planning artifacts. `npx markdownlint-cli2 AGENTS.md` (or the repo's `.markdownlint.json` rules) reports no new issues.
 - **Handoff:** None.
@@ -74,4 +77,4 @@ duration_minutes: ~
 - **Assignment:** Agent
 - **Verify:** `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test --all-targets` pass; editor e2e and export tests pass with Godot 4.5-stable and the local current build (addon test file changed in T-2B01); `node .magic/scripts/executor.js check-prerequisites --json --workspace=main` reports `ok: true`.
 - **Handoff:** `/magic.task main` to re-plan once all specs are fully satisfied.
-- **Notes:** Run last; depends on T-2A01..T-2D01.
+- **Notes:** Run last; depends on T-2A01..T-2C01. The Unix token-file assertion of T-2B01 is proven by the Linux CI job, which runs after T-4F02 publishes the branches.
