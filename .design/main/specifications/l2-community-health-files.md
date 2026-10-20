@@ -1,6 +1,6 @@
 # Community Health Files (GitHub)
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-community-health.md
@@ -50,11 +50,11 @@ Columns: Godot · Branch · Security fixes · Install. One row per release line 
 
 | Row | Security fixes | Install |
 | --- | --- | --- |
-| Release line, e.g. `4.6.x` · `godot-v4.6` | yes, in the next 4.6 release | the newest release whose tag ends with `+godot.4.6` |
+| Release line, e.g. `4.6.x` · `godot-v4.6` | yes, in the next release | the files ending in `-godot4.6` of the latest release |
 | Development line, e.g. `4.8 (pre-release)` · `master` | fixed here first; no releases | build from source |
 | Unsupported: `0.4.0 and older` (one build for 4.5 and newer) | no | the release for your Godot version |
 
-Until the first line releases are published, the Install cell of every release line reads "0.4.0, the last release before the lines", and the unsupported row reads "0.3.0 and older".
+The Install cell of every release line names the files ending in `-godotM.N` of the latest release; the unsupported row reads "0.4.0 and older".
 
 ### 5.2 Contributor Guide: Branch Decision Table
 
@@ -108,3 +108,4 @@ Private vulnerability reporting: Settings → Code security → Private vulnerab
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-20 | Agent (magic.spec) | Created with the community health concept; files, sections, links, the reporting setting and update steps. Promoted to Stable after Post-Update Review. |
 | 1.0.1 | 2026-10-20 | Agent (magic.spec) | [MODIFIED] The Install cell names the release by the tag suffix instead of the title. |
+| 1.0.2 | 2026-10-20 | Agent (magic.spec) | [MODIFIED] The Install cell names the files of the latest release, which holds every line. |
