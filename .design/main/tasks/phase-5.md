@@ -177,8 +177,9 @@ duration_minutes: ~
 ### [T-5E04] First acting run
 
 - **Spec:** l1-repository-stewardship.md ST-18; l2-repo-steward-godot-mcp.md §6 step 5
-- **Status:** Todo
+- **Status:** In Progress
 - **Assignment:** User (approval), then Agent
 - **Verify:** The maintainer has read the report of T-5T01 (3) and says yes; the acting run's report lists each action with its link; every message it posted carries the disclosure line and a marker (`gh issue view 1 --comments`, `gh pr view 2 --comments`); a second run immediately afterwards posts nothing (ST-14).
 - **Handoff:** Phase 5 complete; the next step is computed by `/magic.task`.
 - **Notes:** Merges of the contributor's pull requests stay at `approval` (profile default); the run queues them with its recommendations and asks one consent question at the end.
+- **Changes:** First acting run (attended, approved by the user), stopped at the 20-action limit as designed. Done: #1 labelled `bug`, `agent-feedback`, `priority: P2`, acknowledged, card In Review / P2 / Bug; CI runs approved for #2, #3, #8, #4 (no sensitive paths); #2 answered (review after CI, carrying to 4.5–4.7, the merge-commit request noted for maintainers), card In Review / Bug; #3, #8, #4 handed over (roadmap decision on runtime access; #8 describes the server after the whole series) with `status: needs-maintainer`, cards for #3 and #8 updated. Left for the next run: #4 card; #7, #5, #9, #6 (run approval, hand-over, label, card); the project status update. Readiness: none. Found during the run: `act.sh` handed gh a POSIX temp path (`/tmp/...`) that a native Windows gh cannot open, so the first #1 comment failed and nothing was posted; reproduced with a new test that puts the stand-in gh first on PATH (the stand-in now reads `--body-file` and fails on an unreadable file, as gh does), fixed by translating the path with cygpath where it exists, retried once. Pipeline: 206 passed, 0 failed.

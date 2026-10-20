@@ -1,6 +1,6 @@
 # Repo Steward Skill (GitHub)
 
-**Version:** 1.0.3
+**Version:** 1.0.4
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-repository-stewardship.md
@@ -35,6 +35,7 @@ The concept fixes what the steward does. This specification fixes the files, com
 - [DR] Canonical location `.agents/skills/repo-steward/` — the repository convention for committed agent skills; an agent that reads skills elsewhere (Claude Code reads `.claude/skills/`) gets a local link made by the setup procedure, never a second copy.
 - [DR] The profile is `.github/steward.yml`, restricted to sections of flat `key: value` scalars (lists written as space-separated strings), so the scripts read it with `awk` and no YAML library.
 - Every script exports `MSYS_NO_PATHCONV=1`: Git for Windows' bash otherwise rewrites arguments such as `origin/branch:.github/file` into Windows paths (observed while building the readiness script).
+- With path conversion off, a temporary file from `mktemp` is a POSIX path (`/tmp/...`) that a native Windows `gh` cannot open; the scripts pass `cygpath -w` of it where `cygpath` exists (observed in the first acting run).
 - [DR] Unattended automation runs on a schedule only, never on issue or pull request events: no event an outsider causes starts an agent, and no loop can form from the steward's own comments.
 
 ## 4. Invariant Compliance
@@ -395,3 +396,4 @@ Manual steps printed by setup (generic):
 | 1.0.1 | 2026-10-20 | Agent (magic.run) | [MODIFIED] Board writes through `board.sh item` and `status-update` (with `STEWARD_PROJECT_TOKEN`); closed not-planned items archived, not removed; the reminder workflow needs `actions: write`; readiness flags; scripts disable Git for Windows path conversion; stacking compares non-merge commits (found in the first report-mode run). |
 | 1.0.2 | 2026-10-20 | Agent (magic.run) | [MODIFIED] After a security review of the agent workflow: writes through `act.sh` (checked arguments, disclosure required, credentials refused), reads through `api.sh`, no raw `gh api` or file-reading forms for the agent, no persisted checkout credentials, denied `/proc` reads, board changes queued and applied by a separate step that alone holds `STEWARD_PROJECT_TOKEN` (`apply` refuses to run where the queue is set), third-party actions pinned by SHA; a second review: no `git` commands for the agent, scripts allowed by exact name in a read-only directory, branch names that look like options or hold `..` refused by `readiness.sh` and `api.sh`, `git log --end-of-options`, release lookup through `api.sh released-in`. |
 | 1.0.3 | 2026-10-20 | Agent (magic.run) | [MODIFIED] The board field for the item type is Kind: GitHub reserves Type (found at the first board setup). |
+| 1.0.4 | 2026-10-20 | Agent (magic.run) | [MODIFIED] Message files are handed to gh as native paths on Windows (found in the first acting run). |
