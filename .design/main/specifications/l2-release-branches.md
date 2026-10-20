@@ -1,6 +1,6 @@
 # Release Branches & Backports
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-release-lines.md
@@ -38,7 +38,7 @@ The concept fixes what a line is. This specification fixes the names, files and 
 | --- | --- |
 | RL-1 One line per Godot minor version | Branches `godot-v4.5`, `godot-v4.6`, `godot-v4.7`, each cut from `master`. A branch protection rule for `godot-v*` (maintainer setting, §5.8) forbids force pushes and deletion, because tags and published releases point into these branches. |
 | RL-2 Development line on the default branch | `master` carries `X.Y.Z-dev+godot.4.8`. The release workflow refuses a version with a pre-release identifier and a tag whose commit is not on `origin/godot-v{M}.{N}` (§5.7). Cutting a line and moving `master` to the next Godot version is skill procedure E. |
-| RL-3 The line is part of the version | One string in `Cargo.toml` and `addons/godot_mcp/plugin.cfg`; it reaches the `initialize` reply's `serverInfo.version` and the feedback report through `CARGO_PKG_VERSION`. Tag `v{version}`, release title `godot-mcp X.Y.Z for Godot M.N`, changelog heading `## [X.Y.Z+godot.M.N] - YYYY-MM-DD`, file names with `-godot{M}.{N}` (§5.7). `tests/version_sync_test.rs` checks the two strings are equal and carry `+godot.M.N`. |
+| RL-3 The line is part of the version | One string in `Cargo.toml` and `addons/godot_mcp/plugin.cfg`; it reaches the `initialize` reply's `serverInfo.version` and the feedback report through `CARGO_PKG_VERSION`. Tag `v{version}`, release title `godot-mcp X.Y.Z (Godot M.N)`, changelog heading `## [X.Y.Z+godot.M.N] - YYYY-MM-DD`, file names with `-godot{M}.{N}` (§5.7). `tests/version_sync_test.rs` checks the two strings are equal and carry `+godot.M.N`. |
 | RL-4 Line-exact runtime gate | `plugin.gd` `MIN_MAJOR`/`MIN_MINOR` equal the line (§5.2); an older engine version prints an error and does not start the bridge; a newer one prints a warning naming the line to install and starts. Details in [l2-godot-editor-addon.md](l2-godot-editor-addon.md). |
 | RL-5 Line-exact verification | `.github/godot-version` holds the exact Godot build of the line (`4.6.3-stable`; on `master` `4.8-beta1`); the CI Godot job downloads that build. `tests/version_sync_test.rs` checks that its minor version equals the line. |
 | RL-6 Route by affected lines | Line-only change: committed to that `godot-v*` branch only. Shared change: committed to the newest affected branch (`master` when affected), then applied with `git cherry-pick -x` to each older affected branch, newest to oldest (§5.4); a pull request for a carried copy is titled `[M.N] <original title>`. |
@@ -151,7 +151,7 @@ Standing rules in the skill: tagging and pushing need the explicit approval of a
 - The verify job also checks: the version has build metadata `godot.M.N` and no pre-release identifier; the tagged commit is contained in `origin/godot-vM.N`.
 - File names: `godot-mcp-{target}-godot{M}.{N}.{zip|tar.gz}` and `godot-mcp-addon-godot{M}.{N}.zip`.
 - The line checks, the file-name suffix and the "latest" decision live in `.github/scripts/release-line.sh` (argument: the tag; prints the line, the suffix and `true`/`false` for latest; exits non-zero naming the violated rule), so they run locally exactly as in the workflow, like `release-notes.sh`.
-- Release title `godot-mcp X.Y.Z for Godot M.N`; `make_latest: true` only when no existing tag `v*+godot.*` names a line higher than `M.N`, otherwise `false`.
+- Release title `godot-mcp X.Y.Z (Godot M.N)` (users find a line's release by the tag ending in `+godot.M.N`, never by the title); `make_latest: true` only when no existing tag `v*+godot.*` names a line higher than `M.N`, otherwise `false`.
 
 ### 5.8 Repository Settings (Maintainer)
 
@@ -198,3 +198,4 @@ Standing rules in the skill: tagging and pushing need the explicit approval of a
 | 1.0.0 | 2026-10-20 | Agent (magic.spec) | Created with the release lines concept; branch names, version string, identity files, carrying, workflows and skill structure. Promoted to Stable after Post-Update Review. |
 | 1.0.1 | 2026-10-20 | Agent (magic.task) | Line checks of the release workflow placed in a script that also runs locally. |
 | 1.0.2 | 2026-10-20 | Agent (magic.run) | [MODIFIED] Tag trigger without `+`: GitHub rejected the workflow file with it (found at the first release). |
+| 1.0.3 | 2026-10-20 | Agent (magic.spec) | [MODIFIED] Release title `godot-mcp X.Y.Z (Godot M.N)`; installers select a line's release by its tag, not by its title. |
