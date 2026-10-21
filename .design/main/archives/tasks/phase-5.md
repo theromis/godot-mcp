@@ -1,21 +1,38 @@
 ---
 phase: 5
 name: "Repository Stewardship"
-status: In Progress
+status: Done
 subsystem: ".agents/skills/repo-steward, .github (profile, workflows, issue forms, pull request template), tests/steward_test.rs, CONTRIBUTING.md, AGENTS.md"
 requires: [4]
-provides: []
+provides:
+  - The repo-steward skill (scripts for context, profile, labels, readiness, board and actions; instructions and references; templates), portable and free of project names
+  - Its installation here: profile, priorities, readiness, stale and agent workflows, issue forms, pull request template, contributor and agent guide changes
+  - Labels, a public project board with fields and views, and a release-readiness notice kept current
+  - Attended acting runs: the contributor series reviewed and merged, then proof that a further run posts nothing new
+  - A ruleset that protects master
 key_files:
-  created: []
-  modified: []
-patterns_established: []
+  created:
+    - .agents/skills/repo-steward/
+    - .github/steward.yml
+    - .github/steward-priorities.md
+    - .github/workflows/
+    - tests/steward_test.rs
+  modified:
+    - CONTRIBUTING.md
+    - AGENTS.md
+    - .gitignore
+patterns_established:
+  - Outward actions only through a script that refuses a message without the disclosure line and the marker
+  - Contributor code is never run on the maintainer's machine; its checks run in CI
+  - A second run proves the first: counts of marked messages are equal before and after
+  - Settings only an owner can change are listed, read back by API where possible, and applied only at the owner's word
 duration_minutes: ~
 ---
 
 # Stage 5 Tasks — Repository Stewardship
 
 **Phase:** 5
-**Status:** In Progress
+**Status:** Done
 **Strategic Goal:** A portable `repo-steward` skill triages, plans, fixes, answers, reviews, merges and closes this repository's issues and pull requests within its autonomy limits, keeps a Kanban board, and announces when a release is due and what it holds for each Godot line; installed here with its profile, workflows, forms and guide changes, guarded by tests, and switched on only after the maintainer has read a report-mode run.
 
 ## Atomic Checklist
@@ -34,8 +51,8 @@ duration_minutes: ~
 - [x] [T-5T01] Validate Phase 5 against the specifications, with a report-mode run
 - [x] [T-5E01] Commit and push the steward to master
 - [x] [T-5E02] Run setup against GitHub: labels and the board
-- [ ] [T-5E03] Maintainer settings that only the web interface or the owner can change
-- [ ] [T-5E04] First acting run
+- [x] [T-5E03] Maintainer settings that only the web interface or the owner can change
+- [x] [T-5E04] First acting run
 
 ## Detailed Tracking
 
@@ -161,23 +178,25 @@ duration_minutes: ~
 - **Verify:** The user's explicit yes; `gh label list` shows the labels of l2-repo-steward-godot-mcp.md §5.3; `gh project list --owner zeegzoog` shows "godot-mcp issues and pull requests", public, linked to the repository, with fields Status (six options), Priority, Type, Started, Finished, Blocked, Lines and the four views; running `board.sh ensure` a second time makes no change.
 - **Handoff:** T-5E03, then the board link goes into `CONTRIBUTING.md` (T-5C02 note) in a follow-up commit.
 - **Notes:** Outward actions on the organization: one approval covers labels, project, fields, views and README.
-- **Changes:** Approved by the user. `labels.sh`: 9 labels created (`release-readiness` had been created by the readiness workflow); a second run reports all present. `board.sh ensure` found project #1 "godot-mcp issues and pull requests", which the maintainer had created by hand (public, 9 items), and added Priority, Kind, Started, Finished, Blocked, Lines, the six Status options (Todo kept its id as Backlog), the views Flow (board by Status, sorted by Priority), Triage queue, Awaiting maintainer, Finished, the description and the policies README; a second run changed nothing. The type field is Kind: `Type` is reserved for the organization's issue types and the first attempt failed with "Name cannot have a reserved value"; script, board reference and skill spec 1.0.3 changed accordingly (not yet pushed). Board: https://github.com/orgs/zeegzoog/projects/1
+- **Changes:** Approved by the user. `labels.sh`: 9 labels created (`release-readiness` had been created by the readiness workflow); a second run reports all present. `board.sh ensure` found project #1 "godot-mcp issues and pull requests", which the maintainer had created by hand (public, 9 items), and added Priority, Kind, Started, Finished, Blocked, Lines, the six Status options (Todo kept its id as Backlog), the views Flow (board by Status, sorted by Priority), Triage queue, Awaiting maintainer, Finished, the description and the policies README; a second run changed nothing. The type field is Kind: `Type` is reserved for the organization's issue types and the first attempt failed with "Name cannot have a reserved value"; script, board reference and skill spec 1.0.3 changed accordingly (not yet pushed). Board: <https://github.com/orgs/zeegzoog/projects/1>
 - **Attempts:**
   - field named Type → GitHub reserves it for issue types; renamed to Kind
 
 ### [T-5E03] Maintainer settings that only the web interface or the owner can change
 
 - **Spec:** l2-repo-steward-godot-mcp.md §5.11
-- **Status:** Todo
+- **Status:** Done
 - **Assignment:** User
 - **Verify:** The maintainer confirms each row of §5.11 done or declined; `gh api repos/zeegzoog/godot-mcp --jq .delete_branch_on_merge` is `true` if accepted; `gh api repos/zeegzoog/godot-mcp/rulesets --jq '.[].name'` lists the `master` ruleset if accepted; `gh variable list` shows `STEWARD_AGENT` only if the unattended run is wanted.
 - **Handoff:** T-5E04.
 - **Notes:** The agent gives the exact clicks and commands of §5.11 and changes none of these settings itself.
+- **State read on 2026-10-21 (read-only):** (1) column limits on the Flow view and (2) the built-in project workflows: web interface only, and unreadable without the `project` scope, so unconfirmed. (3) Automatically delete head branches: done (`delete_branch_on_merge` is `true`). (4) Ruleset for `master`: not there; the only ruleset is "Protect Godot release lines" (`godot-v*`: deletion and non-fast-forward). (5) Unattended AI run: not set up (no variable, no secret); optional. (6) Require approval for first-time contributors: done (`first_time_contributors`). The required check names exist in CI exactly as the specification writes them: `Rust (ubuntu-24.04)`, `Rust (windows-latest)`, `Rust (macos-latest)`, `Godot addon (headless editor)`. CI is green on `master` and on the three lines after the held-stepping push.
+- **Changes:** The maintainer's answers (2026-10-21), row by row: (1) column limits and (2) project workflows: wanted ("any automation is welcome") but web interface only; the board script does not set them (the GitHub API has no call for them), so they stand as manual steps in the report until done by hand. (3) head-branch deletion: already on. (4) ruleset for `master`: applied at the maintainer's word as "Protect master" (id 25546449, active): deletion and non-fast-forward blocked, pull requests need the four checks, the repository admin role bypasses. (5) unattended AI run: deferred by the maintainer (no secret, no `STEWARD_AGENT`). (6) approval for first-time contributors: already on. `gh api repos/zeegzoog/godot-mcp/rulesets` lists both rulesets.
 
 ### [T-5E04] First acting run
 
 - **Spec:** l1-repository-stewardship.md ST-18; l2-repo-steward-godot-mcp.md §6 step 5
-- **Status:** In Progress
+- **Status:** Done
 - **Assignment:** User (approval), then Agent
 - **Verify:** The maintainer has read the report of T-5T01 (3) and says yes; the acting run's report lists each action with its link; every message it posted carries the disclosure line and a marker (`gh issue view 1 --comments`, `gh pr view 2 --comments`); a second run immediately afterwards posts nothing (ST-14).
 - **Handoff:** Phase 5 complete; the next step is computed by `/magic.task`.
@@ -185,3 +204,5 @@ duration_minutes: ~
 - **Changes:** First acting run (attended, approved by the user), stopped at the 20-action limit as designed. Done: #1 labelled `bug`, `agent-feedback`, `priority: P2`, acknowledged, card In Review / P2 / Bug; CI runs approved for #2, #3, #8, #4 (no sensitive paths); #2 answered (review after CI, carrying to 4.5–4.7, the merge-commit request noted for maintainers), card In Review / Bug; #3, #8, #4 handed over (roadmap decision on runtime access; #8 describes the server after the whole series) with `status: needs-maintainer`, cards for #3 and #8 updated. Second pass (after pushing `514b8b0`, `b5dfa67`; 18 actions): #4 card; #7, #5, #9, #6 CI runs approved and handed over with `status: needs-maintainer`, cards updated; project status update posted. Then, CI being green on #2, a review of its diff: changes requested (unsaved hand edits are not tracked so a reload can discard them; `get_scene_tree` reloads as a side effect of a read; undo history is dropped by a reload and undocumented; the macOS path mapping is an untested separate change); card marked Blocked for the author. All nine cards are In Review; every item carries exactly one steward message. Readiness: none. A third run was not executed, so the Verify line's "a second run posts nothing" is still unchecked.
 - **Stack, in order (approved by the user: "yes, one by one"):** #3 reviewed and merged as a squash `80d8834` (`chore(debug)`), after finding that a 12-byte packet made the Variant decoder reserve 64 GB and abort the server; fixed on the contributor's branch (`ea6c387`, regression tests, no unwrap in the module), CI green on four jobs. #4 reviewed and run on live editors (4.8-beta1 plus 4.7.2, 4.6.3, 4.5.2 with the patch applied; all pass); changes requested (schema leaks `reload`/`discard` from #2; process runs leave runtime scripts in the project; editor Play always rewrites `override.cfg`; CI lacks the new checks). Remaining in order: #4 after the author's update, then #5, #6, #9; #7 after #2; #8 last. A later attempt to run more of the contributor's code on this machine was refused by the permission classifier, so edits to #4 are left to its author. Found during the run: `act.sh` handed gh a POSIX temp path (`/tmp/...`) that a native Windows gh cannot open, so the first #1 comment failed and nothing was posted; reproduced with a new test that puts the stand-in gh first on PATH (the stand-in now reads `--body-file` and fails on an unreadable file, as gh does), fixed by translating the path with cygpath where it exists, retried once. Pipeline: 206 passed, 0 failed.
 - **Stack result (2026-10-21):** every pull request of the series is in: #3 (squash `80d8834`), #2, #4, #5, #6, #9, #11, #7 (`0c3c906`), #8 (`4cbcfbe`) and the contributor's later #13 (`5913f71`), each with the review fixes pushed to the contributor's branch, run on live editors of Godot 4.8-beta1, 4.7.2, 4.6.3 and 4.5.2, squash-merged after green CI and carried to `godot-v4.7`, `godot-v4.6` and `godot-v4.5`, where the default tests, clippy and the editor, export and runtime end-to-end tests were run again with the line's own Godot. The Dependabot bump of the model action (#10, SHA checked against the tag, 15 days old) was merged. The readiness notice (#12) said v0.6.0 was due; the maintainer then asked for the release, which was made on 2026-10-21 by the release procedure (line tags first, `release-set.sh`, then the release tag; fifteen files, notice closed by the readiness workflow). What the series added is recorded in Phase 6. Still open in this task: a third run to prove idempotence (ST-14).
+- **Third run (2026-10-21, attended, act, approved by the user):** Context: admin on `zeegzoog/godot-mcp`, the token lacks the `project` scope, so the board steps were skipped (`gh auth refresh -s project` is the user's). Labels: all present. Tracker: no open pull request, one open issue, the readiness notice (#19), which the run skips. Closures: #1 was closed as completed with its newest marker `fixed/unreleased`, and the fix (the merge of #2) is in v0.6.0 (`api.sh released-in`), so one message was posted: the released message on #1, through `act.sh` (<https://github.com/zeegzoog/godot-mcp/issues/1#issuecomment-6315724831>). Readiness: `state=due version=0.7.0`, notice #19 republished with no change. One outward action in all. Report items: Waiting for you: none queued; Ignored instructions: none; Manual steps: the project scope, and the rows of the next task.
+- **Idempotence (ST-14):** an immediate second pass (labels, tracker scan for closed issues still marked `fixed/unreleased`, readiness publish) posted nothing: the count of messages that carry a marker was 35 before and 35 after, the notice's title, text, update time and comment count were identical, and no issue was left waiting for a released message. Every message of the nine items checked (#1 to #9) carries the disclosure line and a marker.
