@@ -1,6 +1,6 @@
 # Tool Catalog
 
-**Version:** 1.3.1
+**Version:** 1.4.0
 **Status:** Stable
 **Layer:** concept
 
@@ -67,6 +67,8 @@ Agents call tools without seeing the implementation; a tool's contract has to be
 | `godot_resave_resources` | editor | editor file system | Re-import / refresh after external edits |
 | `godot_create_scene` | live-first | disk, editor state | Scene with one root node; never replaces a scene [ADDED] |
 | `godot_attach_script` | editor | scene (undoable) | Attaches or detaches a script [ADDED] |
+| `godot_read_script` | live-first | no | Text of a script as the editor would save it, with whether the editor holds unsaved changes and a version label |
+| `godot_edit_script` | live-first | disk, editor state (undoable) | Replaces one fragment of an existing script; refused while the editor holds unsaved changes to it |
 | `godot_connect_signal` | editor | scene (undoable) | Persistent connection inside the edited scene [ADDED] |
 | `godot_list_signals` | editor | no | Signals of a node and their connections [ADDED] |
 | `godot_create_resource` | live-first | disk | `.tres` of a built-in Resource class; never replaces a file [ADDED] |
@@ -101,7 +103,7 @@ graph TD
 ## 7. Drawbacks & Alternatives
 
 - **Headless `--headless` for the fallback game run**: rejected — a visible game window is what a caller of "run project" expects.
-- **Free-form script content in `godot_create_script`**: rejected for now; the fixed template keeps generated code free of caller text. Reading and updating scripts is an open question in [l1-content-authoring.md](l1-content-authoring.md).
+- **Free-form script content in `godot_create_script`**: rejected for now; the fixed template keeps generated code free of caller text. Reading and editing existing scripts is covered by `godot_read_script` and `godot_edit_script` (CA-7 to CA-10 in [l1-content-authoring.md](l1-content-authoring.md)).
 
 ## Canonical References
 
@@ -121,3 +123,4 @@ graph TD
 | 1.2.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] The authoring, running-game, debugger and language-server tools in the catalog; [MODIFIED] the run, stop and status rows and TL-6 for managed process runs; links to the three concepts that are now Stable. |
 | 1.3.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] The wait, screenshot and physics rows after pull request 18. |
 | 1.3.1 | 2026-10-21 | Agent (magic.spec) | Document History rows put in version order. No requirement changed. |
+| 1.4.0 | 2026-10-21 | Agent (magic.run) | [ADDED] The `godot_read_script` and `godot_edit_script` rows; the alternative about script content now points to them. Stable → RFC → Stable after Post-Update Review. |

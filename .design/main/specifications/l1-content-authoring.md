@@ -1,12 +1,12 @@
 # Content Authoring
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** concept
 
 ## Overview
 
-Tools that create and change project content beyond node edits in an open scene: new scene files, attaching a script to a node, connecting and listing signals, resources, and project settings. Reading and rewriting the text of an existing script is not part of this set yet.
+Tools that create and change project content beyond node edits in an open scene: new scene files, attaching a script to a node, connecting and listing signals, resources, and project settings. They also read an existing script and change it by replacing a fragment of its text, without ever overwriting what a person has typed in the editor and not yet saved.
 
 ## Related Specifications
 
@@ -24,7 +24,10 @@ Without these tools an agent can add nodes to an open scene and write a script f
 - With the editor connected, every tool goes through it: changes to a scene that is open are undoable editor actions, new files are registered with the editor file system so they get a UID at once.
 - Without an editor, creating a scene, creating a resource, and reading or setting a project setting fall back to the file itself. Attaching a script, connecting a signal and listing signals need the editor, because they act on an open scene.
 - A project setting value is a string, a number or a boolean. Structured values (vectors, arrays, resources) are changed in the editor's Project Settings.
-- <!-- TBD: reading and updating an existing script: whether updates accept full file content, line-range patches, or both, and how a conflict with unsaved editor changes is reported. Not implemented; `godot_create_script` remains the only script writer. -->
+- Script reading and editing are two further tools, `godot_read_script` and `godot_edit_script`, planned and not yet implemented. `godot_create_script` stays the only way to create a script from a template; the edit tool never creates a file.
+- [DR] An edit is a replacement of one fragment, given as the old text and the new text. Rejected: sending the whole file (large and stale if the content changed since it was read), and line-range patches (line numbers shift as soon as anything else changes the file).
+- [DR] A script open in the editor with unsaved changes is never edited: the edit is refused with the file and the fix. Rejected: applying the edit to the editor's unsaved text (ties the tool to the script editor's internals), and writing the file anyway (loses the person's typing).
+- **Assumption (forecast):** with the editor connected, an edit goes through the editor as one undoable action and the file is saved, so what the editor shows, what is on disk and what the syntax check and a running game see agree. Runner-up: leave the changed script unsaved in the editor for the person to save. Override: `/magic.spec amend l1-content-authoring "leave edited scripts unsaved"`.
 
 ## 3. Core Invariants
 
@@ -33,11 +36,16 @@ Without these tools an agent can add nodes to an open scene and write a script f
 - **CA-3** Caller text is only ever data. It is not executed and not interpolated into generated code; a project setting value is written as one escaped value on one line, and a setting key is a plain path of letters, digits and `_ / . -` that starts with a section, so no call can add an entry or a section to `project.godot`.
 - **CA-4** A project setting that exists keeps its type: a value of another type is refused, in the editor and in the file fallback.
 - **CA-5** A link is checked before it is made: the script exists in the project, the signal exists on the node, the target has the method, and the connection is not already there. Each failure names the fix.
-- **CA-6** Paths stay inside the project: scenes end in `.tscn`, resources in `.tres` (or `.res` through the editor), and `res://` paths cannot leave the project.
+- **CA-6** Paths stay inside the project: scenes end in `.tscn`, resources in `.tres` (or `.res` through the editor), scripts in `.gd`, and `res://` paths cannot leave the project.
+- **CA-7** Reading a script returns the text the editor would save: the editor's unsaved text when the script is open with unsaved changes, otherwise the file. The answer says which one it is and carries a version label of the returned text, so a caller can tell that what it read is not what is on disk.
+- **CA-8** An edit changes a script only when the old text occurs exactly once. No match or more than one match is refused and the answer says how many were found. A version label supplied with the edit must match the current text, otherwise the edit is refused and the caller reads again. A refused edit leaves the script untouched.
+- **CA-9** An edit never overwrites unsaved typing: a script open in the editor with unsaved changes is refused with its path and the fix (save it in the editor or discard the changes, then read again). The old and new text are data under CA-3: never executed and never interpolated into generated code.
+- **CA-10** With the editor connected an edit is a single undoable editor action (CA-2) and the editor and the file agree afterwards; without it the file is replaced as a whole so no half-written script is ever seen.
 
 ## 7. Drawbacks & Alternatives
 
-- **Free-form script editing** is deliberately left out until its conflict rules (see the open question above) are decided.
+- **Free-form script editing** stays limited to one fragment replacement under CA-8 and CA-9; whole-file rewrites and line-range patches are rejected in §2.
+- **An edit applied over the editor's unsaved text** would let an agent and a person change one script at once and would depend on how the script editor keeps its text; the refusal in CA-9 costs the person one save.
 - **A structured-value setting editor** would need a value syntax a caller can get wrong in ways that break project loading; scalars cover the common cases safely.
 
 ## Canonical References
@@ -55,3 +63,4 @@ Without these tools an agent can add nodes to an open scene and write a script f
 | --- | --- | --- | --- |
 | 0.1.0 | 2026-10-16 | Agent (magic.analyze first-time) | Draft collected from the README roadmap. |
 | 1.0.0 | 2026-10-21 | Agent (magic.spec) | Seven tools implemented (pull request 7, reviewed and hardened). Constraints resolved: scene creation works with or without the editor. Invariants rewritten around what the tools guarantee; script reading and updating stays an open question. Draft → Stable. |
+| 1.1.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] Reading an existing script and editing it by one fragment replacement (CA-7 to CA-10), resolving the open question: replacement of a fragment, not whole-file or line-range edits; an edit is refused while the editor holds unsaved changes to the script; a separate read tool that reports the editor's unsaved text and a version label. Tools planned, not yet implemented. Stable → RFC → Stable after Post-Update Review. |

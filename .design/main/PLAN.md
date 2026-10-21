@@ -1,13 +1,13 @@
 # Implementation Plan
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Generated:** 2026-10-21
 **Based on:** .design/main/INDEX.md v1.5.0
 **Status:** Active
 
 ## Overview
 
-The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unreleased changes at commit 94e4540), so Phases 0 and 1 describe what is already implemented and verified. Phase 2 closes the gaps the first analysis found: a shipped-artifact hygiene gap, a stale comment, an unverified security property, and contributor guidance for the specification-driven workflow. Phase 3 adds the agent feedback channel: tools that let an agent record what is missing or broken and hand the maintainers a scrubbed report as text or as an approved issue submission. Phase 4 splits the product into one release line per Godot minor version (4.5, 4.6, 4.7) with the development line on `master` targeting Godot 4.8, rewrites the release procedure around carrying changes between lines and releasing each line on its own, and fills the security policy and contributor guide. Phase 5 adds repository stewardship: a portable agent skill that triages, plans, fixes, answers, reviews, merges and closes issues and pull requests within autonomy limits, keeps a Kanban board, and announces when a release is due and what it holds for each Godot line, installed in this repository with its profile, workflows, forms and guide changes. Phase 6 records the series of contributor pull requests that gave the server a running-game channel, a debugger client, a language-server client and the authoring tools, and the specifications written for them. Phase 7 adds controlled time: holding a running game still at the start of a physics tick and stepping it by exact or conditional ticks over the existing debugger channel, specified before the code. Roadmap concepts wait in the Backlog until their open questions are answered.
+The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unreleased changes at commit 94e4540), so Phases 0 and 1 describe what is already implemented and verified. Phase 2 closes the gaps the first analysis found: a shipped-artifact hygiene gap, a stale comment, an unverified security property, and contributor guidance for the specification-driven workflow. Phase 3 adds the agent feedback channel: tools that let an agent record what is missing or broken and hand the maintainers a scrubbed report as text or as an approved issue submission. Phase 4 splits the product into one release line per Godot minor version (4.5, 4.6, 4.7) with the development line on `master` targeting Godot 4.8, rewrites the release procedure around carrying changes between lines and releasing each line on its own, and fills the security policy and contributor guide. Phase 5 adds repository stewardship: a portable agent skill that triages, plans, fixes, answers, reviews, merges and closes issues and pull requests within autonomy limits, keeps a Kanban board, and announces when a release is due and what it holds for each Godot line, installed in this repository with its profile, workflows, forms and guide changes. Phase 6 records the series of contributor pull requests that gave the server a running-game channel, a debugger client, a language-server client and the authoring tools, and the specifications written for them. Phase 7 adds controlled time: holding a running game still at the start of a physics tick and stepping it by exact or conditional ticks over the existing debugger channel, specified before the code. Phase 8 adds script reading and fragment editing to the authoring tools, through the editor when it is connected and through the file when it is not, after a feasibility check of the script editor on a real engine. Roadmap concepts wait in the Backlog until their open questions are answered.
 
 ## Phase 0 — Requirements (Layer 1: Concept)
 
@@ -88,7 +88,15 @@ The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unrelease
 - [x] **Held Stepping** ([l2-held-stepping.md](specifications/l2-held-stepping.md)) [L2]
 - [x] Carried to `godot-v4.7`, `godot-v4.6`, `godot-v4.5` (one local commit each); pushing gated on approval
 
+## Phase 8 — Script Reading and Editing (Layers 1 and 2)
+
+*A feasibility check on a real engine comes first and gates the rest. Requires Phase 6 (the authoring tools). See [TASKS.md](TASKS.md).*
+
+- [x] **Content Authoring** 1.1.0, CA-7 to CA-10 ([l1-content-authoring.md](specifications/l1-content-authoring.md)) [L1]
+- [x] Specification notes for the two commands and the two tools in **Godot Editor Addon** ([l2-godot-editor-addon.md](specifications/l2-godot-editor-addon.md)) and **Tool Handlers** ([l2-tool-handlers.md](specifications/l2-tool-handlers.md)) [L2]
+- [x] Editor handlers, host tools with a file fallback, user-facing text, validation
+- [x] Carried to `godot-v4.7`, `godot-v4.6`, `godot-v4.5` (three local commits each); pushing gated on approval
+
 ## Backlog
 
 <!-- Registered specifications waiting for prioritization (Draft or non-critical Stable) -->
-- Reading and updating existing scripts (open question in [l1-content-authoring.md](specifications/l1-content-authoring.md))

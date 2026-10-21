@@ -1,8 +1,8 @@
 # Master Task Index (Registry)
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Generated:** 2026-10-21
-**Based on:** .design/main/PLAN.md v1.5.0
+**Based on:** .design/main/PLAN.md v1.6.0
 **Based on RULES:** .design/RULES.md v1.4.0
 **Execution Mode:** Parallel
 **Status:** Active
@@ -23,6 +23,7 @@ Tactical registry of all phases and their statuses. Check individual phase files
 | [Phase 5](archives/tasks/phase-5.md) | Repository stewardship: the portable repo-steward skill (scripts, instructions, templates), its installation here (profile, workflows, issue forms, pull request template, guide changes) with tests, a report-mode run; pushing, GitHub setup and the first acting run gated on approval | `Done (Archived)` |
 | [Phase 6](archives/tasks/phase-6.md) | Game runtime, authoring and code intelligence: the contributor pull request series (running-game tools, debugger, language-server client, authoring tools, scene reload) reviewed, fixed, merged and carried to the release lines, and its specifications | `Done (Archived)` |
 | [Phase 7](archives/tasks/phase-7.md) | Controlled time: hold a running game at the start of a physics tick over the debugger channel, exact and conditional held steps, tick-scheduled input, refusal of time-driven operations while held, exactness through a server-declared fixed rate; feasibility test first, then the lines | `Done (Archived)` |
+| [Phase 8](archives/tasks/phase-8.md) | Script reading and editing: a feasibility check of the script editor, specification notes, editor handlers and host tools with a file fallback (read, replace one fragment, refuse while the editor holds unsaved typing), user-facing text, validation, then the release lines; pushing gated on approval | `Done (Archived)` |
 
 ## Meta Information
 

@@ -4,31 +4,31 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-10-21 15:08
-**Phase:** 5 — Repository Stewardship
+**Updated:** 2026-10-21 16:09
+**Phase:** 8 — Script Reading and Editing
 **Status:** Active
 
 ## Current Position
 
-- **Task:** T-5E04 First acting run
+- **Task:** T-8D01 Carry to the release lines (after validation)
 - **Spec:** l2-ci-release-pipeline.md §4 (DS-8)
-- **Next Action:** Run /magic.task main to update the plan
+- **Next Action:** Plan complete — nothing pending
 
 ## Progress
 
 ```
-Overall: [6/6] ████████ 100%
+Overall: [7/7] ████████ 100%
 ```
 
 ## Recent Decisions
 
 <!-- Last 3-5 locked decisions. Older entries are dropped (not archived) — see PLAN.md / CHANGELOG.md for phase history. -->
 
+- 2026-10-21 **Decision:** Phase 8 complete. Provides: godot_read_script and godot_edit_script (editor path through the script editor, file fallback), carried to the 4.7, 4.6 and 4.5 lines; pushing gated on approval
 - 2026-10-21 **Decision:** Phase 5 complete. Provides: the repo-steward skill and its installation, board, readiness notice, master ruleset, proof that a further run posts nothing new
 - 2026-10-21 **Decision:** Phase 7 complete. Provides: held stepping (hold, exact and conditional ticks, tick-scheduled input, held launch, exactness report), carried to the 4.7, 4.6 and 4.5 lines; one limitation recorded (a vanished server is not detected)
 - 2026-10-21 **Decision:** Phase 6 recorded: the contributor series (running game, debugger, language server, authoring tools) is merged and carried to the lines; its specifications are Stable
 - 2026-10-16 **Decision:** Phase 3 complete. Provides: agent feedback channel (note, draft, submit with consent), settings, docs, tests
-- 2026-10-16 **Decision:** Phase 3 planned for the agent feedback channel: mode full by default, gh via the human's session, link carries title and body only
 
 ## Blockers
 

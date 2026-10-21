@@ -1,6 +1,6 @@
 # Godot Editor Addon
 
-**Version:** 1.3.1
+**Version:** 1.4.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-editor-bridge.md
@@ -12,6 +12,7 @@ The editor side of the live bridge, written in GDScript and shipped as `addons/g
 ## Related Specifications
 
 - [l1-editor-bridge.md](l1-editor-bridge.md) - Parent concept.
+- [l1-content-authoring.md](l1-content-authoring.md) - CA-7 to CA-10: reading and editing scripts (§5.3).
 - [l2-bridge-client-rust.md](l2-bridge-client-rust.md) - The server-side peer.
 - [l1-distribution.md](l1-distribution.md) - DS-5: shipped as a separate archive.
 - [l1-release-lines.md](l1-release-lines.md) - RL-4: the addon of each line gates on its line's Godot version.
@@ -47,7 +48,7 @@ GDScript fails differently from Rust: assigning a wrongly typed value to a typed
 | BR-8 Fast, classified failures | Errors are replied as `status: error` with a human-readable message; the server classifies them. |
 | BR-9 Version gate | [MODIFIED] `plugin.gd` compares `Engine.get_version_info()` with the line's `MIN_MAJOR`.`MIN_MINOR`: an older version prints an error and the bridge does not start; a newer version prints a warning naming the release line to install ("This godot-mcp build is for Godot 4.6; install the release for Godot 4.7") and the bridge starts (RL-4). |
 | BR-10 Editor-only | `export_plugin.gd` (registered before the bridge so it works even if the bridge fails) skips every file under its own directory; its name sorts before the built-in "GDScript" export plugin, which would otherwise remap `.gd` files first and end the chain. |
-| BR-11 Project-confined paths | `to_res_path` normalizes separators, localizes absolute paths, and rejects anything outside `res://` or containing a `..` segment; used by `open_scene`, `get_scene_tree`, `run_project` and `resave_resources`. |
+| BR-11 Project-confined paths | `to_res_path` normalizes separators, localizes absolute paths, and rejects anything outside `res://` or containing a `..` segment; used by `open_scene`, `get_scene_tree`, `run_project`, `resave_resources`, `read_script` and `edit_script`. |
 
 ## 5. Detailed Design
 
@@ -59,6 +60,7 @@ addons/godot_mcp/
 ├── plugin.gd           EditorPlugin: version gate, export plugin, bridge node lifecycle
 ├── bridge_server.gd    bridge node: listener, secret, validation, handlers, replies
 ├── export_plugin.gd    EditorExportPlugin: skip the addon folder on export
+├── editor/script_ops.gd       read and edit a script through the script editor (see §5.3)
 ├── core/runtime_override.gd   override.cfg for editor Play, restored afterwards
 ├── editor/game_relay.gd       EditorDebuggerPlugin relaying mcp:* messages of a played game
 ├── runtime/            in-game component loaded only while a debugger is attached (see l2-game-runtime.md)
@@ -74,6 +76,34 @@ addons/godot_mcp/
 - `create_scene`, `create_resource`: refuse an existing file; the scene is packed and opened, the resource saved with `ResourceSaver` and registered with the file system. `attach_script`, `connect_signal`: one undo action each; the script must exist in the project, the target must have the method, a connection that exists is refused. `set_project_setting`: the key is a plain `section/path`, only strings, numbers and booleans, the type of an existing setting is kept, the old value is restored if saving fails.
 - `plugin.gd`: with the environment variable `GODOT_MCP_NO_BRIDGE=1` the plugin still registers the export exclusion but opens no bridge and says so in the log; the server sets it for the private editor of the language server.
 - `game_status`, relay: the plugin lists the played games and their `hello`; the host waits for it before it sends anything to a game started by Play.
+
+### 5.3 Script Commands
+
+`read_script` and `edit_script` realize CA-7 to CA-10 of [l1-content-authoring.md](l1-content-authoring.md). Their logic lives in `editor/script_ops.gd` (loaded by path, no `class_name`); the two handlers in `bridge_server.gd` only validate the parameters, turn the path into a `res://` path with `to_res_path` and send the reply. The version label and the line-ending and size rules are the ones of [l2-tool-handlers.md](l2-tool-handlers.md) §5.4, with the same test vectors.
+
+Facts the design rests on, measured on Godot 4.8-beta1 in the headless editor (`script_editor_facts_for_reading_and_editing`):
+
+- A script opened with `EditorInterface.edit_script` has a code editor even without a window: `ScriptEditor.get_open_script_editors()` lists it and `get_base_editor()` returns its `CodeEdit`.
+- A script has unsaved changes when the `CodeEdit`'s `get_version()` differs from `get_saved_version()`. The unsaved text is the `CodeEdit`'s `text`; the loaded script resource keeps the saved text (`source_code` does not follow the buffer).
+- A replacement made between `begin_complex_operation()` and `end_complex_operation()` is reversed by one `undo()`, which also returns the version to the saved one.
+- `script.source_code = text`, `ResourceSaver.save`, `tag_saved_version()`, `EditorInterface.get_resource_filesystem().update_file` and `script.reload(true)` write the file, clear the unsaved state and give a running `@tool` node the new code.
+- `ScriptEditorBase` has no `get_edited_resource()` and `get_current_editor()` is null in the headless editor, so an editor is matched to a path through the two lists: `get_open_scripts()` and `get_open_script_editors()` have the same order.
+
+Pairing rule: an editor is paired with a path only when both lists have the same length and, where the editor names its tab (the `_tab_name` metadata, present in Godot 4.8-beta1 and absent in 4.5.2, as the carry to the older lines showed), that name starts with the file name. Where the metadata is absent the equal lengths are the only check. Other tabs (a help page, a text file) can make the lists differ in a real window; that case was not measured headless, so it is handled by refusing: the answer says the editor state cannot be matched and names the fix (close the extra tabs, or save the script, then read again).
+
+`read_script` (`script_path`): the path must end in `.gd`, name an existing file and be at most 1 MiB. The answer is `{path, text, source, dirty, version}`: `source` is `editor` and `dirty` is true when the paired editor has unsaved changes (the text is the `CodeEdit`'s, line endings as `\n`); otherwise `source` is `file`, `dirty` is false and the text is the file's. `version` is the label of the returned text. An unpaired or unmatched editor is read as the file; the answer does not claim `dirty: false` for a script whose editor state is unknown, it carries `editor_state: "unknown"` and the reason.
+
+`edit_script` (`script_path`, `old_text`, `new_text`, optional `version`):
+
+1. Validate as for `read_script`; `old_text` is not empty and differs from `new_text`.
+2. Pair the editor. Unknown editor state → refuse (pairing rule). A paired editor with unsaved changes → refuse with the path and the fix (save in the editor or discard, then read again) and change nothing (CA-9). A paired saved editor whose text differs from the file (the file changed on disk and the editor has not reloaded it) → refuse with the same kind of fix.
+3. The text to edit is the paired editor's, else the file's, with `\r\n` read as `\n`. If `version` is given it must equal the label of that text, otherwise refuse (CA-8). Count the occurrences of `old_text`: zero or more than one → refuse with the count.
+4. Apply: open the script in the editor when it is not open (`edit_script`; this adds a tab, which is visible to the person and acceptable), replace the fragment on its `CodeEdit` as one complex operation (one undo step), then save as in the facts above so the editor, the file and the loaded script agree (CA-10). A failure after the change started (the save) undoes the operation before replying.
+5. The answer is `{path, replaced: 1, version, source: "editor"}` with the label of the new text.
+
+The editor writes the file with its own line-ending setting, so a script edited through the editor ends up with the editor's endings; the file fallback keeps the file's.
+
+Every reply path sends exactly one answer (BR-3); the parameters are read untyped and validated (`PARAM_TYPES`: `script_path`, `old_text`, `new_text`, `version` are strings).
 
 ## 6. Implementation Notes
 
@@ -93,6 +123,7 @@ addons/godot_mcp/
 | `[BRIDGE]` | `addons/godot_mcp/bridge_server.gd` | Listener and command handlers |
 | `[EXPORT]` | `addons/godot_mcp/export_plugin.gd` | Export exclusion |
 | `[CFG]` | `addons/godot_mcp/plugin.cfg` | Addon metadata and version |
+| `[SCRIPTS]` | `addons/godot_mcp/editor/script_ops.gd` | Reading and editing a script through the script editor |
 | `[DEVPROJ]` | `project.godot` | Development project enabling the addon |
 | `[OVERRIDE]` | `addons/godot_mcp/core/runtime_override.gd` | override.cfg for editor Play, restored afterwards |
 
@@ -105,3 +136,6 @@ addons/godot_mcp/
 | 1.2.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] The runtime, relay and override files, and the handler notes of the authoring commands. |
 | 1.3.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] The `GODOT_MCP_NO_BRIDGE` switch of the plugin. |
 | 1.3.1 | 2026-10-21 | Agent (magic.spec) | Added the Play override script to Canonical References. No requirement changed. |
+| 1.4.0 | 2026-10-21 | Agent (magic.run) | [ADDED] §5.3: the `read_script` and `edit_script` commands, the measured script-editor facts they rest on, the pairing rule between an editor and a path, the refusal while unsaved changes exist, and the new file `editor/script_ops.gd`. Stable → RFC → Stable after Post-Update Review. The canonical reference for the new file is added with the file. |
+| 1.4.1 | 2026-10-21 | Agent (magic.run) | Added the script operations file to Canonical References now that it exists. No requirement changed. |
+| 1.4.2 | 2026-10-21 | Agent (magic.run) | The tab-name check of the pairing rule applies only where the editor names its tab: the carry to the 4.5, 4.6 and 4.7 lines failed because those editors have no `_tab_name` metadata. No other requirement changed. |
