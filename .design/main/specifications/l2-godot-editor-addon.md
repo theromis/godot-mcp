@@ -1,6 +1,6 @@
 # Godot Editor Addon
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-editor-bridge.md
@@ -59,6 +59,9 @@ addons/godot_mcp/
 ├── plugin.gd           EditorPlugin: version gate, export plugin, bridge node lifecycle
 ├── bridge_server.gd    bridge node: listener, secret, validation, handlers, replies
 ├── export_plugin.gd    EditorExportPlugin: skip the addon folder on export
+├── core/runtime_override.gd   override.cfg for editor Play, restored afterwards
+├── editor/game_relay.gd       EditorDebuggerPlugin relaying mcp:* messages of a played game
+├── runtime/            in-game component loaded only while a debugger is attached (see l2-game-runtime.md)
 └── *.gd.uid            Godot UID sidecars (committed)
 ```
 
@@ -68,6 +71,8 @@ addons/godot_mcp/
 - `resave_resources`: refuses while an import is running (`is_import_running`: guarded call before 4.7, direct call from 4.7); with no paths starts a background `scan()`; otherwise re-imports importable files synchronously and calls `update_file` for others; reports reimported, refreshed, missing and invalid paths.
 - `add_node`: native classes must derive from `Node` and be instantiable; global script classes are looked up in the project's class list; non-Node script instances are freed.
 - `get_node_properties`: only properties with editor usage; values in Godot text form, truncated at 2000 characters.
+- `create_scene`, `create_resource`: refuse an existing file; the scene is packed and opened, the resource saved with `ResourceSaver` and registered with the file system. `attach_script`, `connect_signal`: one undo action each; the script must exist in the project, the target must have the method, a connection that exists is refused. `set_project_setting`: the key is a plain `section/path`, only strings, numbers and booleans, the type of an existing setting is kept, the old value is restored if saving fails.
+- `game_status`, relay: the plugin lists the played games and their `hello`; the host waits for it before it sends anything to a game started by Play.
 
 ## 6. Implementation Notes
 
@@ -95,3 +100,4 @@ addons/godot_mcp/
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-16 | Agent (magic.analyze first-time) | Reverse-engineered from the addon at 94e4540; known limitations carried over from the 2026-10-14 QA report's open items. |
 | 1.1.0 | 2026-10-20 | Agent (magic.spec) | [MODIFIED] Target, guard convention and BR-9 per release line; newer-minor warning. Stable → RFC → Stable after Post-Update Review. |
+| 1.2.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] The runtime, relay and override files, and the handler notes of the authoring commands. |

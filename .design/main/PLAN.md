@@ -1,13 +1,13 @@
 # Implementation Plan
 
-**Version:** 1.3.0
+**Version:** 1.4.0
 **Generated:** 2026-10-20
-**Based on:** .design/main/INDEX.md v1.4.0
+**Based on:** .design/main/INDEX.md v1.5.0
 **Status:** Active
 
 ## Overview
 
-The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unreleased changes at commit 94e4540), so Phases 0 and 1 describe what is already implemented and verified. Phase 2 closes the gaps the first analysis found: a shipped-artifact hygiene gap, a stale comment, an unverified security property, and contributor guidance for the specification-driven workflow. Phase 3 adds the agent feedback channel: tools that let an agent record what is missing or broken and hand the maintainers a scrubbed report as text or as an approved issue submission. Phase 4 splits the product into one release line per Godot minor version (4.5, 4.6, 4.7) with the development line on `master` targeting Godot 4.8, rewrites the release procedure around carrying changes between lines and releasing each line on its own, and fills the security policy and contributor guide. Phase 5 adds repository stewardship: a portable agent skill that triages, plans, fixes, answers, reviews, merges and closes issues and pull requests within autonomy limits, keeps a Kanban board, and announces when a release is due and what it holds for each Godot line, installed in this repository with its profile, workflows, forms and guide changes. Roadmap concepts wait in the Backlog until their open questions are answered.
+The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unreleased changes at commit 94e4540), so Phases 0 and 1 describe what is already implemented and verified. Phase 2 closes the gaps the first analysis found: a shipped-artifact hygiene gap, a stale comment, an unverified security property, and contributor guidance for the specification-driven workflow. Phase 3 adds the agent feedback channel: tools that let an agent record what is missing or broken and hand the maintainers a scrubbed report as text or as an approved issue submission. Phase 4 splits the product into one release line per Godot minor version (4.5, 4.6, 4.7) with the development line on `master` targeting Godot 4.8, rewrites the release procedure around carrying changes between lines and releasing each line on its own, and fills the security policy and contributor guide. Phase 5 adds repository stewardship: a portable agent skill that triages, plans, fixes, answers, reviews, merges and closes issues and pull requests within autonomy limits, keeps a Kanban board, and announces when a release is due and what it holds for each Godot line, installed in this repository with its profile, workflows, forms and guide changes. Phase 6 records the series of contributor pull requests that gave the server a running-game channel, a debugger client, a language-server client and the authoring tools, and the specifications written for them. Roadmap concepts wait in the Backlog until their open questions are answered.
 
 ## Phase 0 — Requirements (Layer 1: Concept)
 
@@ -68,8 +68,18 @@ The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unrelease
 - [ ] Amendments: Community Health Files 1.1.0 (concept and GitHub), Test Suite 1.3.0
 - [ ] Gated on approval: pushing to `master`, labels and the board on GitHub, the first acting run; maintainer-only settings
 
+## Phase 6 — Game Runtime, Authoring & Code Intelligence (Layers 1 and 2)
+
+*Specified after the code merged; see [TASKS.md](TASKS.md).*
+
+- [x] **Runtime Observability** ([l1-runtime-observability.md](specifications/l1-runtime-observability.md)) [L1]
+- [x] **Code Intelligence** ([l1-code-intelligence.md](specifications/l1-code-intelligence.md)) [L1]
+- [x] **Content Authoring** ([l1-content-authoring.md](specifications/l1-content-authoring.md)) [L1]
+- [x] **Game Runtime Channel** ([l2-game-runtime.md](specifications/l2-game-runtime.md)) [L2]
+- [x] **GDScript Language Server Client** ([l2-lsp-client.md](specifications/l2-lsp-client.md)) [L2]
+- [x] Amendments: Tool Catalog 1.2.0, Tool Handlers 1.2.0, Godot Editor Addon 1.2.0, Test Suite 1.4.0
+
 ## Backlog
 
 <!-- Registered specifications waiting for prioritization (Draft or non-critical Stable) -->
-- [l1-runtime-observability.md](specifications/l1-runtime-observability.md) *(Parked — ownership of runtime access undecided; see its TBD markers)*
-- [l1-content-authoring.md](specifications/l1-content-authoring.md) *(Parked — update format and headless support undecided; see its TBD markers)*
+- Reading and updating existing scripts (open question in [l1-content-authoring.md](specifications/l1-content-authoring.md))

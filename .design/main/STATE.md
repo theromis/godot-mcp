@@ -4,15 +4,15 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-10-20 16:53
+**Updated:** 2026-10-21 04:30
 **Phase:** 5 — Repository Stewardship
-**Status:** Blocked
+**Status:** In Progress
 
 ## Current Position
 
 - **Task:** T-5E04 First acting run
 - **Spec:** l2-ci-release-pipeline.md §4 (DS-8)
-- **Next Action:** T-5E04 continue: next steward run handles #4 card, #7, #5, #9, #6
+- **Next Action:** T-5E04: a third steward run to prove it posts nothing twice (ST-14); T-5E03 settings are the maintainer's; the readiness notice says v0.6.0 is due and the release is the maintainer's decision
 
 ## Progress
 
@@ -25,6 +25,7 @@ Overall: [3/4] ██████░░ 75%
 
 <!-- Last 3-5 locked decisions. Older entries are dropped (not archived) — see PLAN.md / CHANGELOG.md for phase history. -->
 
+- 2026-10-21 **Decision:** Phase 6 recorded: the contributor series (running game, debugger, language server, authoring tools) is merged and carried to the lines; its specifications are Stable
 - 2026-10-16 **Decision:** Phase 3 complete. Provides: agent feedback channel (note, draft, submit with consent), settings, docs, tests
 - 2026-10-16 **Decision:** Phase 3 planned for the agent feedback channel: mode full by default, gh via the human's session, link carries title and body only
 - 2026-10-16 **Decision:** Registry bootstrapped from code at 94e4540 (13 specs: 11 Stable, 2 Draft); finalization.autoChangelog disabled because CHANGELOG.md is the published release text
