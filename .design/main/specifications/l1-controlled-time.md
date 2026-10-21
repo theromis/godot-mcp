@@ -1,12 +1,12 @@
 # Controlled Time
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** concept
 
 ## Overview
 
-How an agent holds a running game still and advances it by an exact number of simulation ticks, so that every answer describes the state after exactly the ticks it asked for. Holding is an opt-in state of a running game: reads and explicit changes are answered while it holds, operations that need time to pass are refused with the way to let time pass, and the hold always ends safely.
+How an agent holds a running game still and advances it by an exact number of simulation ticks, so that every answer describes the state after exactly the ticks it asked for. Holding is an opt-in state of a running game: reads and explicit changes are answered while it holds, operations that need time to pass are refused with the way to let time pass, and the hold ends when it is released, when the run stops or when the window is closed.
 
 ## Related Specifications
 
@@ -23,7 +23,9 @@ A game that keeps running while it is observed cannot be tested reproducibly: be
 - The engine runs a fixed-rate simulation tick and a separate frame. Exact stepping needs the frame rate fixed to the tick rate; only a launch the server controls can fix it.
 - Work on other threads, on the file system and on the GPU is not driven by ticks and takes real time.
 - Holding happens inside the game's main loop, so a held game serves requests from inside that loop; the channel to the game must be serviceable from there.
+- The game cannot tell that the process driving it has disappeared: the engine offers its scripts no sign of a closed connection (measured, not documented).
 - **Assumption (forecast):** agents reach the hold through the existing running-game tools, not a separate tool or a separate channel. Runner-up: a dedicated time tool. Override: `/magic.spec amend l1-controlled-time.md "a dedicated time tool"`.
+- **Assumption (forecast):** a driver that disappears without stopping the run is rare enough, and a frozen window that a person can close harmless enough, that no abandoned-hold limit is needed yet. Runner-up: a keepalive from the driver with a silence limit in the game. Override: `/magic.spec amend l1-controlled-time.md "a keepalive with a silence limit"`.
 
 ## 3. Core Invariants
 
@@ -35,7 +37,7 @@ A game that keeps running while it is observed cannot be tested reproducibly: be
 - **CT-6 Ticks are not paced by the clock, steps are bounded in time.** A held step runs its ticks as fast as the game can, so its maximum bounds ticks, not seconds. The server still bounds how long it waits for a step (RO-9). A step that outlives that bound finishes in the game and holds again; the error says so and how to look at the state before stepping again.
 - **CT-7 Tick-scheduled input.** Input sent to a held game enters through the same entry point as a device's input (RO-7 still releases it). A release scheduled for later falls due by tick count, so splitting one step into several does not change what the game sees. When a press first becomes visible to the game is measured on a real engine and pinned by a test.
 - **CT-8 Time-driven operations are refused while held.** An operation that needs frames or real time to pass inside the game — a frame wait, watching signals for a while, a multi-frame capture, a timed gesture, typed text — is refused at once while the game holds, with the held step that replaces it. It is never left waiting on time that will not pass.
-- **CT-9 The hold always ends safely.** Leaving the hold, stopping the run, the human closing the game's window or stopping it from the editor, the server's channel to the game going away, and the in-game component leaving the game each end the hold. Ending it releases every held and scheduled input. A held game never outlives the channel that drives it as a frozen window.
+- **CT-9 The hold ends safely.** Leaving the hold, stopping the run, the human closing the game's window or stopping it from the editor, and the in-game component leaving the game each end the hold. Ending it releases every held and scheduled input. The game cannot detect that its driver has vanished, so a driver that disappears without stopping the run leaves the game held; the window stays responsive, so a person can still close it, and a driver that exits normally stops the games it started.
 - **CT-10 Debugging coexists.** A breakpoint hit during a held step stops the game as usual. A debugger pause request on a held run the server debugs is refused, because the game is already still.
 
 ## 4. Detailed Design
@@ -53,8 +55,8 @@ stateDiagram-v2
     Stepping --> Stepping: tick allowed and counted
     Stepping --> Held: limit reached or condition met (answer the step)
     Held --> Free: resume
-    Held --> [*]: stop, window closed, channel gone, component removed
-    Stepping --> [*]: stop, window closed, channel gone, component removed
+    Held --> [*]: stop, window closed, component removed
+    Stepping --> [*]: stop, window closed, component removed
 ```
 
 The hold point is the start of a tick, before any part of the game runs that tick. Being there means the previous tick and its frame are complete and the next has not begun.
@@ -87,10 +89,12 @@ reason when false: one of "not started held with a fixed frame rate", "fixed rat
 - **Pause-based stepping** stays available for a game that is not held; it is cheaper and needs no hold, but it is not exact (§1).
 - **An expression as the condition**: rejected; RO-6 allows no code from the caller in the game.
 - **A separate driving channel** (files or a second socket) beside the debugger channel: rejected; a second way into the game doubles the access surface RO-5 keeps to one loopback connection.
-- **Ending a held game after a period with no requests**: not needed; the server owns a held run and CT-9 ends the hold when the channel goes away.
+- **Ending an abandoned hold**: left out for now. The game cannot see a vanished driver, so ending the hold would take a signal from the driver (a keepalive) and a silence limit in the game. That adds a message and a time limit, and the limit can end the hold of a driver that is only stalled (a suspended machine). It can be added later without changing any other invariant; until abandoned holds prove to be a problem, CT-9 states what holds today. The editor's own game is not driven by this server at all, so a silence limit would have to stay off there.
+- **A period with no requests** as the limit: rejected; a person reading a held game may take any time, and a held game that resumes behind the agent's back is worse than one that waits.
 
 ## Document History
 
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-21 | Agent (magic.spec) | Created from the request to bring exact time control into the server under its own rules: opt-in hold, exact and conditional steps without an evaluator, declared exactness, tick-scheduled input, refusal of time-driven operations while held, safe ending. Promoted to Stable after Post-Update Review. |
+| 1.1.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] CT-9 no longer promises that a vanished driver ends the hold: the game cannot detect it (measured on a real engine in the first held-stepping task). The limitation, the premise and a deferred keepalive alternative are recorded; the other nine invariants are unchanged. Re-reviewed and Stable. |

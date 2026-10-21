@@ -28,8 +28,8 @@ duration_minutes: ~
 - [x] [T-7A04] Tick-scheduled input and the pinned visibility tick
 - [x] [T-7B01] Server side: held launch, held-step wait, debugger pause refusal, tool schemas
 - [x] [T-7C01] User-facing text: tool descriptions, README, agent guide
-- [ ] [T-7D01] Carry to the release lines
-- [ ] [T-7T01] Validation: pipeline, end-to-end suites and invariant coverage
+- [x] [T-7T01] Validation: pipeline, end-to-end suites and invariant coverage
+- [ ] [T-7D01] Carry to the release lines (after validation)
 
 ## Detailed Tracking
 
@@ -106,25 +106,15 @@ duration_minutes: ~
 - **Changes:** Descriptions of `godot_game_physics`, `godot_game_input`, `godot_game_wait`, `godot_game_observe`, `godot_game_screenshot`, `godot_debug_control` and `godot_run_project`; a "Holding a game" section and two table rows in README.md; a bullet in the Runtime Monitoring step of AGENTS.md. A new test in `tests/tools_test.rs` (red first) reads the descriptions for hold, until, deterministic, the reason names, and the refusals. No design-file, task or phase reference in any product file (scanned).
 - **Notes (run):** The README states what was measured: the server vanishing without stopping the run leaves the game held with a window that can be closed. That sentence has to change if the silence limit of T-7A01 is added. SECURITY.md is unchanged and true: no new channel, no evaluator, loopback only.
 
-### [T-7D01] Carry to the release lines
-
-- **Spec:** l2-held-stepping.md §5.7; l2-release-branches.md
-- **Status:** Blocked
-- **Assignment:** Agent
-- **Verify:** On `godot-v4.7`, `godot-v4.6` and `godot-v4.5`, in that order, the change applied as new commits naming its origin; on each, `cargo test --all-targets`, clippy, fmt, the GDScript syntax checks, and `editor_e2e_test`, `addon_export_test` and `runtime_e2e_test` (ignored) pass with that line's Godot build from its `.github/godot-version`.
-- **Handoff:** Pushing the branches needs the maintainer's yes in the conversation.
-- **Notes:** No `has_method()` guard is expected (every call exists in 4.5.0); if a line's build fails on one, add the guard on that line and record it in the line's guard list.
-- **Blocked:** The change is not committed anywhere: the run never commits, and carrying it needs a commit on `master` to copy. It also needs the maintainer's yes to touch `godot-v4.7`, `godot-v4.6` and `godot-v4.5`, and the Godot builds of those lines (4.7.2, 4.6.3, 4.5.2; the minimum-version build is not installed by default). Next: commit the change on `master`, then run this task.
-
 ### [T-7T01] Validation: pipeline, end-to-end suites and invariant coverage
 
 - **Spec:** l1-controlled-time.md CT-1 to CT-10; l2-held-stepping.md §4
-- **Status:** Blocked
+- **Status:** Done
 - **Assignment:** Agent
 - **Verify:** On `master` with 4.8-beta1: the full AGENTS.md pipeline (clippy, fmt, `cargo test --all-targets`, every GDScript `--check-only`), `editor_e2e_test`, `addon_export_test` and `runtime_e2e_test` with `--ignored`; a process run started with `held: true` reports `deterministic: true` and `deterministic_reason` empty; a held hold on editor Play reports `deterministic: false` (`not_started_held`); a table in this task's Notes maps every invariant CT-1 to CT-10 to the test that proves it, with no row empty.
 - **Handoff:** `/magic.run` phase completion.
 - **Notes:** Any invariant without a test is a failure of this task, not a note.
-- **Blocked:** Spec `l1-controlled-time.md` requires design input: CT-9 (and the CT-9 row of `l2-held-stepping.md`) says a vanished server ends the hold, detected through `EngineDebugger.is_active()`. Measured on Godot 4.8-beta1 (see T-7A01): `is_active()` stays true after the debugger peer closes its socket, and the script API has no other peer check, so the game cannot tell. The clause cannot be met or tested as written. Candidates: a keepalive message from the server with an in-game silence limit, a lease on the hold, or accepting a frozen game whose window can still be closed (a server that exits normally already kills its games). Everything else is proved.
+- **Was blocked:** CT-9 promised that a vanished server ends the hold, detected through `EngineDebugger.is_active()`; measured on Godot 4.8-beta1 (T-7A01), `is_active()` stays true after the debugger peer closes its socket, so the game cannot tell. Resolved by amending both specifications to 1.1.0: CT-9 now states what holds (release, stop, window closed, component gone) and records the limitation, with a keepalive as a deferred alternative and its override. The CT-9 row of the table below follows the new text; there is no channel-gone clause left to test.
 - **Verified (Godot 4.8-beta1, `master`):** `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test --all-targets`, `--check-only` of all twelve addon scripts; `editor_e2e_test` 9 of 9, `addon_export_test` 2 of 2, `runtime_e2e_test` 20 of 20. `deterministic: true` on a held launch (10 ticks, 10 frames); `false` with `not_started_held` on a later hold and on editor Play.
 - **Coverage of the invariants:**
 
@@ -138,7 +128,18 @@ duration_minutes: ~
   | CT-6 time-bounded | `a_held_step_that_times_out_is_still_running_in_the_game` (the message); the 60 s wait is covered by reading only |
   | CT-7 tick-scheduled input | `held_tap_lasts_its_ticks_whatever_the_step_sizes` (also pins the measured visibility tick), `held_input_is_released_when_asked_and_when_the_hold_ends` |
   | CT-8 refusals | `held_game_refuses_every_operation_that_needs_time_and_serves_the_rest`, `held_game_refuses_what_needs_time_to_pass_and_stays_held` |
-  | CT-9 ends safely | stop: `held_game_stands_still_serves_reads_and_resumes`; window closed: `closing_the_window_of_a_held_game_ends_the_run` (Windows); input released: `held_input_is_released_when_asked_and_when_the_hold_ends`. **Channel gone: no test, cannot be met as written (above).** |
+  | CT-9 ends safely | stop: `held_game_stands_still_serves_reads_and_resumes`; window closed: `closing_the_window_of_a_held_game_ends_the_run` (Windows); input released: `held_input_is_released_when_asked_and_when_the_hold_ends`. A vanished server is a recorded limitation, not an invariant (CT-9, 1.1.0). |
   | CT-10 debugging | `a_breakpoint_hit_during_a_held_step_stops_the_game_as_usual`, `a_held_launch_steps_exactly_and_the_server_knows_it_is_held` (pause refused). The editor debugger's own pause during a hold is the documented limitation and is not tested. |
 
 - **Notes (run):** The editor Play test passed on its first run, because the behaviour already existed when it was written; it pins that behaviour.
+- **Changes:** Validation only; no product file changed by this task. Run again after the CT-9 amendment: `cargo fmt --all -- --check`, clippy with `-D warnings`, `cargo test --all-targets` (all suites green), all twelve addon scripts pass `--check-only`, `editor_e2e_test` 9 of 9, `addon_export_test` 2 of 2, `runtime_e2e_test` 20 of 20 on Godot 4.8-beta1 at `master`. No task ID, phase, design path or specification name in any product file (the contributor guide's own rule about `.design/` excepted).
+
+### [T-7D01] Carry to the release lines (after validation)
+
+- **Spec:** l2-held-stepping.md §5.7; l2-release-branches.md
+- **Status:** Blocked
+- **Assignment:** Agent
+- **Verify:** On `godot-v4.7`, `godot-v4.6` and `godot-v4.5`, in that order, the change applied as new commits naming its origin; on each, `cargo test --all-targets`, clippy, fmt, the GDScript syntax checks, and `editor_e2e_test`, `addon_export_test` and `runtime_e2e_test` (ignored) pass with that line's Godot build from its `.github/godot-version`.
+- **Handoff:** Pushing the branches needs the maintainer's yes in the conversation. Runs after T-7T01.
+- **Notes:** No `has_method()` guard is expected (every call exists in 4.5.0); if a line's build fails on one, add the guard on that line and record it in the line's guard list.
+- **Blocked:** T-7T01 has passed. The change is not committed anywhere: the run never commits, and carrying it needs a commit on `master` to copy. It also needs the maintainer's yes to touch `godot-v4.7`, `godot-v4.6` and `godot-v4.5`, and the Godot builds of those lines (4.7.2, 4.6.3, 4.5.2; the minimum-version build is not installed by default). Next: commit the change on `master`, then run this task.

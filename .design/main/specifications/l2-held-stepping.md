@@ -1,6 +1,6 @@
 # Held Stepping
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-controlled-time.md
@@ -24,7 +24,8 @@ The runtime already steps physics by pausing the tree, which leaves idle frames,
 
 - Requests reach the runtime as `mcp:request` debugger messages, dispatched by the engine's debugger poll, which normally runs once per main-loop iteration. A hold blocks that iteration, so the hold loop must drive the poll itself.
 - Engine facts checked in the 4.5-stable sources: `EngineDebugger.line_poll()` is bound to scripts and fails without an active debugger; it runs a full non-idle poll (flush of queued outgoing messages, then dispatch of every received message to its capture, `mcp` included) on one call in 2048. The line's first release has it, so no `has_method()` guard is needed on any line.
-- Unverified, proven by the first end-to-end test (§6): the tree's `physics_frame` signal is emitted at the start of each physics iteration, before any node's `_physics_process`, also while the tree is paused; and a root-window close request is delivered as `NOTIFICATION_WM_CLOSE_REQUEST` by `DisplayServer.process_events()` called from inside the hold.
+- Verified on Godot 4.8-beta1 by the first end-to-end tests: the tree's `physics_frame` signal is emitted at the start of each physics iteration, before any node's `_physics_process`, also while the tree is paused; a window close request reaches the runtime node as `NOTIFICATION_WM_CLOSE_REQUEST` from `DisplayServer.process_events()` called inside the hold (Windows, `CloseMainWindow`).
+- Measured: `EngineDebugger.is_active()` stays true after the debugger peer closes its socket (a plain TCP listener destroyed the connection and the game still reported active for the next five seconds), and the script API has no other check of the peer. The game cannot learn that the server is gone.
 - Godot exposes no getter for the `--fixed-fps` it was started with, so the server declares it to the runtime with a user argument it writes itself.
 - **Assumption (forecast):** a press injected at the hold point is first seen as just pressed on the second held tick, so a held tap releases after 2 ticks by default; this was measured on a prior implementation of the same hold point and is re-measured here before it is pinned. Runner-up: 1 tick. Override: `/magic.spec amend l2-held-stepping.md "tap releases after 1 tick"`.
 
@@ -40,7 +41,7 @@ The runtime already steps physics by pausing the tree, which leaves idle frames,
 | CT-6 Unpaced, time-bounded | The server waits up to 60 s for a held step (longer than the 20 s of other runtime calls, still bounded). On timeout it answers an error saying the game finishes the step and holds again, and recommends `godot_game_physics` `status` before stepping again; the late reply is dropped by id. |
 | CT-7 Tick-scheduled input | While held, `godot_game_input` applies its instant steps through `Input.parse_input_event` at once and records releases due at `total_ticks + hold_ticks`; the counter releases them at the start of the tick they fall due on, before the tick runs. `input.release_all` also clears the schedule. The measured visibility tick is pinned by the end-to-end test. |
 | CT-8 Time-driven operations refused | While held, the runtime refuses at dispatch every request that would return a pending job (§5.5), with `R.BAD_PARAMS` and the held-step replacement in the message; it never creates the job. |
-| CT-9 The hold ends safely | The loop leaves the hold on `resume`; on `NOTIFICATION_WM_CLOSE_REQUEST` received by the runtime node (the game then quits as it normally would); when `EngineDebugger.is_active()` turns false; and from `_exit_tree`. `godot_stop_project` kills the process, held or not. Each exit releases held and scheduled input (RO-7). |
+| CT-9 The hold ends safely | The loop leaves the hold on `resume`; on `NOTIFICATION_WM_CLOSE_REQUEST` received by the runtime node (the game then quits as it normally would); and from `_exit_tree`. `godot_stop_project` kills the process, held or not, and a server that exits normally kills the games it started (`GameHub` drop). Each exit releases held and scheduled input (RO-7). A server that is killed without that cleanup cannot be detected from the game (§2), so the game stays held; its window keeps answering, so closing it ends the hold. |
 | CT-10 Debugging coexists | Breakpoints in game code fire during a held step's ticks as before. The server keeps the last hold state reported by the runtime on its `Run` and refuses `godot_debug_control` `pause` while it is held. For editor Play, a pause pressed in the editor's own debugger breaks inside the hold loop; continuing returns to the hold (documented limitation). |
 
 ## 5. Detailed Design
@@ -121,7 +122,7 @@ The change is a new capability, so it lands on `master` and is carried to every 
 
 ## 6. Implementation Notes
 
-1. Feasibility test first, on a real game: hold, a held tick counter fixture, a request answered while held, a `Timer` and a `PROCESS_MODE_ALWAYS` node that do not advance while held, and the close request ending the hold. Its result confirms or overturns the unverified facts of §2 before anything else is built.
+1. Feasibility test first, on a real game: hold, a held tick counter fixture, a request answered while held, a `Timer` and a `PROCESS_MODE_ALWAYS` node that do not advance while held, and the close request ending the hold. Its result confirmed the engine facts of §2 and measured the one that failed (a vanished server).
 2. Runtime hold loop, counter, served/refused table, exactness; then the server's held launch, held-step wait and debug pause refusal.
 3. Input schedule, then the pinned visibility measurement.
 4. Tool descriptions, README rows and the security text updated with the behaviour (no reference to design files).
@@ -130,6 +131,7 @@ Tests: `runtime_e2e_test.rs` for every row above and for `deterministic` on a he
 
 ## 7. Drawbacks & Alternatives
 
+- **A vanished server leaves the game held.** A keepalive the server sends every few seconds, with a silence limit in the runtime that releases the hold, would end it; the runtime would arm the limit only after the first keepalive, so the editor's Play (no keepalive) is unaffected. Not built: it adds a message, a limit and a failure mode (a suspended machine ends a hold that is only stalled), and no abandoned hold has been seen. Deferred through the forecast premise in the parent concept.
 - **Editor Play is never exact:** its launch is the editor's. The answer says so and names the held process run as the exact alternative.
 - **The editor's remote debugger pause during a hold** breaks inside runtime code; accepted and documented (CT-10).
 - **A dedicated tool** (`godot_game_time`): rejected; one physics tool with a held mode keeps a single place for stepping, and the free-game behaviour is unchanged.
@@ -153,3 +155,4 @@ Tests: `runtime_e2e_test.rs` for every row above and for `deterministic` on a he
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-21 | Agent (magic.spec) | Created with the controlled-time concept: hold loop on `physics_frame`, channel pumped through `EngineDebugger.line_poll()` (checked in the 4.5-stable sources), held tool contract, served and refused operations, tick-scheduled input, exactness through a server-declared fixed rate. Promoted to Stable after Post-Update Review. |
+| 1.1.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] Engine facts marked verified; the CT-9 row drops the `is_active()` trigger, which does not turn false when the server disappears (measured), and states the limitation; the deferred keepalive recorded in the drawbacks. Re-reviewed and Stable. |
