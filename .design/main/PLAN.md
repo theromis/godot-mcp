@@ -83,9 +83,9 @@ The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unrelease
 
 *Specified first; a feasibility test on a real game gates the rest. Requires Phase 6 (the runtime channel). See [TASKS.md](TASKS.md).*
 
-- [ ] **Controlled Time** ([l1-controlled-time.md](specifications/l1-controlled-time.md)) [L1]
-- [ ] **Held Stepping** ([l2-held-stepping.md](specifications/l2-held-stepping.md)) [L2]
-- [ ] Carried to `godot-v4.7`, `godot-v4.6`, `godot-v4.5`; pushing gated on approval
+- [x] **Controlled Time** ([l1-controlled-time.md](specifications/l1-controlled-time.md)) [L1]
+- [x] **Held Stepping** ([l2-held-stepping.md](specifications/l2-held-stepping.md)) [L2]
+- [x] Carried to `godot-v4.7`, `godot-v4.6`, `godot-v4.5` (one local commit each); pushing gated on approval
 
 ## Backlog
 

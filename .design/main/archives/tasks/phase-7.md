@@ -1,21 +1,40 @@
 ---
 phase: 7
 name: "Controlled Time"
-status: In Progress
+status: Done
 subsystem: "addons/godot_mcp/runtime, src/godot, src/tools, tests, README"
 requires: [6]
-provides: []
+provides:
+  - godot_game_physics hold, held steps (exact ticks, or until a public property condition), resume, status with deterministic and its reason
+  - Tick-scheduled input for a held game (taps last hold_ticks ticks), refusal of operations that need time to pass, a held single capture
+  - godot_run_project held: a managed game started held at a fixed frame rate equal to the project's tick rate, so steps are exact
+  - The change on the 4.7, 4.6 and 4.5 lines
 key_files:
-  created: []
-  modified: []
-patterns_established: []
+  created:
+    - addons/godot_mcp/runtime/ops/rt_hold.gd
+  modified:
+    - addons/godot_mcp/runtime/mcp_runtime.gd
+    - addons/godot_mcp/runtime/ops/rt_input.gd
+    - addons/godot_mcp/runtime/ops/rt_live.gd
+    - addons/godot_mcp/runtime/ops/rt_view.gd
+    - src/godot/runs.rs
+    - src/tools/game.rs
+    - src/tools.rs
+    - tests/runtime_e2e_test.rs
+    - tests/editor_e2e_test.rs
+    - tests/tools_test.rs
+    - README.md
+patterns_established:
+  - A concept whose key engine facts are unverified starts with a feasibility task on a real engine; the one fact that failed became a recorded limitation instead of a workaround
+  - Stand-in processes in tests must outlive the tool manager that started them, which kills its games on drop
+  - A change carried to the release lines is the product files only, as one commit that names its master commits
 duration_minutes: ~
 ---
 
 # Stage 7 Tasks — Controlled Time
 
 **Phase:** 7
-**Status:** In Progress
+**Status:** Done
 **Strategic Goal:** Let an agent hold a running game still and advance it by exact or conditional physics ticks over the existing debugger channel, with input scheduled by ticks, time-driven operations refused while held, exactness reported honestly, and the hold always ending safely.
 
 ## Atomic Checklist
@@ -29,7 +48,7 @@ duration_minutes: ~
 - [x] [T-7B01] Server side: held launch, held-step wait, debugger pause refusal, tool schemas
 - [x] [T-7C01] User-facing text: tool descriptions, README, agent guide
 - [x] [T-7T01] Validation: pipeline, end-to-end suites and invariant coverage
-- [ ] [T-7D01] Carry to the release lines (after validation)
+- [x] [T-7D01] Carry to the release lines (after validation)
 
 ## Detailed Tracking
 
@@ -137,9 +156,10 @@ duration_minutes: ~
 ### [T-7D01] Carry to the release lines (after validation)
 
 - **Spec:** l2-held-stepping.md §5.7; l2-release-branches.md
-- **Status:** Blocked
+- **Status:** Done
 - **Assignment:** Agent
 - **Verify:** On `godot-v4.7`, `godot-v4.6` and `godot-v4.5`, in that order, the change applied as new commits naming its origin; on each, `cargo test --all-targets`, clippy, fmt, the GDScript syntax checks, and `editor_e2e_test`, `addon_export_test` and `runtime_e2e_test` (ignored) pass with that line's Godot build from its `.github/godot-version`.
 - **Handoff:** Pushing the branches needs the maintainer's yes in the conversation. Runs after T-7T01.
 - **Notes:** No `has_method()` guard is expected (every call exists in 4.5.0); if a line's build fails on one, add the guard on that line and record it in the line's guard list.
-- **Blocked:** T-7T01 has passed. The change is not committed anywhere: the run never commits, and carrying it needs a commit on `master` to copy. It also needs the maintainer's yes to touch `godot-v4.7`, `godot-v4.6` and `godot-v4.5`, and the Godot builds of those lines (4.7.2, 4.6.3, 4.5.2; the minimum-version build is not installed by default). Next: commit the change on `master`, then run this task.
+- **Changes:** One commit on each line, local, not pushed: `godot-v4.7` `ece1438`, `godot-v4.6` `d649a9c`, `godot-v4.5` `ceb6eac`, all "feat(game): hold a running game and step it by exact ticks". Each is the product files of the two master commits `802aca4e` and `26aaa6a1` (named in the message) without the planning files, the lint configuration and the pull request template those commits also touched, plus the `rt_hold.gd.uid` file Godot generates. The patch applied without conflicts on all three. Verified on each line with that line's pinned build (4.7.2, 4.6.3, 4.5.2): fmt, clippy, default tests, every addon script, `editor_e2e_test` 9 of 9, `addon_export_test` 2 of 2, `runtime_e2e_test` 20 of 20.
+- **Notes (run):** On the first run on 4.5.2, `a_game_tool_called_right_after_editor_play_waits_for_the_runtime` failed once in the parallel editor suite, then passed alone three times and the whole suite three more times; it is not touched by the hold. No `has_method()` guard was needed on any line, as the specification expected. `master` has no `rt_hold.gd.uid` committed (the three lines have it); a copy generated on 4.7.2 is in the working tree on `master`, uncommitted.

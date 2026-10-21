@@ -22,7 +22,7 @@ Tactical registry of all phases and their statuses. Check individual phase files
 | [Phase 4](archives/tasks/phase-4.md) | Godot release lines: identity per line, line-aware CI and release workflow, release skill for carrying and per-line releases, the cut of `godot-v4.5`/`4.6`/`4.7`, security policy and contributor guide; publishing gated on approval | `Done (Archived)` |
 | [Phase 5](tasks/phase-5.md) | Repository stewardship: the portable repo-steward skill (scripts, instructions, templates), its installation here (profile, workflows, issue forms, pull request template, guide changes) with tests, a report-mode run; pushing, GitHub setup and the first acting run gated on approval | `Todo` |
 | [Phase 6](archives/tasks/phase-6.md) | Game runtime, authoring and code intelligence: the contributor pull request series (running-game tools, debugger, language-server client, authoring tools, scene reload) reviewed, fixed, merged and carried to the release lines, and its specifications | `Done (Archived)` |
-| [Phase 7](tasks/phase-7.md) | Controlled time: hold a running game at the start of a physics tick over the debugger channel, exact and conditional held steps, tick-scheduled input, refusal of time-driven operations while held, exactness through a server-declared fixed rate; feasibility test first, then the lines | `In Progress` |
+| [Phase 7](archives/tasks/phase-7.md) | Controlled time: hold a running game at the start of a physics tick over the debugger channel, exact and conditional held steps, tick-scheduled input, refusal of time-driven operations while held, exactness through a server-declared fixed rate; feasibility test first, then the lines | `Done (Archived)` |
 
 ## Meta Information
 

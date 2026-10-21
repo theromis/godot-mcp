@@ -4,8 +4,8 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-10-21 10:13
-**Phase:** 7 — Controlled Time
+**Updated:** 2026-10-21 10:51
+**Phase:** 5 — Repository Stewardship
 **Status:** Blocked
 
 ## Current Position
@@ -17,14 +17,15 @@
 ## Progress
 
 ```
-Phase 7: [7/8] ███████░ 88%
-Overall: [4/6] █████░░░ 67%
+Phase 5: [12/14] ███████░ 86%
+Overall: [5/6] ███████░ 83%
 ```
 
 ## Recent Decisions
 
 <!-- Last 3-5 locked decisions. Older entries are dropped (not archived) — see PLAN.md / CHANGELOG.md for phase history. -->
 
+- 2026-10-21 **Decision:** Phase 7 complete. Provides: held stepping (hold, exact and conditional ticks, tick-scheduled input, held launch, exactness report), carried to the 4.7, 4.6 and 4.5 lines; one limitation recorded (a vanished server is not detected)
 - 2026-10-21 **Decision:** Phase 6 recorded: the contributor series (running game, debugger, language server, authoring tools) is merged and carried to the lines; its specifications are Stable
 - 2026-10-16 **Decision:** Phase 3 complete. Provides: agent feedback channel (note, draft, submit with consent), settings, docs, tests
 - 2026-10-16 **Decision:** Phase 3 planned for the agent feedback channel: mode full by default, gh via the human's session, link carries title and body only
