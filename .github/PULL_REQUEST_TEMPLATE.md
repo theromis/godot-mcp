@@ -1,4 +1,3 @@
-<!-- markdownlint-disable-file MD041 -->
 ## What and why
 
 <!-- What changes, and why it is needed. Link the issue it resolves: "Fixes #123". -->

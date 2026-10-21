@@ -92,6 +92,7 @@ Before submitting or committing changes, agents must execute and pass the comple
    godot --headless --check-only --path . --script addons/godot_mcp/editor/game_relay.gd
    godot --headless --check-only --path . --script addons/godot_mcp/core/runtime_override.gd
    godot --headless --check-only --path . --script addons/godot_mcp/runtime/mcp_runtime.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_hold.gd
    godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_input.gd
    godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_live.gd
    godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_output.gd

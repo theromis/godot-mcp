@@ -1,13 +1,13 @@
 # Implementation Plan
 
-**Version:** 1.4.0
-**Generated:** 2026-10-20
+**Version:** 1.5.0
+**Generated:** 2026-10-21
 **Based on:** .design/main/INDEX.md v1.5.0
 **Status:** Active
 
 ## Overview
 
-The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unreleased changes at commit 94e4540), so Phases 0 and 1 describe what is already implemented and verified. Phase 2 closes the gaps the first analysis found: a shipped-artifact hygiene gap, a stale comment, an unverified security property, and contributor guidance for the specification-driven workflow. Phase 3 adds the agent feedback channel: tools that let an agent record what is missing or broken and hand the maintainers a scrubbed report as text or as an approved issue submission. Phase 4 splits the product into one release line per Godot minor version (4.5, 4.6, 4.7) with the development line on `master` targeting Godot 4.8, rewrites the release procedure around carrying changes between lines and releasing each line on its own, and fills the security policy and contributor guide. Phase 5 adds repository stewardship: a portable agent skill that triages, plans, fixes, answers, reviews, merges and closes issues and pull requests within autonomy limits, keeps a Kanban board, and announces when a release is due and what it holds for each Godot line, installed in this repository with its profile, workflows, forms and guide changes. Phase 6 records the series of contributor pull requests that gave the server a running-game channel, a debugger client, a language-server client and the authoring tools, and the specifications written for them. Roadmap concepts wait in the Backlog until their open questions are answered.
+The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unreleased changes at commit 94e4540), so Phases 0 and 1 describe what is already implemented and verified. Phase 2 closes the gaps the first analysis found: a shipped-artifact hygiene gap, a stale comment, an unverified security property, and contributor guidance for the specification-driven workflow. Phase 3 adds the agent feedback channel: tools that let an agent record what is missing or broken and hand the maintainers a scrubbed report as text or as an approved issue submission. Phase 4 splits the product into one release line per Godot minor version (4.5, 4.6, 4.7) with the development line on `master` targeting Godot 4.8, rewrites the release procedure around carrying changes between lines and releasing each line on its own, and fills the security policy and contributor guide. Phase 5 adds repository stewardship: a portable agent skill that triages, plans, fixes, answers, reviews, merges and closes issues and pull requests within autonomy limits, keeps a Kanban board, and announces when a release is due and what it holds for each Godot line, installed in this repository with its profile, workflows, forms and guide changes. Phase 6 records the series of contributor pull requests that gave the server a running-game channel, a debugger client, a language-server client and the authoring tools, and the specifications written for them. Phase 7 adds controlled time: holding a running game still at the start of a physics tick and stepping it by exact or conditional ticks over the existing debugger channel, specified before the code. Roadmap concepts wait in the Backlog until their open questions are answered.
 
 ## Phase 0 — Requirements (Layer 1: Concept)
 
@@ -78,6 +78,14 @@ The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unrelease
 - [x] **Game Runtime Channel** ([l2-game-runtime.md](specifications/l2-game-runtime.md)) [L2]
 - [x] **GDScript Language Server Client** ([l2-lsp-client.md](specifications/l2-lsp-client.md)) [L2]
 - [x] Amendments: Tool Catalog 1.2.0, Tool Handlers 1.2.0, Godot Editor Addon 1.2.0, Test Suite 1.4.0
+
+## Phase 7 — Controlled Time (Layers 1 and 2)
+
+*Specified first; a feasibility test on a real game gates the rest. Requires Phase 6 (the runtime channel). See [TASKS.md](TASKS.md).*
+
+- [ ] **Controlled Time** ([l1-controlled-time.md](specifications/l1-controlled-time.md)) [L1]
+- [ ] **Held Stepping** ([l2-held-stepping.md](specifications/l2-held-stepping.md)) [L2]
+- [ ] Carried to `godot-v4.7`, `godot-v4.6`, `godot-v4.5`; pushing gated on approval
 
 ## Backlog
 

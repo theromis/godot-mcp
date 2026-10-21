@@ -1,6 +1,6 @@
 # Project Context
 
-**Generated:** 2026-10-20
+**Generated:** 2026-10-21
 
 ## Active Technologies
 
@@ -12,6 +12,7 @@
 .
 ├── .agents/
 │   ├── rules/
+│   ├── skills/
 │   └── workflows/
 ├── .design/
 │   ├── .version
@@ -23,13 +24,18 @@
 ├── .gitattributes
 ├── .github/
 │   ├── ISSUE_TEMPLATE/
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   ├── dependabot.yml
 │   ├── godot-version
 │   ├── lines
 │   ├── scripts/
+│   ├── steward-priorities.md
+│   ├── steward.yml
 │   └── workflows/
 ├── .gitignore
 ├── .magic/
-├── .markdownlint.json
+├── .markdownlint-cli2.jsonc
+├── .vscode/
 ├── AGENTS.md
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
@@ -40,6 +46,8 @@
 ├── SECURITY.md
 ├── addons/
 │   └── godot_mcp/
+├── docs/
+│   └── feature-parity.md
 ├── examples/
 │   └── fake_gh.rs
 ├── project.godot
@@ -49,9 +57,11 @@
 │   ├── config.rs
 │   ├── error.rs
 │   ├── feedback.rs
+│   ├── godot/
 │   ├── issues.rs
 │   ├── journal.rs
 │   ├── lib.rs
+│   ├── lsp/
 │   ├── main.rs
 │   ├── paths.rs
 │   ├── protocol.rs
@@ -67,15 +77,17 @@
     ├── detach_test.rs
     ├── editor_e2e_test.rs
     ├── feedback_test.rs
+    ├── runtime_e2e_test.rs
     ├── server_test.rs
     ├── stdio_protocol_test.rs
+    ├── steward_test.rs
     ├── tools_test.rs
     └── version_sync_test.rs
 ```
 
 ## Recent Changes
 
-# Workspace Phase Journal
+### Workspace Phase Journal
 
 Internal journal of finished phases. User-facing release notes are in the root `CHANGELOG.md`.
 

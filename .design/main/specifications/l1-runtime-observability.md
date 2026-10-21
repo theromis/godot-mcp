@@ -1,6 +1,6 @@
 # Runtime Observability
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -14,6 +14,7 @@ How an agent observes and drives a running game, not only the editor: the game's
 - [l1-mcp-server.md](l1-mcp-server.md) - MCP-1: captured game output must never reach the protocol channel.
 - [l1-editor-bridge.md](l1-editor-bridge.md) - Loopback-only access applies to the game channel too.
 - [l2-game-runtime.md](l2-game-runtime.md) - Where this concept is realized.
+- [l1-controlled-time.md](l1-controlled-time.md) - Holding a running game still and stepping it by exact ticks; extends this concept.
 
 ## 1. Motivation
 
@@ -61,3 +62,4 @@ After `godot_run_project` an agent could tell whether a scene plays, but not why
 | --- | --- | --- | --- |
 | 0.1.0 | 2026-10-16 | Agent (magic.analyze first-time) | Draft collected from the README roadmap, the agent guide's "not implemented" note and the reserved console-wrapper setting. Ownership left open. |
 | 1.0.0 | 2026-10-21 | Agent (magic.spec) | Implemented by pull requests 3 to 5, 9 and 13: ownership resolved (the server as debugger client plus a temporary in-game component, a plugin relay for editor Play). Scope widened from logs and a camera image to observation and control. Invariants rewritten. Draft → Stable. |
+| 1.0.1 | 2026-10-21 | Agent (magic.spec) | Linked the controlled-time concept that extends this one. No requirement changed. |

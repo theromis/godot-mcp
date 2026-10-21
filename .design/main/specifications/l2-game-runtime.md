@@ -1,6 +1,6 @@
 # Game Runtime Channel
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-runtime-observability.md
@@ -15,6 +15,7 @@ How the Rust server and the GDScript addon reach a running game: managed process
 - [l2-tool-handlers.md](l2-tool-handlers.md) - How the tools are routed.
 - [l2-godot-editor-addon.md](l2-godot-editor-addon.md) - The addon this channel adds files to.
 - [l1-tool-catalog.md](l1-tool-catalog.md) - TL-6: a managed process run is the one launch the server owns.
+- [l2-held-stepping.md](l2-held-stepping.md) - The held mode of the physics step, built on this channel.
 
 ## 1. Motivation
 
@@ -116,5 +117,6 @@ A click on a node uses the node's transform with its canvas, so a scrolling came
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
 | 1.2.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] Property and scene-generation waits, scene stamps, baselines and the physics step (pull request 18); the physics step keeps the normal physics delta. |
+| 1.2.1 | 2026-10-21 | Agent (magic.spec) | Linked the held-stepping specification built on this channel. No requirement changed. |
 | 1.1.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] The runtime copy moved out of the addons folder (RO-4, 5.2); the debugger port limitation recorded as an accepted risk with its reasoning; a capture retries for an undrawn window. |
 | 1.0.0 | 2026-10-21 | Agent (magic.spec) | Written after pull requests 3 to 5, 9 and 13 merged, with the review changes (bounded variant decoding, capped waits, Play wait for the runtime, canvas-aware clicks, same-size picture comparison). |
