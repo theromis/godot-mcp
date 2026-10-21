@@ -1,6 +1,6 @@
 # Game Runtime Channel
 
-**Version:** 1.2.1
+**Version:** 1.2.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-runtime-observability.md
@@ -116,7 +116,8 @@ A click on a node uses the node's transform with its canvas, so a scrolling came
 
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
+| 1.0.0 | 2026-10-21 | Agent (magic.spec) | Written after pull requests 3 to 5, 9 and 13 merged, with the review changes (bounded variant decoding, capped waits, Play wait for the runtime, canvas-aware clicks, same-size picture comparison). |
+| 1.1.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] The runtime copy moved out of the addons folder (RO-4, 5.2); the debugger port limitation recorded as an accepted risk with its reasoning; a capture retries for an undrawn window. |
 | 1.2.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] Property and scene-generation waits, scene stamps, baselines and the physics step (pull request 18); the physics step keeps the normal physics delta. |
 | 1.2.1 | 2026-10-21 | Agent (magic.spec) | Linked the held-stepping specification built on this channel. No requirement changed. |
-| 1.1.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] The runtime copy moved out of the addons folder (RO-4, 5.2); the debugger port limitation recorded as an accepted risk with its reasoning; a capture retries for an undrawn window. |
-| 1.0.0 | 2026-10-21 | Agent (magic.spec) | Written after pull requests 3 to 5, 9 and 13 merged, with the review changes (bounded variant decoding, capped waits, Play wait for the runtime, canvas-aware clicks, same-size picture comparison). |
+| 1.2.2 | 2026-10-21 | Agent (magic.spec) | Document History rows put in version order. No requirement changed. |

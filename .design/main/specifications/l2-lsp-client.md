@@ -1,6 +1,6 @@
 # GDScript Language Server Client
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-code-intelligence.md
@@ -69,5 +69,6 @@ The URI sent is built from the canonical path without the Windows verbatim prefi
 
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
-| 1.1.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] CI-4: one editor start at a time, dead clients replaced, the private editor opens no bridge; both known limitations removed. |
 | 1.0.0 | 2026-10-21 | Agent (magic.spec) | Written after pull request 6 merged, including the Windows URI repair and the document close fixed in review. |
+| 1.1.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] CI-4: one editor start at a time, dead clients replaced, the private editor opens no bridge; both known limitations removed. |
+| 1.1.1 | 2026-10-21 | Agent (magic.spec) | Document History rows put in version order. No requirement changed. |

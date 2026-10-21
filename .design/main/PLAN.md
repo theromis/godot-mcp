@@ -64,6 +64,7 @@ The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unrelease
 
 - [x] **Issue & Pull Request Stewardship** ([l1-repository-stewardship.md](specifications/l1-repository-stewardship.md)) [L1]
 - [x] **Repo Steward Skill (GitHub)** ([l2-repo-steward-skill.md](specifications/l2-repo-steward-skill.md)) [L2]
+- [x] **Repo Steward Procedures (GitHub)** ([l2-repo-steward-procedures.md](specifications/l2-repo-steward-procedures.md)) [L2]
 - [x] **Repo Steward for godot-mcp** ([l2-repo-steward-godot-mcp.md](specifications/l2-repo-steward-godot-mcp.md)) [L2]
 - [x] Amendments: Community Health Files 1.1.0 (concept and GitHub), Test Suite 1.3.0
 - [x] Gated on approval: pushing to `master`, labels and the board on GitHub, the first acting run; maintainer-only settings

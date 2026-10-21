@@ -1,6 +1,6 @@
 # Controlled Time
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** concept
 
@@ -92,9 +92,19 @@ reason when false: one of "not started held with a fixed frame rate", "fixed rat
 - **Ending an abandoned hold**: left out for now. The game cannot see a vanished driver, so ending the hold would take a signal from the driver (a keepalive) and a silence limit in the game. That adds a message and a time limit, and the limit can end the hold of a driver that is only stalled (a suspended machine). It can be added later without changing any other invariant; until abandoned holds prove to be a problem, CT-9 states what holds today. The editor's own game is not driven by this server at all, so a silence limit would have to stay off there.
 - **A period with no requests** as the limit: rejected; a person reading a held game may take any time, and a held game that resumes behind the agent's back is worse than one that waits.
 
+## Canonical References
+
+| Alias | Path | Purpose |
+| --- | --- | --- |
+| `[GAME]` | `src/tools/game.rs` | Hold, step and resume through the running-game tools |
+| `[RUNS]` | `src/godot/runs.rs` | Held launch and the run record |
+| `[HOLD]` | `addons/godot_mcp/runtime/ops/rt_hold.gd` | The hold at the start of a physics tick |
+| `[E2E]` | `tests/runtime_e2e_test.rs` | Real-game proof of held stepping |
+
 ## Document History
 
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-21 | Agent (magic.spec) | Created from the request to bring exact time control into the server under its own rules: opt-in hold, exact and conditional steps without an evaluator, declared exactness, tick-scheduled input, refusal of time-driven operations while held, safe ending. Promoted to Stable after Post-Update Review. |
 | 1.1.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] CT-9 no longer promises that a vanished driver ends the hold: the game cannot detect it (measured on a real engine in the first held-stepping task). The limitation, the premise and a deferred keepalive alternative are recorded; the other nine invariants are unchanged. Re-reviewed and Stable. |
+| 1.1.1 | 2026-10-21 | Agent (magic.spec) | Added the missing Canonical References section. No requirement changed. |

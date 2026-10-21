@@ -1,6 +1,6 @@
 # Tool Handlers (Rust)
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-tool-catalog.md
@@ -85,6 +85,7 @@ src/
 | `[PATHS]` | `src/paths.rs` | Project discovery and confinement |
 | `[ENGINE]` | `src/cli_runner.rs` | Engine runner and detached spawning |
 | `[DOCS]` | `README.md` | User-facing tool table |
+| `[PARITY]` | `docs/feature-parity.md` | Comparison of the tool set with other Godot MCP servers |
 
 ## Document History
 
@@ -93,3 +94,4 @@ src/
 | 1.0.0 | 2026-10-16 | Agent (magic.analyze first-time) | Reverse-engineered from the code at 94e4540. |
 | 1.1.0 | 2026-10-16 | Agent (magic.spec) | [ADDED] Section 5.3 on the feedback hooks in dispatch and the catalog; link to the feedback implementation. |
 | 1.2.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] The tool modules and the engine-protocol modules in the file map, links to their specifications; [MODIFIED] TL-6 for managed process runs. |
+| 1.2.1 | 2026-10-21 | Agent (magic.spec) | Added the feature parity document to Canonical References. No requirement changed. |

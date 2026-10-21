@@ -1,6 +1,6 @@
 # Godot Editor Addon
 
-**Version:** 1.3.0
+**Version:** 1.3.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-editor-bridge.md
@@ -94,6 +94,7 @@ addons/godot_mcp/
 | `[EXPORT]` | `addons/godot_mcp/export_plugin.gd` | Export exclusion |
 | `[CFG]` | `addons/godot_mcp/plugin.cfg` | Addon metadata and version |
 | `[DEVPROJ]` | `project.godot` | Development project enabling the addon |
+| `[OVERRIDE]` | `addons/godot_mcp/core/runtime_override.gd` | override.cfg for editor Play, restored afterwards |
 
 ## Document History
 
@@ -103,3 +104,4 @@ addons/godot_mcp/
 | 1.1.0 | 2026-10-20 | Agent (magic.spec) | [MODIFIED] Target, guard convention and BR-9 per release line; newer-minor warning. Stable → RFC → Stable after Post-Update Review. |
 | 1.2.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] The runtime, relay and override files, and the handler notes of the authoring commands. |
 | 1.3.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] The `GODOT_MCP_NO_BRIDGE` switch of the plugin. |
+| 1.3.1 | 2026-10-21 | Agent (magic.spec) | Added the Play override script to Canonical References. No requirement changed. |

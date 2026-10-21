@@ -1,6 +1,6 @@
 # Test Suite
 
-**Version:** 1.4.0
+**Version:** 1.4.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-quality-assurance.md
@@ -97,6 +97,7 @@ Unit tests live next to the code in `src/paths.rs`, `src/validation.rs`, `src/cl
 | `[RUNTIME]` | `tests/runtime_e2e_test.rs` | Real-game and language-server tests |
 | `[EXPORT]` | `tests/addon_export_test.rs` | Export tests |
 | `[GUIDE]` | `AGENTS.md` | Verification checklist |
+| `[FAKE-GH]` | `examples/fake_gh.rs` | Stand-in for the GitHub client used by the tests |
 
 ## Document History
 
@@ -108,3 +109,4 @@ Unit tests live next to the code in `src/paths.rs`, `src/validation.rs`, `src/cl
 | 1.2.0 | 2026-10-20 | Agent (magic.spec) | [MODIFIED] QA-3, QA-6, QA-7 rows per release line; [ADDED] line identity checks in the version sync test and its routing row. Stable → RFC → Stable after Post-Update Review. |
 | 1.3.0 | 2026-10-20 | Agent (magic.spec) | [ADDED] The repo steward's test file, its routing row and reference. Stable → RFC → Stable after Post-Update Review. |
 | 1.4.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] The runtime test file with its routing row and reference; the editor test file now covers the authoring tools and Play. |
+| 1.4.1 | 2026-10-21 | Agent (magic.spec) | Added the stand-in GitHub client to Canonical References. No requirement changed. |

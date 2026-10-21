@@ -1,6 +1,6 @@
 # Issue & Pull Request Stewardship
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -16,6 +16,7 @@ Defines the steward: an AI agent that keeps a project's issue tracker and change
 - [l1-distribution.md](l1-distribution.md) - DS-7: only a person approves publishing a release.
 - [l1-quality-assurance.md](l1-quality-assurance.md) - The checks a change passes before the steward merges it.
 - [l2-repo-steward-skill.md](l2-repo-steward-skill.md) - Implementation: the portable agent skill on GitHub.
+- [l2-repo-steward-procedures.md](l2-repo-steward-procedures.md) - Implementation: the pull request, board, readiness and workflow parts of the skill.
 - [l2-repo-steward-godot-mcp.md](l2-repo-steward-godot-mcp.md) - Implementation: the skill installed and configured for this repository.
 
 ## 1. Motivation
@@ -218,3 +219,4 @@ The recommended number follows Semantic Versioning: a breaking change bumps the 
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-20 | Agent (magic.spec) | Created from the request for a reusable skill and CI that triage, plan, fix, answer and close issues, review and merge pull requests, keep a Kanban board and announce when a release is due, using the project's planning ecosystem. Promoted to Stable after Post-Update Review. |
+| 1.0.1 | 2026-10-21 | Agent (magic.spec) | Linked the procedures specification split from the skill specification. No requirement changed. |
