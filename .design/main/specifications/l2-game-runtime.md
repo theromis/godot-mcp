@@ -1,6 +1,6 @@
 # Game Runtime Channel
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-runtime-observability.md
@@ -38,7 +38,7 @@ Godot already has a debugger protocol that every editor-launched game speaks. Sp
 | RO-6 No caller code | `game_call` requires `permit` to name the method and rejects `quit`, `set_script`, `call`, `callv`, `call_deferred`, `rpc`, `rpc_id` and `free`, and the runtime repeats that list (`rt_live.gd`); `game.set` refuses `script`, names starting with `_` and property paths (`:`); the runtime has no evaluator. |
 | RO-7 Held input released | `rt_input.gd` remembers every press; `input.release_all`, a failing step and `_exit_tree` release them all. |
 | RO-8 Real pictures | `screenshot` checks the PNG magic and the IHDR size before returning an image; a headless game returns an error; the runtime compares a capture with the previous one only when both have the same size. |
-| RO-9 Bounded waits | A runtime call has 20 s on the server; debugger waits are capped at `MAX_WAIT_SECONDS` (300 s); frame waits are capped at 600 frames, a swipe at 60, a sheet at 8 frames; a wait for a node or signal has a frame timeout and reports when it ran out. |
+| RO-9 Bounded waits | A runtime call has 20 s on the server; a physics step waits in time (2 s plus four times the ticks' own duration, at most 15 s); debugger waits are capped at `MAX_WAIT_SECONDS` (300 s); frame waits are capped at 600 frames, a swipe at 60, a sheet at 8 frames; a wait for a node or signal has a frame timeout and reports when it ran out. |
 | RO-10 Debugging only where the server is the debugger | `debug_ctl.rs` talks only to a `Run`'s own session; editor Play is reached through `game_relay.gd`, which forwards `mcp:*` messages and leaves every other prefix to the editor's debugger. |
 
 ## 5. Detailed Design
@@ -78,11 +78,14 @@ addons/godot_mcp/
 | --- | --- |
 | `game.tree`, `game.get`, `game.set`, `game.signals`, `game.observe`, `game.snapshot` | `godot_game_tree`, `godot_game_get`, `godot_game_set`, `godot_game_signals`, `godot_game_observe`, `godot_game_snapshot` |
 | `input.run`, `input.release_all`, `input.wait` | `godot_game_input`, `godot_game_input_release`, `godot_game_wait` |
+| `game.physics` | `godot_game_physics` |
 | `game.screenshot` | `godot_game_screenshot` |
 | output and errors | `godot_run_output` |
 | (debugger commands, not runtime methods) | `godot_debug_breakpoints`, `godot_debug_control`, `godot_debug_state` |
 
-Gestures (`click`, `click_node`, `swipe`) go through `Input.parse_input_event` like every other step; mouse steps leave the operating system's cursor alone unless `warp_mouse` is set. A click on a node uses the node's transform with its canvas, so a scrolling camera or a CanvasLayer does not misplace it. The time scale set by a step or a wait is restored when the game exits.
+Gestures (`click`, `click_node`, `swipe`) go through `Input.parse_input_event` like every other step; mouse steps leave the operating system's cursor alone unless `warp_mouse` is set. A wait can also read a public property (`property`, `op`, `value`) or wait for a newer `scene_generation`: the read is a plain `get` on public names, never an expression or a method call, with strict types. The runtime stamps every scene instance with a generation, an instance id and the SHA-256 of the root script source Godot had loaded at that moment, and copies the stamp onto each log line when it is written. A screenshot can save the returned image as one of eight named baselines (each at most 512 x 512 pixels) and compare a later one with it, over a region and with a tolerance. `godot_game_physics` lets exactly N physics iterations run with the game's normal physics delta: it allows one iteration per frame while it runs, counts them and pauses the tree after the Nth; the tick rate and the time scale are never changed.
+
+A click on a node uses the node's transform with its canvas, so a scrolling camera or a CanvasLayer does not misplace it. The time scale set by a step or a wait is restored when the game exits.
 
 ## 6. Implementation Notes
 
@@ -112,5 +115,6 @@ Gestures (`click`, `click_node`, `swipe`) go through `Input.parse_input_event` l
 
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
+| 1.2.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] Property and scene-generation waits, scene stamps, baselines and the physics step (pull request 18); the physics step keeps the normal physics delta. |
 | 1.1.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] The runtime copy moved out of the addons folder (RO-4, 5.2); the debugger port limitation recorded as an accepted risk with its reasoning; a capture retries for an undrawn window. |
 | 1.0.0 | 2026-10-21 | Agent (magic.spec) | Written after pull requests 3 to 5, 9 and 13 merged, with the review changes (bounded variant decoding, capped waits, Play wait for the runtime, canvas-aware clicks, same-size picture comparison). |

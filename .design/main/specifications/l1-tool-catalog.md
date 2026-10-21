@@ -1,6 +1,6 @@
 # Tool Catalog
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Status:** Stable
 **Layer:** concept
 
@@ -75,8 +75,8 @@ Agents call tools without seeing the implementation; a tool's contract has to be
 | `godot_run_output` | host | no | Bounded logs, warnings and errors with stacks of a run [ADDED] |
 | `godot_game_tree`, `godot_game_get`, `godot_game_signals`, `godot_game_snapshot` | game | no | Live tree, properties, signals, summary of the running game [ADDED] |
 | `godot_game_set`, `godot_game_call`, `godot_game_observe` | game | running game only | Property writes, permitted method calls, short signal observation [ADDED] |
-| `godot_game_input`, `godot_game_input_release`, `godot_game_wait` | game | running game only | Key, mouse, touch and gamepad input, gestures, waits, time scale [ADDED] |
-| `godot_game_screenshot` | game (windowed) | no | PNG of the game, an optional frame sheet, pixel diff against the previous capture [ADDED] |
+| `godot_game_input`, `godot_game_input_release`, `godot_game_wait`, `godot_game_physics` | game | running game only | Key, mouse, touch and gamepad input, gestures, waits for frames, a node, a signal, a property value or a newer scene, time scale, a step of N physics ticks [ADDED] |
+| `godot_game_screenshot` | game (windowed) | session memory of the run | PNG of the game, an optional frame sheet, pixel diff against the previous capture, named baselines with a region and a tolerance [ADDED] |
 | `godot_debug_breakpoints`, `godot_debug_control`, `godot_debug_state` | managed run | running game only | Breakpoints, pause, resume and step, stack and variables [ADDED] |
 | `godot_code_diagnostics`, `godot_code_symbols`, `godot_code_complete`, `godot_code_definition`, `godot_code_references` | engine | no | GDScript queries from Godot's language server [ADDED] |
 | `godot_note_feedback` | host | session memory | Records one observation for the maintainers |
@@ -118,4 +118,5 @@ graph TD
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-16 | Agent (magic.analyze first-time) | Reverse-engineered from the code at 94e4540; rationale from the 2026-10-14 simulation QA report (script writes outside the project, engine option injection, fallback masking editor errors, Ctrl+C killing launched editors, inherited stdio handles on Windows). |
 | 1.1.0 | 2026-10-16 | Agent (magic.spec) | [ADDED] Three feedback tools in the catalog table, a constraint on their configuration-dependent presence, and the link to the feedback concept. |
+| 1.3.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] The wait, screenshot and physics rows after pull request 18. |
 | 1.2.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] The authoring, running-game, debugger and language-server tools in the catalog; [MODIFIED] the run, stop and status rows and TL-6 for managed process runs; links to the three concepts that are now Stable. |
