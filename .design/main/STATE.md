@@ -4,20 +4,20 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-10-21 08:26
+**Updated:** 2026-10-21 09:53
 **Phase:** 7 — Controlled Time
-**Status:** Active
+**Status:** Blocked
 
 ## Current Position
 
-- **Task:** T-7A01 Feasibility: hold loop on the physics-frame signal, channel pumped from the hold
+- **Task:** T-7T01 Validation: pipeline, end-to-end suites and invariant coverage
 - **Spec:** l2-ci-release-pipeline.md §4 (DS-8)
-- **Next Action:** T-7A02 Held step: exact and conditional ticks, exactness report
+- **Next Action:** T-5E03 and any other open tasks need user or blocker action — see STATE.md ## Blockers / the phase's ## Detailed Tracking, then run /magic.run main
 
 ## Progress
 
 ```
-Phase 7: [0/8] ░░░░░░░░ 0%
+Phase 7: [6/8] ██████░░ 75%
 Overall: [4/6] █████░░░ 67%
 ```
 
