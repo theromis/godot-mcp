@@ -8,6 +8,10 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ## [Unreleased]
 
+### Added
+
+- **Read and edit existing scripts.** `godot_read_script` returns a script as the editor would save it, including text you have typed and not saved, with a version label. `godot_edit_script` replaces one fragment of a script: with the editor it is a single undoable action and the script is saved; without it the file is replaced safely. An edit is refused, with the fix, while the editor holds unsaved changes to the script, when the fragment is not found exactly once, or when the script changed since it was read.
+
 ## [0.6.0] - 2026-10-21
 
 The AI can now run a game, look at it and drive it, set breakpoints and step through the code, ask Godot's own language server about its scripts, and create scenes, resources and settings. The release holds the files for Godot 4.5, 4.6 and 4.7 as before: download the files whose names end in `-godotM.N` for your Godot version, and update the server and the addon together. Everything below works on all three versions unless it says otherwise.
