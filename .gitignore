@@ -7,7 +7,7 @@
 
 # Internal references & scratchpad
 .references/
-scratch/
+/scratch/
 
 # Rust build output
 target/
@@ -39,6 +39,9 @@ export_presets.cfg
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Agents
+/.*/settings*.json
 
 # Skills (each skill directory is ignored unless listed below)
 /.*/skills/*
