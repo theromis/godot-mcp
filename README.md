@@ -280,7 +280,7 @@ To contribute — set up, choose the branch for your Godot version, run the chec
 Running-game input, inspection, and the remote debugger need the Godot build named in [`.github/godot-version`](.github/godot-version):
 
 ```bash
-GODOT_PATH=/path/to/godot cargo test --test runtime_e2e_test -- --ignored
+GODOT_PATH=/path/to/godot cargo test --test runtime_e2e_test -- --ignored --test-threads=1
 ```
 
 ## License

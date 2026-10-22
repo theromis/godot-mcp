@@ -2,7 +2,7 @@
 //! logs, and the remote debugger. Ignored unless `GODOT_PATH` points at Godot 4.5+.
 //!
 //! ```bash
-//! GODOT_PATH=/path/to/godot cargo test --test runtime_e2e_test -- --ignored --nocapture
+//! GODOT_PATH=/path/to/godot cargo test --test runtime_e2e_test -- --ignored --test-threads=1 --nocapture
 //! ```
 
 use godot_mcp::bridge::BridgeClient;
