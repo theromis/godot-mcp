@@ -1791,6 +1791,133 @@ async fn windowed_screenshot_returns_a_sheet_and_a_diff() {
     assert!(!stopped.is_error, "{}", text_of(&stopped));
 }
 
+/// A window larger than the viewport, so content scale is not 1. Touch positions must arrive
+/// in the visible rectangle, and the emulated mouse must share that position and come first.
+fn stretched_touch_project() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("stretch project");
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("scripts")).unwrap();
+    std::fs::write(
+        root.join("project.godot"),
+        "config_version=5\n\n[application]\n\nconfig/name=\"StretchProbe\"\nrun/main_scene=\"res://scripts/main.tscn\"\nconfig/features=PackedStringArray(\"4.8\")\n\n[display]\n\nwindow/size/viewport_width=200\nwindow/size/viewport_height=150\nwindow/size/window_width_override=400\nwindow/size/window_height_override=300\nwindow/stretch/mode=\"canvas_items\"\nwindow/stretch/aspect=\"expand\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("scripts/main.gd"),
+        r#"extends Node
+var touch_at := Vector2(-1, -1)
+var mouse_at := Vector2(-1, -1)
+var mouse_device := 0
+var order := ""
+var emulated := 0
+
+func _input(event: InputEvent) -> void:
+    if event is InputEventMouseButton and event.pressed:
+        mouse_at = event.position
+        mouse_device = event.device
+        order += "m"
+        if event.device == InputEvent.DEVICE_ID_EMULATION:
+            emulated += 1
+    elif event is InputEventScreenTouch and event.pressed:
+        touch_at = event.position
+        order += "t"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("scripts/main.tscn"),
+        "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://scripts/main.gd\" id=\"1\"]\n\n[node name=\"Probe\" type=\"Node\"]\nscript = ExtResource(\"1\")\n",
+    )
+    .unwrap();
+    dir
+}
+
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn touch_lands_in_viewport_space_and_emulation_can_be_suppressed() {
+    let _ = IGNORE;
+    if !windowed_game_can_open() {
+        eprintln!("skipped: a stretched window needs a display server");
+        return;
+    }
+    let project = stretched_touch_project();
+    let tools = manager(project.path());
+    let started = call(
+        &tools,
+        "godot_run_project",
+        json!({
+            "project_path": project.path(),
+            "scene": "res://scripts/main.tscn",
+            "mode": "process",
+            "headless": false
+        }),
+    )
+    .await;
+    assert!(!started.is_error, "{}", text_of(&started));
+    let run_id = run_id_of(&started);
+    let input = call(
+        &tools,
+        "godot_game_input",
+        json!({
+            "run_id": run_id,
+            "steps": [{"type": "touch", "x": 40, "y": 50, "phase": "press"}]
+        }),
+    )
+    .await;
+    assert!(!input.is_error, "{}", text_of(&input));
+    let seen = call(
+        &tools,
+        "godot_game_get",
+        json!({
+            "run_id": run_id,
+            "path": ".",
+            "properties": ["touch_at", "mouse_at", "mouse_device", "order", "emulated"]
+        }),
+    )
+    .await;
+    assert!(!seen.is_error, "{}", text_of(&seen));
+    let values = &json_of(&seen)["properties"];
+    let touch = values["touch_at"].as_array().expect("touch");
+    let mouse = values["mouse_at"].as_array().expect("mouse");
+    let near = |point: &Vec<Value>, axis: usize, want: f64| {
+        (point[axis].as_f64().unwrap_or(999.0) - want).abs() < 1.5
+    };
+    assert!(near(touch, 0, 40.0) && near(touch, 1, 50.0), "{values}");
+    assert!(near(mouse, 0, 40.0) && near(mouse, 1, 50.0), "{values}");
+    assert_eq!(values["order"], "mt", "{values}");
+    assert_eq!(values["mouse_device"], -1, "{values}");
+    assert!(values["emulated"].as_i64().unwrap_or(0) >= 1, "{values}");
+
+    let quiet = call(
+        &tools,
+        "godot_game_input",
+        json!({
+            "run_id": run_id,
+            "emulate_mouse": false,
+            "steps": [{"type": "touch", "x": 10, "y": 12, "index": 1, "phase": "press"}]
+        }),
+    )
+    .await;
+    assert!(!quiet.is_error, "{}", text_of(&quiet));
+    let after = json_of(
+        &call(
+            &tools,
+            "godot_game_get",
+            json!({"run_id": run_id, "path": ".", "properties": ["emulated", "touch_at"]}),
+        )
+        .await,
+    );
+    assert_eq!(
+        after["properties"]["emulated"], values["emulated"],
+        "emulation stayed off: {after}"
+    );
+    let again = after["properties"]["touch_at"].as_array().expect("touch");
+    assert!(near(again, 0, 10.0) && near(again, 1, 12.0), "{after}");
+
+    let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
+    assert!(!stopped.is_error, "{}", text_of(&stopped));
+}
+
 /// The script of the hold fixture's root node.
 const HOLD_SCRIPT: &str = r#"extends Node2D
 var physics_ticks := 0

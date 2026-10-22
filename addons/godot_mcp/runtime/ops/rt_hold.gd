@@ -98,13 +98,16 @@ static func run_input(rt: Node, params: Dictionary) -> Dictionary:
     var parsed := Inputs.parse_steps(params)
     if R.is_err(parsed):
         return parsed
+    var restore_emulation: Variant = Inputs.suppress_emulation(parsed)
     var results: Array = []
     for step: Dictionary in parsed["steps"]:
         var applied := Inputs.apply_held_step(rt, step, _total_ticks + int(hold_ticks))
         if R.is_err(applied):
             Inputs.release_everything()
+            Inputs.restore_emulation(restore_emulation)
             return applied
         results.append(applied["result"])
+    Inputs.restore_emulation(restore_emulation)
     return R.ok({
         "steps": results,
         "held": Inputs.held_summary(),
