@@ -10,6 +10,7 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ### Added
 
+- **Start a game with its own flags, record its motion and change a material while it runs.** `godot_run_project` takes `user_args` (managed runs only): strings placed after `--`, so the game reads them with `OS.get_cmdline_user_args()` and Godot never takes them for engine options. `godot_game_record` saves up to 240 frames of the game window as PNG files below the system temporary directory without slowing the game down, and builds a gif or mp4 when `ffmpeg` is installed. `godot_game_get` and `godot_game_set` follow a resource with `:` (`material_override:shader_parameter/caustics`); writing still refuses `script` and private names. Thanks to @theromis.
 - **Read and edit existing scripts.** `godot_read_script` returns a script as the editor would save it, including text you have typed and not saved, with a version label. `godot_edit_script` replaces one fragment of a script: with the editor it is a single undoable action and the script is saved; without it the file is replaced safely. An edit is refused, with the fix, while the editor holds unsaved changes to the script, when the fragment is not found exactly once, or when the script changed since it was read.
 
 ### Changed
