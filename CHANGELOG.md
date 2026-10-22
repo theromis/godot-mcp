@@ -8,6 +8,10 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ## [Unreleased]
 
+### Changed
+
+- `godot_validate_script` reports the language server's errors and warnings when that server is already running (the open editor, or one `godot_code_diagnostics` started). A warning, such as a local `seed` shadowing the global, is listed as `file:line:col` with its code and message, and does not fail the check; an error does. Without a language server the check stays the headless parse check and says that analyzer warnings were not checked. `godot_code_diagnostics` is what starts a language server when none is running.
+
 ## [0.7.0] - 2026-10-22
 
 The AI can now hold a running game and step it by exact ticks, wait for a value, tell a reloaded scene from the old one, compare screenshots with a saved baseline, drag along a path, record a game as PNG files, change a material while the game runs, start a game with its own flags, and read and edit existing scripts. The release holds the files for Godot 4.5, 4.6 and 4.7 as before: download the files whose names end in `-godotM.N` for your Godot version, and update the server and the addon together. Everything below works on all three versions unless it says otherwise.
