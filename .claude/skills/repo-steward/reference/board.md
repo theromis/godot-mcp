@@ -62,4 +62,4 @@ scripts/board.sh status-update "$(printf '%s\n%s' "<Board line>" "<Release line>
 Put these in the report's "Manual steps" until the maintainer confirms them:
 
 - Column limits on the Flow view: In Progress `board.wip_in_progress`, In Review `board.wip_in_review` (Flow → column menu → Set limit).
-- Project workflows (⋯ → Workflows): Item closed → Done; Pull request merged → Done; Item reopened → Triage; Auto-archive items closed more than `board.done_retention_days` days ago.
+- Project workflows (⋯ → Workflows): Item closed → Done; Pull request merged → Done; Item reopened → Triage; Auto-archive items. This workflow takes a filter, not a status: `is:issue,pr is:closed updated:<@today-2w` (2 weeks for the default `board.done_retention_days` of 14; the number is in weeks, so another value needs another filter). `scripts/board.sh` cannot set it or the limits above, but `gh api graphql` shows which workflows are on (`projectV2.workflows { name enabled }`); items closed as not planned or as duplicates are archived by `board.sh item <url> --archive` instead.

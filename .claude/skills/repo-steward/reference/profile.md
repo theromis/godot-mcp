@@ -27,7 +27,7 @@ Top-level names are sections; each key is indented once under its section. No ne
 | `board.public` | `true`, `false`, or `auto` (same visibility as the repository) |
 | `board.wip_in_progress`, `board.wip_in_review` | Work-in-progress limits |
 | `board.text_fields` | Extra text fields the project needs on the board |
-| `board.done_retention_days` | Days a Done item stays before the maintainer's auto-archive setting removes it |
+| `board.done_retention_days` | Days a Done item stays before the auto-archive workflow removes it; the workflow's filter is written by hand (`reference/board.md`) |
 | `triage.fingerprint` | Extended regular expression of machine fingerprints in reports |
 | `triage.priority_examples` | Path of a Markdown file with the project's examples per priority |
 | `review.sensitive_paths` | Paths whose change makes a contributor's workflow run need a maintainer's approval |
