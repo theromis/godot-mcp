@@ -2,12 +2,32 @@ use crate::error::{McpError, Result};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
+use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
 const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 const VALIDATE_TIMEOUT: Duration = Duration::from_secs(30);
 const CLASS_CHECK_TIMEOUT: Duration = Duration::from_secs(30);
+const SCRIPT_OUTPUT_CAP: usize = 64 * 1024;
+
+/// One `SCRIPT ERROR` block from a headless script run.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScriptErrorLoc {
+    pub message: String,
+    pub file: String,
+    pub line: u32,
+}
+
+/// What `godot --headless -s` printed, and whether the timeout killed it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScriptRun {
+    pub exit_code: Option<i32>,
+    pub timed_out: bool,
+    pub stdout: String,
+    pub stderr: String,
+    pub script_errors: Vec<ScriptErrorLoc>,
+}
 
 /// What the engine can create under a built-in class name (CA-11).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,6 +188,83 @@ impl CliRunner {
         spawn_detached(&mut cmd, "Godot project")
     }
 
+    /// Runs a `SceneTree` script headless: `godot --headless --path <project> -s <script> [-- args]`.
+    ///
+    /// On timeout the process group is killed. Stdout and stderr are captured and never inherited,
+    /// so they cannot corrupt the MCP stream. `user_args` are placed after `--`.
+    pub async fn run_script(
+        &self,
+        project_path: &Path,
+        script_path: &Path,
+        user_args: &[String],
+        timeout_seconds: u64,
+    ) -> Result<ScriptRun> {
+        let mut cmd = Command::new(&self.godot_binary);
+        cmd.arg("--headless")
+            .arg("--path")
+            .arg(project_path)
+            .arg("-s")
+            .arg(script_path);
+        if !user_args.is_empty() {
+            cmd.arg("--");
+            for argument in user_args {
+                cmd.arg(argument);
+            }
+        }
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        #[cfg(unix)]
+        cmd.process_group(0);
+        #[cfg(windows)]
+        {
+            const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+            cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
+        }
+
+        let mut child = cmd.spawn().map_err(|err| {
+            McpError::Process(format!(
+                "failed to spawn Godot at '{}': {err}",
+                self.godot_binary.display()
+            ))
+        })?;
+        let pid = child.id().unwrap_or(0);
+        let stdout_pipe = child.stdout.take();
+        let stderr_pipe = child.stderr.take();
+        let stdout_task = tokio::spawn(read_tail(stdout_pipe, SCRIPT_OUTPUT_CAP));
+        let stderr_task = tokio::spawn(read_tail(stderr_pipe, SCRIPT_OUTPUT_CAP));
+
+        let waited = timeout(Duration::from_secs(timeout_seconds), child.wait()).await;
+        let (timed_out, status) = match waited {
+            Ok(Ok(status)) => (false, Some(status)),
+            Ok(Err(err)) => {
+                kill_process_tree(pid);
+                let _ = child.start_kill();
+                return Err(McpError::Process(format!(
+                    "failed to wait for Godot: {err}"
+                )));
+            }
+            Err(_elapsed) => {
+                kill_process_tree(pid);
+                let _ = child.start_kill();
+                let _ = timeout(Duration::from_secs(2), child.wait()).await;
+                (true, None)
+            }
+        };
+        let stdout = text_of(stdout_task.await.unwrap_or_default());
+        let stderr = text_of(stderr_task.await.unwrap_or_default());
+        let mut script_errors = script_errors_in(&stdout);
+        script_errors.extend(script_errors_in(&stderr));
+        Ok(ScriptRun {
+            exit_code: status.and_then(|status| status.code()),
+            timed_out,
+            stdout,
+            stderr,
+            script_errors,
+        })
+    }
+
     /// What a clean `godot --headless --check-only` means: parse errors only.
     pub const HEADLESS_PARSE_CLEAN: &str = "No parse errors (headless check). Analyzer warnings were not checked: no language server is running; use godot_code_diagnostics, which starts one.";
 
@@ -295,6 +392,91 @@ pub(crate) fn make_std_handles_private() {
 }
 
 /// Drops the engine's start-up banner ("Godot Engine v4.x ...") from captured output.
+fn text_of(bytes: Vec<u8>) -> String {
+    strip_banner(&String::from_utf8_lossy(&bytes))
+}
+
+async fn read_tail<R>(pipe: Option<R>, cap: usize) -> Vec<u8>
+where
+    R: AsyncRead + Unpin,
+{
+    let Some(mut pipe) = pipe else {
+        return Vec::new();
+    };
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 8192];
+    loop {
+        match pipe.read(&mut chunk).await {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                buf.extend_from_slice(&chunk[..n]);
+                if buf.len() > cap {
+                    buf.drain(..buf.len() - cap);
+                }
+            }
+        }
+    }
+    buf
+}
+
+/// `SCRIPT ERROR` lines and the `at: ... (file:line)` that follows them.
+pub fn script_errors_in(text: &str) -> Vec<ScriptErrorLoc> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut errors = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        let Some(message) = line.trim().strip_prefix("SCRIPT ERROR:") else {
+            continue;
+        };
+        let (file, line_no) = lines
+            .get(index + 1)
+            .and_then(|next| error_location(next))
+            .unwrap_or_default();
+        errors.push(ScriptErrorLoc {
+            message: message.trim().to_string(),
+            file,
+            line: line_no,
+        });
+    }
+    errors
+}
+
+fn error_location(line: &str) -> Option<(String, u32)> {
+    let trimmed = line.trim();
+    if !trimmed.contains("at:") {
+        return None;
+    }
+    let open = trimmed.rfind('(')?;
+    let close = trimmed.rfind(')')?;
+    if close <= open {
+        return None;
+    }
+    let inside = &trimmed[open + 1..close];
+    let (file, line_no) = inside.rsplit_once(':')?;
+    let line_no = line_no.parse().ok()?;
+    if file.is_empty() || line_no == 0 {
+        return None;
+    }
+    Some((file.to_string(), line_no))
+}
+
+fn kill_process_tree(pid: u32) {
+    if pid == 0 {
+        return;
+    }
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("kill")
+            .args(["-KILL", &format!("-{pid}")])
+            .status();
+    }
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .status();
+    }
+}
+
 fn strip_banner(text: &str) -> String {
     text.lines()
         .filter(|line| !line.starts_with("Godot Engine v"))
@@ -306,13 +488,31 @@ fn strip_banner(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_banner;
+    use super::{script_errors_in, strip_banner};
 
     #[test]
     fn banner_is_removed_and_the_rest_is_kept() {
         let raw = "Godot Engine v4.8.dev7.official - https://godotengine.org\n\nSCRIPT ERROR: x\n";
         assert_eq!(strip_banner(raw), "SCRIPT ERROR: x");
         assert_eq!(strip_banner("Godot Engine v4.5\n"), "");
+    }
+
+    #[test]
+    fn script_error_blocks_keep_the_file_and_line() {
+        let text = "\
+Godot Engine v4.8.beta1\n\
+SCRIPT ERROR: Parse Error: Unexpected identifier.\n\
+          at: GDScript::reload (res://scripts/boom.gd:2)\n\
+SCRIPT ERROR: Assertion failed: boom\n\
+   at: _initialize (res://scripts/hang.gd:4)\n";
+        let errors = script_errors_in(&strip_banner(text));
+        assert_eq!(errors.len(), 2);
+        assert_eq!(errors[0].file, "res://scripts/boom.gd");
+        assert_eq!(errors[0].line, 2);
+        assert!(errors[0].message.contains("Unexpected identifier"));
+        assert_eq!(errors[1].file, "res://scripts/hang.gd");
+        assert_eq!(errors[1].line, 4);
+        assert!(errors[1].message.contains("boom"));
     }
 
     /// Ctrl+C in the MCP client's terminal signals its whole process group; a launched editor

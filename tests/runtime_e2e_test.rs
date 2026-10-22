@@ -3730,3 +3730,72 @@ func _ready() -> void:
     .unwrap();
     dir
 }
+
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn run_script_returns_an_exit_code_and_kills_a_script_that_never_quits() {
+    let _ = IGNORE;
+    let project = project_dir_with_scripts();
+    let tools = manager(project.path());
+    let ok = call(
+        &tools,
+        "godot_run_script",
+        json!({
+            "script": "res://scripts/quit.gd",
+            "project_path": project.path(),
+            "user_args": ["from-e2e"],
+            "timeout_seconds": 30
+        }),
+    )
+    .await;
+    assert!(!ok.is_error, "{}", text_of(&ok));
+    let ok_text = text_of(&ok);
+    assert!(
+        ok_text.contains("\"exit_code\": 0") && ok_text.contains("from-e2e"),
+        "{ok_text}"
+    );
+
+    let started = std::time::Instant::now();
+    let hung = call(
+        &tools,
+        "godot_run_script",
+        json!({
+            "script": "res://scripts/hang.gd",
+            "project_path": project.path(),
+            "timeout_seconds": 2
+        }),
+    )
+    .await;
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(15),
+        "a SceneTree script that never quits was not killed"
+    );
+    assert!(hung.is_error, "{}", text_of(&hung));
+    let hung_text = text_of(&hung);
+    assert!(
+        hung_text.contains("killed the process tree") && hung_text.contains("HANGING"),
+        "{hung_text}"
+    );
+}
+
+fn project_dir_with_scripts() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("script project");
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("scripts")).unwrap();
+    std::fs::write(
+        root.join("project.godot"),
+        "config_version=5\n\n[application]\n\nconfig/name=\"ScriptRun\"\nconfig/features=PackedStringArray(\"4.8\")\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("scripts/quit.gd"),
+        "extends SceneTree\n\nfunc _initialize() -> void:\n\tprint(\"USER \", \" \".join(OS.get_cmdline_user_args()))\n\tquit(0)\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("scripts/hang.gd"),
+        "extends SceneTree\n\nfunc _initialize() -> void:\n\tprint(\"HANGING\")\n",
+    )
+    .unwrap();
+    dir
+}
