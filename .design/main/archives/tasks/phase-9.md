@@ -1,7 +1,7 @@
 ---
 phase: 9
 name: "Simulation QA Remediation"
-status: In Progress
+status: Done
 subsystem: "src, addons/godot_mcp, tests, README"
 requires: [6, 8]
 provides: []
@@ -15,7 +15,7 @@ duration_minutes: ~
 # Stage 9 Tasks — Simulation QA Remediation
 
 **Phase:** 9
-**Status:** In Progress
+**Status:** Done
 **Strategic Goal:** Bring the product in line with the eleven specifications amended from the simulation QA of 2026-10-21 (`scratch/qa/simulation-qa-2026-10-21.md`, git-ignored): edits and creations reach the project the caller named, the running-game guards keep what they promise, the file fallbacks accept what the editor accepts, and the answers, hints and defaults say what happened.
 
 ## Atomic Checklist
@@ -36,7 +36,7 @@ duration_minutes: ~
 - [x] [T-9C03] Runtime: one scene-stamp note per answer; baseline comparison at the baseline's size
 - [x] [T-9D01] User-facing text: README, tool descriptions, agent guide, changelog
 - [x] [T-9T01] Validation: pipeline, end-to-end suites and invariant coverage
-- [ ] [T-9E01] Carry to the release lines (after validation)
+- [x] [T-9E01] Carry to the release lines (after validation)
 
 ## Detailed Tracking
 
@@ -208,9 +208,9 @@ Pipeline on master with Godot 4.8-beta1 (the build in `.github/godot-version`): 
 ### [T-9E01] Carry to the release lines (after validation)
 
 - **Spec:** l2-release-branches.md; l1-release-lines.md
-- **Status:** Todo
+- **Status:** Done
 - **Assignment:** Agent
 - **Verify:** On `godot-v4.7`, `godot-v4.6` and `godot-v4.5`, in that order, the product commits applied with their origin named; on each, clippy, fmt, `cargo test --all-targets`, the GDScript checks, `editor_e2e_test`, `addon_export_test` and `runtime_e2e_test` (ignored) pass with that line's own Godot build (`D:/Program Files/Godot/Godot_v4.7.2…`, `4.6.3`, `4.5.2` are installed locally).
 - **Handoff:** Pushing the branches needs the maintainer's yes in the conversation.
-- **Notes:** Blocked on a decision, not on work: the carry applies commits, and nothing is committed yet (the maintainer has not asked for it). Product files only (not the planning files). Run each line with its own engine: the previous carry failed on a metadata key that exists only in 4.8. Calls missing from a line's first release go through `has_method()` + `call()` and into the line's guard list.
-- **Changes:**
+- **Notes:** Product files only (not the planning files). Run each line with its own engine: the previous carry failed on a metadata key that exists only in 4.8. Calls missing from a line's first release go through `has_method()` + `call()` and into the line's guard list.
+- **Changes:** `git cherry-pick -x 514fa28` onto `godot-v4.7` (`a6d43a3`), `godot-v4.6` (`9f10790`) and `godot-v4.5` (`11d7a11`), newest to oldest, one local commit each, no conflicts (the AGENTS.md, README.md and, on 4.6 and 4.5, `bridge_server.gd` merged automatically). On each line, with that line's own build (4.7.2, 4.6.3, 4.5.2): `cargo fmt --check`, `clippy -D warnings` and `cargo test --all-targets` pass, all 13 addon scripts pass `--check-only` with no warning, `editor_e2e_test` 14/14, `addon_export_test` 2/2 and `runtime_e2e_test` 24/24 with `--ignored`. No `has_method()` guard was needed: nothing in the change uses a call missing from 4.5.0. Not carried: the README table commit (`496346c`), the changelog commit (`cecbb4b`) and the planning files. Nothing was pushed; the branches are one commit ahead of their remotes.

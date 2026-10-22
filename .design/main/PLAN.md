@@ -109,7 +109,7 @@ The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unrelease
 - [x] Host: **Tool Handlers** 1.5.0, **LSP Client** 1.2.1, **Agent Feedback (Rust)** 1.1.0, **Rust Stdio Server** 1.3.0 [L2]
 - [x] Editor and runtime: **Godot Editor Addon** 1.6.0, **Game Runtime Channel** 1.4.0 [L2]
 - [x] User-facing text and validation
-- [ ] Carry to the release lines (needs the product commits on master); pushing gated on approval
+- [x] Carried to `godot-v4.7`, `godot-v4.6`, `godot-v4.5` (one local commit each); pushing gated on approval
 
 ## Backlog
 
