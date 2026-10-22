@@ -84,6 +84,12 @@ impl ToolManager {
         }
     }
 
+    /// Probes an already-running language server on `port` instead of `GODOT_MCP_LSP_PORT`.
+    pub fn with_lsp_port(mut self, port: u16) -> Self {
+        self.lsp = LspHub::with_port(self.cli.binary().to_path_buf(), port);
+        self
+    }
+
     /// Sets how much of the agent feedback channel is active and where the GitHub client is.
     pub fn with_feedback(mut self, mode: FeedbackMode, gh_path: Option<PathBuf>) -> Self {
         self.feedback = feedback::FeedbackState::new(mode, gh_path);
@@ -667,6 +673,43 @@ impl ToolManager {
                 format!("Script file not found: {shown}"),
                 &["Check the path; res:// paths are resolved against the project directory"],
             );
+        }
+
+        if let Some(dir) = &project_dir {
+            let external_ok = match self.resolve_project(&args).await {
+                Ok(project) => project.from_editor || self.editor_may_serve(&project.dir).await,
+                Err(_) => false,
+            };
+            match self
+                .lsp
+                .diagnostics_if_reachable(dir, external_ok, &file)
+                .await
+            {
+                Ok(Some(value)) => {
+                    let report = code::report_diagnostics(script_path, &value);
+                    return if report.failed {
+                        ToolResult::error(
+                            report.text,
+                            &[
+                                "Fix the error lines. A warning is listed and does not by itself fail this check",
+                                "godot_code_diagnostics returns the same diagnostics",
+                            ],
+                        )
+                    } else {
+                        ToolResult::text(report.text)
+                    };
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    return ToolResult::error(
+                        format!("Script validation failed: {error}"),
+                        &[
+                            "The language server was reached but did not publish diagnostics",
+                            "Use godot_code_diagnostics, which starts a language server when none is running",
+                        ],
+                    );
+                }
+            }
         }
 
         match self
@@ -1298,7 +1341,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
         ),
         tool(
             "godot_validate_script",
-            "Performs syntax checking and static validation on a GDScript file without execution.",
+            "Checks a GDScript file. When a language server is already running (the open editor, or one godot_code_diagnostics started), returns its errors and warnings as file:line:col, code and message, with 1-based lines. A warning does not fail the check; an error does. Without a language server, runs godot --headless --check-only, which sees parse errors only, and says that analyzer warnings were not checked. godot_code_diagnostics is the tool that starts a language server when none is running.",
             json!({
                 "script_path": {
                     "type": "string",
