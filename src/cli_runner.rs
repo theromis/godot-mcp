@@ -1,15 +1,20 @@
 use crate::error::{McpError, Result};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
+use tokio::task::JoinHandle;
 use tokio::time::timeout;
 
 const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 const VALIDATE_TIMEOUT: Duration = Duration::from_secs(30);
 const CLASS_CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 const SCRIPT_OUTPUT_CAP: usize = 64 * 1024;
+/// How long to keep reading after the process tree was killed. A grandchild that
+/// survived the kill must not hold the tool open.
+const READER_DRAIN: Duration = Duration::from_secs(2);
 
 /// One `SCRIPT ERROR` block from a headless script run.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -230,30 +235,47 @@ impl CliRunner {
             ))
         })?;
         let pid = child.id().unwrap_or(0);
-        let stdout_pipe = child.stdout.take();
-        let stderr_pipe = child.stderr.take();
-        let stdout_task = tokio::spawn(read_tail(stdout_pipe, SCRIPT_OUTPUT_CAP));
-        let stderr_task = tokio::spawn(read_tail(stderr_pipe, SCRIPT_OUTPUT_CAP));
+        let stdout_buf = Arc::new(Mutex::new(Vec::new()));
+        let stderr_buf = Arc::new(Mutex::new(Vec::new()));
+        let stdout_task = tokio::spawn(read_tail(
+            child.stdout.take(),
+            SCRIPT_OUTPUT_CAP,
+            Arc::clone(&stdout_buf),
+        ));
+        let stderr_task = tokio::spawn(read_tail(
+            child.stderr.take(),
+            SCRIPT_OUTPUT_CAP,
+            Arc::clone(&stderr_buf),
+        ));
 
         let waited = timeout(Duration::from_secs(timeout_seconds), child.wait()).await;
-        let (timed_out, status) = match waited {
-            Ok(Ok(status)) => (false, Some(status)),
+        let (timed_out, status, wait_error) = match waited {
+            Ok(Ok(status)) => (false, Some(status), None),
             Ok(Err(err)) => {
                 kill_process_tree(pid);
                 let _ = child.start_kill();
-                return Err(McpError::Process(format!(
-                    "failed to wait for Godot: {err}"
-                )));
+                (true, None, Some(err))
             }
             Err(_elapsed) => {
                 kill_process_tree(pid);
                 let _ = child.start_kill();
                 let _ = timeout(Duration::from_secs(2), child.wait()).await;
-                (true, None)
+                (true, None, None)
             }
         };
-        let stdout = text_of(stdout_task.await.unwrap_or_default());
-        let stderr = text_of(stderr_task.await.unwrap_or_default());
+        let (stdout, stderr) = finish_readers(
+            stdout_task,
+            stderr_task,
+            stdout_buf.as_ref(),
+            stderr_buf.as_ref(),
+            timed_out,
+        )
+        .await;
+        if let Some(err) = wait_error {
+            return Err(McpError::Process(format!(
+                "failed to wait for Godot: {err}"
+            )));
+        }
         let mut script_errors = script_errors_in(&stdout);
         script_errors.extend(script_errors_in(&stderr));
         Ok(ScriptRun {
@@ -396,27 +418,68 @@ fn text_of(bytes: Vec<u8>) -> String {
     strip_banner(&String::from_utf8_lossy(&bytes))
 }
 
-async fn read_tail<R>(pipe: Option<R>, cap: usize) -> Vec<u8>
+async fn read_tail<R>(pipe: Option<R>, cap: usize, into: Arc<Mutex<Vec<u8>>>)
 where
     R: AsyncRead + Unpin,
 {
     let Some(mut pipe) = pipe else {
-        return Vec::new();
+        return;
     };
-    let mut buf = Vec::new();
     let mut chunk = [0u8; 8192];
     loop {
-        match pipe.read(&mut chunk).await {
+        let n = match pipe.read(&mut chunk).await {
             Ok(0) | Err(_) => break,
-            Ok(n) => {
-                buf.extend_from_slice(&chunk[..n]);
-                if buf.len() > cap {
-                    buf.drain(..buf.len() - cap);
-                }
-            }
+            Ok(n) => n,
+        };
+        let mut buf = match into.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        buf.extend_from_slice(&chunk[..n]);
+        if buf.len() > cap {
+            let drop_n = buf.len() - cap;
+            buf.drain(..drop_n);
         }
     }
-    buf
+}
+
+/// Waits for both readers. After a kill, gives up after [`READER_DRAIN`] and aborts a
+/// reader that is still blocked, keeping whatever it already stored.
+async fn finish_readers(
+    stdout_task: JoinHandle<()>,
+    stderr_task: JoinHandle<()>,
+    stdout_buf: &Mutex<Vec<u8>>,
+    stderr_buf: &Mutex<Vec<u8>>,
+    bound: bool,
+) -> (String, String) {
+    let stdout_abort = stdout_task.abort_handle();
+    let stderr_abort = stderr_task.abort_handle();
+    let joined = async {
+        let _ = stdout_task.await;
+        let _ = stderr_task.await;
+    };
+    let finished = if bound {
+        timeout(READER_DRAIN, joined).await.is_ok()
+    } else {
+        joined.await;
+        true
+    };
+    if !finished {
+        stdout_abort.abort();
+        stderr_abort.abort();
+    }
+    (
+        text_of(take_tail(stdout_buf)),
+        text_of(take_tail(stderr_buf)),
+    )
+}
+
+fn take_tail(buf: &Mutex<Vec<u8>>) -> Vec<u8> {
+    let mut guard = match buf.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    std::mem::take(&mut *guard)
 }
 
 /// `SCRIPT ERROR` lines and the `at: ... (file:line)` that follows them.
@@ -465,8 +528,13 @@ fn kill_process_tree(pid: u32) {
     }
     #[cfg(unix)]
     {
+        // The child is its own process group (`process_group(0)`), so the id to signal is
+        // `-<pid>`. procps `kill` on Linux parses a leading `-` as an option, and
+        // `kill -KILL -<pid>` never reaches the group; a grandchild then keeps the stdout
+        // pipe open. `-s KILL --` ends options on both procps and BSD kill. Windows uses
+        // taskkill /T below.
         let _ = std::process::Command::new("kill")
-            .args(["-KILL", &format!("-{pid}")])
+            .args(["-s", "KILL", "--", &format!("-{pid}")])
             .status();
     }
     #[cfg(windows)]
