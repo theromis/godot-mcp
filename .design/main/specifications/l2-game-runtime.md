@@ -82,10 +82,13 @@ addons/godot_mcp/
 | `input.run`, `input.release_all`, `input.wait` | `godot_game_input`, `godot_game_input_release`, `godot_game_wait` |
 | `game.physics` | `godot_game_physics` |
 | `game.screenshot` | `godot_game_screenshot` |
+| `game.record` | `godot_game_record` |
 | output and errors | `godot_run_output` |
 | (debugger commands, not runtime methods) | `godot_debug_breakpoints`, `godot_debug_control`, `godot_debug_state` |
 
 Gestures (`click`, `click_node`, `swipe`) go through `Input.parse_input_event` like every other step; mouse steps leave the operating system's cursor alone unless `warp_mouse` is set. A wait can also read a public property (`property`, `op`, `value`) or wait for a newer `scene_generation`: the read is a plain `get` on public names, never an expression or a method call, with strict types. The runtime stamps every scene instance with a generation, an instance id and the SHA-256 of the root script source Godot had loaded at that moment, and copies the stamp onto each log line when it is written. A screenshot can save the returned image as one of eight named baselines (each at most 512 x 512 pixels) and compare a later one with it, over a region and with a tolerance. `godot_game_physics` lets exactly N physics iterations run with the game's normal physics delta: it allows one iteration per frame while it runs, counts them and pauses the tree after the Nth; the tick rate and the time scale are never changed.
+
+A property path of `game.get` and `game.set` is a node property followed by resource properties separated by `:` (`/` stays inside one Godot property name, which is how a shader uniform is spelled); only a `Resource` can be stepped through, so a path never walks to another node, and writing refuses `script`, a segment that starts with `_` and an empty segment. `game.record` grabs up to 240 images of the root viewport and writes the PNG files after the last grab, so the game keeps its frame rate and `msec` is the capture instant; the server confines `directory` to the system temporary directory, refuses one that already holds frames or a recording, and calls `ffmpeg` (fixed arguments, null stdin) only for `gif` or `mp4`. `godot_run_project` places `user_args` after `--` for a managed run and refuses them for editor Play.
 
 A scene stamp carries the long explanation of `script_sha256` once per answer, not once per stamped log line, and a baseline comparison without `max_dimension` is captured at the baseline's own size, so a baseline saved at 256 pixels can be compared without repeating the option. [MODIFIED]
 

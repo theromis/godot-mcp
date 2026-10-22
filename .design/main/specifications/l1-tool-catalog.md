@@ -54,7 +54,7 @@ Agents call tools without seeing the implementation; a tool's contract has to be
 | `godot_get_version` | live-first | no | Engine version from the editor, else the binary |
 | `godot_get_project_info` | editor | no | Name, main scene, features, directory |
 | `godot_launch_editor` | host | process | Starts the editor for the resolved project |
-| `godot_run_project` | live-first | process / play state | Editor Play mode; without an editor (or with `mode: "process"`) a managed game with the remote debugger attached [MODIFIED] |
+| `godot_run_project` | live-first | process / play state | Editor Play mode; without an editor (or with `mode: "process"`) a managed game with the remote debugger attached; `user_args` (managed run only) go to the game after `--` [MODIFIED] |
 | `godot_stop_project` | live-first | play state | Stops editor Play mode and managed runs, and says which [MODIFIED] |
 | `godot_get_run_status` | live-first | no | Whether a scene plays, and the managed runs [MODIFIED] |
 | `godot_get_open_scenes` | editor | no | Open tabs, active tab |
@@ -83,6 +83,7 @@ Agents call tools without seeing the implementation; a tool's contract has to be
 | `godot_game_set`, `godot_game_call`, `godot_game_observe` | game | running game only | Property writes, permitted method calls, short signal observation [ADDED] |
 | `godot_game_input`, `godot_game_input_release`, `godot_game_wait`, `godot_game_physics` | game | running game only | Key, mouse, touch and gamepad input, gestures, waits for frames, a node, a signal, a property value or a newer scene, time scale, a step of N physics ticks [ADDED] |
 | `godot_game_screenshot` | game (windowed) | session memory of the run | PNG of the game, an optional frame sheet, pixel diff against the previous capture, named baselines with a region and a tolerance [ADDED] |
+| `godot_game_record` | game (windowed) | PNG files below the system temporary directory | Up to 240 frames of the game window written after the last grab; optional gif or mp4 through `ffmpeg`; refused while held [ADDED] |
 | `godot_debug_breakpoints`, `godot_debug_control`, `godot_debug_state` | managed run | running game only | Breakpoints, pause, resume and step, stack and variables [ADDED] |
 | `godot_code_diagnostics`, `godot_code_symbols`, `godot_code_complete`, `godot_code_definition`, `godot_code_references` | engine | no | GDScript queries from Godot's language server [ADDED] |
 | `godot_note_feedback` | host | session memory | Records one observation for the maintainers |
