@@ -71,8 +71,20 @@ A release covers every line in `.github/lines`. Work on the branches or on one w
    godot --headless --check-only --path . --script addons/godot_mcp/plugin.gd
    godot --headless --check-only --path . --script addons/godot_mcp/bridge_server.gd
    godot --headless --check-only --path . --script addons/godot_mcp/export_plugin.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/editor/game_relay.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/editor/script_ops.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/core/runtime_override.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/runtime/mcp_runtime.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_hold.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_input.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_live.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_output.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_result.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_view.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_record.gd
    GODOT_PATH=/path/to/godot cargo test --test editor_e2e_test -- --ignored
    GODOT_PATH=/path/to/godot cargo test --test addon_export_test -- --ignored
+   GODOT_PATH=/path/to/godot cargo test --test runtime_e2e_test -- --ignored
    ```
 
    Also confirm that `SECURITY.md` and `CONTRIBUTING.md` are still true: the supported lines, the reporting link, the checks.
@@ -117,7 +129,7 @@ A release covers every line in `.github/lines`. Work on the branches or on one w
 
 5. **Release commit on `master`.** Write the changelog section in `CHANGELOG.md`, above the previous release:
    - Heading `## [0.5.1] - YYYY-MM-DD`, then Added / Changed / Fixed / Security, written for users: behaviour changes first, nothing about planning or tasks. Mark what applies to some lines only ("Godot 4.6 only: …").
-   - No compare link: commits of different lines are not comparable.
+   - No compare link for the version itself: commits of different lines are not comparable. Do move the `[Unreleased]` link at the end of the file to `compare/vX.Y.Z...master` of the new release.
    - Check it: `bash .github/scripts/release-notes.sh v0.5.1`.
 
    ```bash

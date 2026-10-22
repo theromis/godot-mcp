@@ -86,7 +86,7 @@ impl FeedbackMode {
 
 /// An empty value means "not set" and an unknown one is reported and read as drafting only: a
 /// setting that is wrong must never keep the server from starting, and a typo of a restriction
-/// (`drafts`, `of`) must never switch submission on (FB-10).
+/// (`drafts`, `of`) must never switch submission on.
 fn parse_feedback_mode(raw: &str) -> Result<FeedbackMode, Infallible> {
     if raw.trim().is_empty() {
         return Ok(FeedbackMode::default());

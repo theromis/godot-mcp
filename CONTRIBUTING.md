@@ -72,12 +72,14 @@ Choose the branch for your pull request:
    | JSON-RPC framing, session, configuration | `tests/stdio_protocol_test.rs` |
    | A tool's host-side logic | `tests/tools_test.rs` |
    | Agent feedback channel | `tests/feedback_test.rs` |
+   | Tool catalog shape, JSON-RPC result helpers | `tests/server_test.rs` |
    | Bridge client | `tests/bridge_client_test.rs` |
    | Editor command behaviour | `tests/editor_e2e_test.rs` |
    | Addon kept out of exported games | `tests/addon_export_test.rs` |
    | Launched processes staying independent of the server | `tests/detach_test.rs` |
    | Running game, input, screenshots, breakpoints, GDScript diagnostics | `tests/runtime_e2e_test.rs` |
    | Version string and release line identity | `tests/version_sync_test.rs` |
+   | Repo steward scripts and workflows | `tests/steward_test.rs` |
 
    Unit tests live next to the code in `src/`.
 3. Follow the engineering standards in [AGENTS.md](AGENTS.md): no `unwrap()` or `expect()` in production code, logs to stderr only, every editor mutation undoable, every path checked against the project, strict typing in GDScript.
