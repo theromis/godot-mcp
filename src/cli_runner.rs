@@ -413,7 +413,7 @@ pub(crate) fn make_std_handles_private() {
     }
 }
 
-/// Drops the engine's start-up banner ("Godot Engine v4.x ...") from captured output.
+/// Captured output with the engine's start-up banner removed.
 fn text_of(bytes: Vec<u8>) -> String {
     strip_banner(&String::from_utf8_lossy(&bytes))
 }
@@ -545,6 +545,7 @@ fn kill_process_tree(pid: u32) {
     }
 }
 
+/// Drops the engine's start-up banner ("Godot Engine v4.x ...") from captured output.
 fn strip_banner(text: &str) -> String {
     text.lines()
         .filter(|line| !line.starts_with("Godot Engine v"))
