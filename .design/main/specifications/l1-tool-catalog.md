@@ -80,7 +80,7 @@ Agents call tools without seeing the implementation; a tool's contract has to be
 | `godot_set_project_setting` | live-first | disk | One scalar setting, type-checked and escaped [ADDED] |
 | `godot_run_output` | host | no | Bounded logs, warnings and errors with stacks of a run [ADDED] |
 | `godot_game_tree`, `godot_game_get`, `godot_game_signals`, `godot_game_snapshot` | game | no | Live tree, properties, signals, summary of the running game [ADDED] |
-| `godot_game_set`, `godot_game_call`, `godot_game_observe` | game | running game only | Property writes, permitted method calls, short signal observation [ADDED] |
+| `godot_game_set`, `godot_game_call`, `godot_game_observe` | game | running game only | Property writes, including a `/` Object or Dictionary path (an unknown property is an error), permitted method calls, short signal observation [MODIFIED] |
 | `godot_game_input`, `godot_game_input_release`, `godot_game_wait`, `godot_game_physics` | game | running game only | Key, mouse, touch and gamepad input, gestures, drags along a path or a circle, waits for frames, a node, a signal, a property value or a newer scene, time scale, a step of N physics ticks [ADDED] |
 | `godot_game_screenshot` | game (windowed) | session memory of the run | PNG of the game, an optional frame sheet, pixel diff against the previous capture, named baselines with a region and a tolerance [ADDED] |
 | `godot_game_record` | game (windowed) | PNG files below the system temporary directory | Up to 240 frames of the game window written after the last grab; optional gif or mp4 through `ffmpeg`; refused while held [ADDED] |
