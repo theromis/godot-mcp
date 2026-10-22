@@ -15,6 +15,7 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ### Changed
 
+- `godot_game_set` writes a `/` path through an Object field or a Dictionary key, the same walk `godot_game_get` uses. A missing property or key is an error that names it (a new Dictionary key is not created), a `/` step into another Node is refused, and the written value is read back: a write that did not take is an error instead of success with `null`. Floats, vectors, colors and transforms are compared approximately, because many engine floats are 32-bit.
 - `godot_game_screenshot` names the `godot_game_input` coordinate space (the root viewport's visible size, after content scale) and the scale from returned image pixels to that space, per frame for a sheet and also for an `roi` and a camera capture.
 - Pointer positions of `godot_game_input` (mouse, touch, swipe, path, circle) are pixels of the root viewport's visible rectangle: the content scale is applied before the event is parsed, so a stretched window delivers the position that was asked for. Without stretching nothing changes.
 - `godot_game_get` and `godot_game_wait` treat a missing segment of a `/` property path as an error that names the segment (`property_errors` for `godot_game_get`); `null` is only a value that really is null.
