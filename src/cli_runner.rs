@@ -169,7 +169,7 @@ impl CliRunner {
     }
 
     /// What a clean `godot --headless --check-only` means: parse errors only.
-    pub const HEADLESS_PARSE_CLEAN: &str = "No parse errors (headless check). Analyzer warnings were not checked: the language server is not available; use godot_code_diagnostics with the editor open.";
+    pub const HEADLESS_PARSE_CLEAN: &str = "No parse errors (headless check). Analyzer warnings were not checked: no language server is running; use godot_code_diagnostics, which starts one.";
 
     /// Validate a GDScript file syntax using headless Godot check
     pub async fn validate_script(

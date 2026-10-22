@@ -116,11 +116,12 @@ impl LspHub {
             Err(_) => return Ok(None),
         };
         let value = publish_diagnostics(&client, &project, file).await?;
+        // A private editor is never replaced: dropping its entry kills it, even while another
+        // project still uses it.
         let mut live = lock(&self.live);
-        if live
-            .as_ref()
-            .is_none_or(|current| !(current.root == project && current.client.is_open()))
-        {
+        if live.as_ref().is_none_or(|current| {
+            current.child.is_none() && !(current.root == project && current.client.is_open())
+        }) {
             *live = Some(Live {
                 client,
                 child: None,

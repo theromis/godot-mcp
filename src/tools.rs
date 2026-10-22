@@ -642,14 +642,14 @@ impl ToolManager {
             );
         }
 
-        let project_dir =
+        let (project_dir, from_editor) =
             if str_arg(&args, "project_path").is_some() || script_path.starts_with("res://") {
                 match self.resolve_project(&args).await {
-                    Ok(project) => Some(project.dir),
+                    Ok(project) => (Some(project.dir), project.from_editor),
                     Err(result) => return result,
                 }
             } else {
-                None
+                (None, false)
             };
 
         let file = match &project_dir {
@@ -675,11 +675,10 @@ impl ToolManager {
             );
         }
 
+        // Set when a language server was reached but did not answer; the headless check runs instead.
+        let mut lsp_problem = None;
         if let Some(dir) = &project_dir {
-            let external_ok = match self.resolve_project(&args).await {
-                Ok(project) => project.from_editor || self.editor_may_serve(&project.dir).await,
-                Err(_) => false,
-            };
+            let external_ok = from_editor || self.editor_may_serve(dir).await;
             match self
                 .lsp
                 .diagnostics_if_reachable(dir, external_ok, &file)
@@ -700,15 +699,7 @@ impl ToolManager {
                     };
                 }
                 Ok(None) => {}
-                Err(error) => {
-                    return ToolResult::error(
-                        format!("Script validation failed: {error}"),
-                        &[
-                            "The language server was reached but did not publish diagnostics",
-                            "Use godot_code_diagnostics, which starts a language server when none is running",
-                        ],
-                    );
-                }
+                Err(error) => lsp_problem = Some(error),
             }
         }
 
@@ -717,7 +708,12 @@ impl ToolManager {
             .validate_script(project_dir.as_deref(), Path::new(script_path))
             .await
         {
-            Ok(msg) => ToolResult::text(msg),
+            Ok(msg) => match lsp_problem {
+                Some(error) => ToolResult::text(format!(
+                    "No parse errors (headless check). Analyzer warnings were not checked: the language server was reached but did not answer ({error}); retry, or use godot_code_diagnostics."
+                )),
+                None => ToolResult::text(msg),
+            },
             // The engine could not be run at all: that is a path problem, not a script problem.
             Err(e @ McpError::Process(_)) => ToolResult::error(
                 format!("Script validation failed: {e}"),
