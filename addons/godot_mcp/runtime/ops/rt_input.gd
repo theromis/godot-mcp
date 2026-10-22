@@ -514,14 +514,17 @@ static func parse_condition(raw: Variant) -> Dictionary:
     return {"cond": {"node": node_path, "property": property, "op": op, "value": spec.get("value", null)}}
 
 
-## Reads a parsed condition now. A node or property that cannot be read yet, or values that
-## cannot be compared, make it not hold: the step goes on and is bounded by its maximum.
+## Reads a parsed condition now. A node that is not in the tree yet does not hold, and the
+## step goes on. A missing segment of a property path is an error: null only means the
+## property exists and its value is null.
 static func read_condition(rt: Node, cond: Dictionary) -> Dictionary:
     var node: Node = rt.find_node(str(cond["node"]))
     if node == null or not is_instance_valid(node):
         return {"holds": false, "exists": false, "observed": null}
     var looked := _lookup(node, str(cond["property"]))
-    if R.is_err(looked) or not bool(looked.get("exists", false)):
+    if R.is_err(looked):
+        return {"holds": false, "exists": false, "observed": null, "error": looked["error"]}
+    if not bool(looked.get("exists", false)):
         return {"holds": false, "exists": false, "observed": null}
     var observed: Variant = looked.get("value", null)
     if str(cond["op"]) == "exists":
@@ -573,23 +576,30 @@ static func _lookup(node: Node, path: String) -> Dictionary:
             return named
         if index == 0:
             if not _has_public_property(node, part):
-                return {"exists": false}
+                return _missing_segment(part, "")
             current = node.get(part)
         elif current is Dictionary:
             if not (current as Dictionary).has(part):
-                return {"exists": false}
+                return _missing_segment(part, "/".join(parts.slice(0, index)))
             current = (current as Dictionary)[part]
         elif current is Array:
             return R.err(R.BAD_PARAMS, "Cannot read '%s' inside an Array." % part)
         elif current is Object and current != null:
             var object := current as Object
             if not _has_public_property(object, part):
-                return {"exists": false}
+                return _missing_segment(part, "/".join(parts.slice(0, index)))
             current = object.get(part)
         else:
             return R.err(R.BAD_PARAMS, "Cannot read '%s' inside a %s." % [part, type_string(typeof(current))])
         index += 1
     return {"exists": true, "value": current}
+
+
+## A segment that is not there. null is reserved for a property that exists and holds null.
+static func _missing_segment(part: String, owner: String) -> Dictionary:
+    if owner.is_empty():
+        return R.err(R.NOT_FOUND, "Property '%s' does not exist." % part)
+    return R.err(R.NOT_FOUND, "Property '%s' does not exist on '%s'." % [part, owner])
 
 
 static func _public_segment(part: String) -> Dictionary:

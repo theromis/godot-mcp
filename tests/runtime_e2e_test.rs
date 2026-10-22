@@ -105,12 +105,15 @@ var scale_seen := 1.0
 var pad_presses := 0
 var tiny_presses := 0
 var firefly_law: RefCounted
+var river: RefCounted
 var bag := {"count": 2}
+var quiet = null
 var swatch: Resource
 signal pinged(value)
 
 func _ready() -> void:
     firefly_law = Law.new()
+    river = River.new()
     swatch = Tone.new()
     set_meta("note", "hi")
     print("mcp-probe-ready")
@@ -120,6 +123,10 @@ class Law:
     extends RefCounted
     var births := 3
     var _hidden := 1
+
+class River:
+    extends RefCounted
+    var camera_x := 1.5
 
 class Tone:
     extends Resource
@@ -302,6 +309,63 @@ async fn running_game_accepts_input_and_can_be_inspected() {
     );
     assert_eq!(nested_values["bag/count"], 2, "{}", text_of(&nested));
     assert_eq!(nested_values["swatch:level"], 4, "{}", text_of(&nested));
+    let missing = call(
+        &tools,
+        "godot_game_get",
+        json!({
+            "run_id": run_id,
+            "path": ".",
+            "properties": ["river/berry", "river/camera_x", "quiet", "bag/nope"]
+        }),
+    )
+    .await;
+    assert!(!missing.is_error, "{}", text_of(&missing));
+    let missing_json = json_of(&missing);
+    assert!(
+        missing_json["properties"].get("river/berry").is_none(),
+        "a missing segment must not be null: {missing_json}"
+    );
+    assert_eq!(
+        missing_json["properties"]["river/camera_x"], 1.5,
+        "{missing_json}"
+    );
+    assert!(
+        missing_json["properties"]["quiet"].is_null(),
+        "a real null stays null: {missing_json}"
+    );
+    let property_errors = &missing_json["property_errors"];
+    assert!(
+        property_errors["river/berry"]
+            .as_str()
+            .unwrap_or("")
+            .contains("berry"),
+        "{missing_json}"
+    );
+    assert!(
+        property_errors["bag/nope"]
+            .as_str()
+            .unwrap_or("")
+            .contains("nope"),
+        "{missing_json}"
+    );
+    let missing_wait = call(
+        &tools,
+        "godot_game_wait",
+        json!({
+            "run_id": run_id,
+            "node": ".",
+            "property": "river/berry",
+            "op": "exists",
+            "timeout": 30
+        }),
+    )
+    .await;
+    assert!(missing_wait.is_error, "{}", text_of(&missing_wait));
+    let missing_wait_text = text_of(&missing_wait);
+    assert!(
+        missing_wait_text.contains("berry") && !missing_wait_text.contains("Timed out"),
+        "{missing_wait_text}"
+    );
     // A property whose own name has a slash is read whole, not walked as a path.
     let slashed = call(
         &tools,

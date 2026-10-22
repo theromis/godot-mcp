@@ -240,6 +240,11 @@ static func _step_lets_tick_run(rt: Node) -> bool:
     var reading := {}
     if not _cond.is_empty():
         reading = Inputs.read_condition(rt, _cond)
+        if reading.has("error"):
+            _until_met = false
+            _finish_step(reading)
+            _step_report["error"] = reading["error"]
+            return false
         _until_met = bool(reading["holds"])
     if _until_met or _ticks_run >= _limit:
         _finish_step(reading)
