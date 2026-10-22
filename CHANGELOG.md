@@ -8,8 +8,16 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ## [Unreleased]
 
+### Added
+
+- `godot_run_script` runs a GDScript that extends `SceneTree` headless with the configured Godot binary (`--path`, `-s`, `user_args` after `--`). It returns the exit code, stdout, stderr and each `SCRIPT ERROR` with its file and line. `timeout_seconds` defaults to 120 (maximum 600); on timeout the process tree is killed and the last output lines are included. Paths outside the project are refused.
+- `godot_game_input` takes `emulate_mouse: false` to turn off the engine's emulated mouse events for a touch step during one call; the previous value is restored afterwards.
+
 ### Changed
 
+- `godot_game_screenshot` names the `godot_game_input` coordinate space (the root viewport's visible size, after content scale) and the scale from returned image pixels to that space, per frame for a sheet and also for an `roi` and a camera capture.
+- Pointer positions of `godot_game_input` (mouse, touch, swipe, path, circle) are pixels of the root viewport's visible rectangle: the content scale is applied before the event is parsed, so a stretched window delivers the position that was asked for. Without stretching nothing changes.
+- `godot_game_get` and `godot_game_wait` treat a missing segment of a `/` property path as an error that names the segment (`property_errors` for `godot_game_get`); `null` is only a value that really is null.
 - `godot_validate_script` reports the language server's errors and warnings when that server is already running (the open editor, or one `godot_code_diagnostics` started). A warning, such as a local `seed` shadowing the global, is listed as `file:line:col` with its code and message, and does not fail the check; an error does. Without a language server the check stays the headless parse check and says that analyzer warnings were not checked. `godot_code_diagnostics` is what starts a language server when none is running.
 
 ## [0.7.0] - 2026-10-22
