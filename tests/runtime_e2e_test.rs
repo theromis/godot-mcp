@@ -3460,6 +3460,21 @@ async fn game_set_writes_through_an_object_and_refuses_a_missing_leaf() {
     assert_eq!(position[0].as_f64(), Some(40.0), "{position}");
     assert_eq!(position[1].as_f64(), Some(70.0), "{position}");
 
+    // Node2D.rotation is a 32-bit float: 0.1 reads back as 0.10000000149 and is still a write that took.
+    let turned = call(
+        &tools,
+        "godot_game_set",
+        json!({"run_id": run_id, "path": "Mark", "properties": {"rotation": 0.1}}),
+    )
+    .await;
+    assert!(!turned.is_error, "{}", text_of(&turned));
+    let angle = json_of(&turned)["properties"]["rotation"].as_f64();
+    assert!(
+        angle.is_some_and(|a| (a - 0.1).abs() < 1e-6),
+        "{}",
+        text_of(&turned)
+    );
+
     let level = call(
         &tools,
         "godot_game_set",

@@ -219,7 +219,7 @@ A named baseline is the returned image, so `roi` uses that image's pixels (`roi_
 {"baseline": "menu", "roi": {"x": 0, "y": 0, "w": 80, "h": 24}, "tolerance": 8}
 ```
 
-`godot_game_set` writes a property of the live node. `/` writes a field of an Object or a key of a Dictionary, the same way `godot_game_get` reads one. A missing property or key is an error that names the segment, and a new Dictionary key is not created. The value is read back; a write that did not take is an error, not success with `null`. `:` steps through a Resource. A `/` that belongs to one Godot property name stays that name, which is how a shader uniform is spelled. A `/` step stays inside the object it starts from, so a Node along the way is an error and that node is named with `path`.
+`godot_game_set` writes a property of the live node. `/` writes a field of an Object or a key of a Dictionary, the same way `godot_game_get` reads one. A missing property or key is an error that names the segment, and a new Dictionary key is not created. The value is read back; a write that did not take is an error, not success with `null`. Floats, vectors, colors and transforms are compared approximately, because many engine floats are 32-bit. `:` steps through a Resource. A `/` that belongs to one Godot property name stays that name, which is how a shader uniform is spelled. A `/` step stays inside the object it starts from, so a Node along the way is an error and that node is named with `path`.
 
 ```json
 {"path": ".", "properties": {"round_state/letter_index": 22}}

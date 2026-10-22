@@ -221,9 +221,22 @@ static func _assign_leaf(name: String, looked: Dictionary, raw: Variant) -> Dict
         stored = holder.get(leaf)
     else:
         return R.err(R.BAD_PARAMS, "Cannot write '%s'." % name)
-    if stored != decoded:
+    if not _same(stored, decoded):
         return R.err(R.BAD_PARAMS, "Property '%s' is %s after writing %s. The write did not take." % [name, stored, decoded])
     return {"value": stored}
+
+
+## Many engine floats are 32-bit (Node2D.rotation, Camera3D.fov), so 0.1 comes back as
+## 0.10000000149. Floats and float-based values are compared approximately, the rest exactly.
+static func _same(stored: Variant, written: Variant) -> bool:
+    if typeof(stored) != typeof(written):
+        return stored == written
+    match typeof(stored):
+        TYPE_FLOAT:
+            return is_equal_approx(stored, written)
+        TYPE_VECTOR2, TYPE_VECTOR3, TYPE_VECTOR4, TYPE_COLOR, TYPE_QUATERNION, TYPE_PLANE, TYPE_RECT2, TYPE_AABB, TYPE_BASIS, TYPE_TRANSFORM2D, TYPE_TRANSFORM3D:
+            return stored.is_equal_approx(written)
+    return stored == written
 
 
 ## A property path is a node property, then zero or more resource properties separated by `:`.
