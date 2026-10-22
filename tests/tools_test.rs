@@ -642,6 +642,190 @@ async fn a_run_that_is_not_held_gets_no_fixed_rate_and_no_game_arguments() {
     assert!(!arguments.contains("godot-mcp"), "{arguments}");
 }
 
+#[tokio::test]
+async fn user_args_are_placed_after_the_engine_separator_and_shown_in_status() {
+    let project = project_dir();
+    let (godot, record) = recording_godot(project.path());
+    let tools = manager_in(project.path(), godot);
+    let result = Arc::clone(&tools)
+        .call_tool(
+            "godot_run_project",
+            json!({"mode": "process", "user_args": ["--headless", "--caustics"]}),
+        )
+        .await;
+    assert!(!result.is_error, "{}", text(&result));
+
+    let arguments = wait_for_file(&record).await;
+    let (engine, game) = arguments.split_once(" -- ").unwrap_or((&arguments, ""));
+    assert_eq!(arguments.matches(" -- ").count(), 1, "{arguments}");
+    assert!(engine.contains("--remote-debug"), "{arguments}");
+    assert!(!engine.contains("--headless"), "{arguments}");
+    assert!(!engine.contains("--caustics"), "{arguments}");
+    assert!(
+        game.contains("--headless") && game.contains("--caustics"),
+        "{arguments}"
+    );
+
+    let status = Arc::clone(&tools)
+        .call_tool("godot_get_run_status", json!({}))
+        .await;
+    assert!(!status.is_error, "{}", text(&status));
+    assert!(
+        text(&status).contains("\"--caustics\""),
+        "{}",
+        text(&status)
+    );
+}
+
+#[tokio::test]
+async fn user_args_stay_behind_the_same_separator_when_the_run_is_held() {
+    let project = project_dir();
+    let (godot, record) = recording_godot(project.path());
+    let tools = manager_in(project.path(), godot);
+    let result = Arc::clone(&tools)
+        .call_tool(
+            "godot_run_project",
+            json!({"mode": "process", "held": true, "user_args": ["--caustics"]}),
+        )
+        .await;
+    assert!(!result.is_error, "{}", text(&result));
+    let arguments = wait_for_file(&record).await;
+    let (engine, game) = arguments.split_once(" -- ").unwrap_or((&arguments, ""));
+    assert_eq!(arguments.matches(" -- ").count(), 1, "{arguments}");
+    assert!(engine.contains("--fixed-fps"), "{arguments}");
+    assert!(!engine.contains("--caustics"), "{arguments}");
+    assert!(game.contains("--godot-mcp-hold"), "{arguments}");
+    assert!(game.contains("--caustics"), "{arguments}");
+}
+
+#[tokio::test]
+async fn user_args_are_refused_unless_the_mode_is_process() {
+    let project = project_dir();
+    let (godot, record) = recording_godot(project.path());
+    let tools = manager_in(project.path(), godot);
+    for args in [
+        json!({"user_args": ["--caustics"]}),
+        json!({"mode": "auto", "user_args": ["--caustics"]}),
+        json!({"mode": "auto", "user_args": []}),
+    ] {
+        let result = Arc::clone(&tools)
+            .call_tool("godot_run_project", args)
+            .await;
+        assert!(result.is_error, "{}", text(&result));
+        assert!(text(&result).contains("process"), "{}", text(&result));
+    }
+    assert!(
+        !record.exists(),
+        "a refused user_args request still launched Godot"
+    );
+}
+
+#[tokio::test]
+async fn user_args_are_refused_instead_of_playing_in_the_editor() {
+    use common::{MockBridge, Reply};
+    let bridge = MockBridge::start(
+        |command| match command["type"].as_str().unwrap_or_default() {
+            "run_project" => Reply::Ok(json!({"running": true})),
+            _ => Reply::Ok(json!({})),
+        },
+    )
+    .await;
+    let project = project_dir();
+    let tools = Arc::new(ToolManager::new(
+        BridgeClient::new(bridge.port),
+        CliRunner::new(fake_godot(project.path())),
+    ));
+    let result = tools
+        .call_tool("godot_run_project", json!({"user_args": ["--caustics"]}))
+        .await;
+    assert!(result.is_error, "{}", text(&result));
+    assert!(text(&result).contains("process"), "{}", text(&result));
+    assert!(
+        !bridge
+            .received()
+            .iter()
+            .any(|command| command["type"] == "run_project"),
+        "editor Play was started with user_args"
+    );
+}
+
+#[tokio::test]
+async fn user_args_reject_the_wrong_shape() {
+    let not_strings = call(
+        "godot_run_project",
+        json!({"mode": "process", "user_args": [1]}),
+    )
+    .await;
+    assert!(not_strings.is_error, "{}", text(&not_strings));
+    assert!(
+        text(&not_strings).contains("string"),
+        "{}",
+        text(&not_strings)
+    );
+
+    let many = vec!["a"; 33];
+    let too_many = call(
+        "godot_run_project",
+        json!({"mode": "process", "user_args": many}),
+    )
+    .await;
+    assert!(too_many.is_error, "{}", text(&too_many));
+    assert!(text(&too_many).contains("32"), "{}", text(&too_many));
+
+    let long = "a".repeat(257);
+    let too_long = call(
+        "godot_run_project",
+        json!({"mode": "process", "user_args": [long]}),
+    )
+    .await;
+    assert!(too_long.is_error, "{}", text(&too_long));
+    assert!(text(&too_long).contains("256"), "{}", text(&too_long));
+
+    let control = call(
+        "godot_run_project",
+        json!({"mode": "process", "user_args": ["ok\n--quit"]}),
+    )
+    .await;
+    assert!(control.is_error, "{}", text(&control));
+    assert!(text(&control).contains("control"), "{}", text(&control));
+}
+
+#[tokio::test]
+async fn record_rejects_a_span_a_relative_directory_and_a_bad_format() {
+    let names: Vec<_> = ToolManager::list_tools()
+        .into_iter()
+        .map(|tool| tool.name)
+        .collect();
+    assert!(names.iter().any(|name| name == "godot_game_record"));
+
+    let too_many = call("godot_game_record", json!({"frames": 241})).await;
+    assert!(too_many.is_error, "{}", text(&too_many));
+    assert!(text(&too_many).contains("240"), "{}", text(&too_many));
+
+    let span = call("godot_game_record", json!({"frames": 240, "every": 3})).await;
+    assert!(span.is_error, "{}", text(&span));
+    assert!(text(&span).contains("480"), "{}", text(&span));
+
+    let relative = call("godot_game_record", json!({"directory": "frames"})).await;
+    assert!(relative.is_error, "{}", text(&relative));
+    assert!(text(&relative).contains("absolute"), "{}", text(&relative));
+
+    let parent = call(
+        "godot_game_record",
+        json!({"directory": "/tmp/godot-mcp/../../etc"}),
+    )
+    .await;
+    assert!(parent.is_error, "{}", text(&parent));
+    assert!(text(&parent).contains(".."), "{}", text(&parent));
+
+    let webm = call("godot_game_record", json!({"format": "webm"})).await;
+    assert!(webm.is_error, "{}", text(&webm));
+
+    let fraction = call("godot_game_record", json!({"frames": 1.5})).await;
+    assert!(fraction.is_error, "{}", text(&fraction));
+    assert!(text(&fraction).contains("integer"), "{}", text(&fraction));
+}
+
 #[test]
 fn the_physics_tool_offers_hold_conditions_and_the_input_tool_hold_ticks() {
     let tools = ToolManager::list_tools();

@@ -94,9 +94,11 @@ static func get_node(rt: Node, params: Dictionary) -> Dictionary:
     if wanted is Array and not (wanted as Array).is_empty():
         for key: Variant in wanted:
             var name := str(key)
-            if name == "script":
-                continue
-            props[name] = rt.encode(node.get(name))
+            var located := _locate(node, name)
+            if located.has("error"):
+                return located["error"]
+            var target: Object = located["target"]
+            props[name] = rt.encode(target.get(str(located["leaf"])))
     else:
         for info: Dictionary in node.get_property_list():
             if int(info.get("usage", 0)) & PROPERTY_USAGE_SCRIPT_VARIABLE == 0 and int(info.get("usage", 0)) & PROPERTY_USAGE_EDITOR == 0:
@@ -139,13 +141,47 @@ static func set_props(rt: Node, params: Dictionary) -> Dictionary:
     var readback := {}
     for key: Variant in properties:
         var name := str(key)
-        if name == "script" or name.begins_with("_") or name.contains(":"):
-            return R.err(R.DENIED, "Refusing to set '%s'." % name)
-        var current: Variant = node.get(name)
+        var located := _locate(node, name)
+        if located.has("error"):
+            return located["error"]
+        var target: Object = located["target"]
+        var leaf := str(located["leaf"])
+        var current: Variant = target.get(leaf)
         var decoded: Variant = _coerce(properties[key], typeof(current) if current != null else TYPE_NIL)
-        node.set(name, decoded)
-        readback[name] = rt.encode(node.get(name))
+        target.set(leaf, decoded)
+        readback[name] = rt.encode(target.get(leaf))
     return R.ok({"path": rt.path_of(node), "properties": readback})
+
+
+## A property path is a node property, then zero or more resource properties separated by `:`.
+## `shader_parameter/caustics` is one Godot property name, so `/` stays inside a segment.
+## `script`, a segment that starts with `_`, and an empty segment are refused. Only a Resource
+## can be stepped through, so a path cannot walk from one node to another.
+static func _locate(root: Object, path: String) -> Dictionary:
+    if path.is_empty() or path.begins_with(":") or path.ends_with(":") or path.contains("::"):
+        return {"error": R.err(R.DENIED, "Refusing to set '%s'." % path)}
+    var segments := path.split(":", false)
+    if segments.is_empty():
+        return {"error": R.err(R.DENIED, "Refusing to set '%s'." % path)}
+    for segment: String in segments:
+        if _bad_segment(segment):
+            return {"error": R.err(R.DENIED, "Refusing to set '%s'." % path)}
+    var target: Object = root
+    for index in segments.size() - 1:
+        var current: Variant = target.get(segments[index])
+        if not current is Resource:
+            return {"error": R.err(R.BAD_PARAMS, "Property '%s' is not a resource, so '%s' cannot be changed through it." % [segments[index], path])}
+        target = current
+    return {"target": target, "leaf": segments[segments.size() - 1]}
+
+
+static func _bad_segment(segment: String) -> bool:
+    if segment.is_empty() or segment.begins_with("/") or segment.ends_with("/") or segment.contains("//"):
+        return true
+    for part: String in segment.split("/", false):
+        if part.is_empty() or part == "script" or part.begins_with("_"):
+            return true
+    return false
 
 
 static func call_method(rt: Node, params: Dictionary) -> Dictionary:

@@ -2046,6 +2046,7 @@ async fn held_game_refuses_every_operation_that_needs_time_and_serves_the_rest()
         ),
         ("godot_game_screenshot", json!({"frames": 2})),
         ("godot_game_screenshot", json!({"camera": "Camera"})),
+        ("godot_game_record", json!({"frames": 2})),
         (
             "godot_game_input",
             json!({"steps": [{"type": "wait", "frames": 2}]}),
@@ -2601,4 +2602,248 @@ async fn a_breakpoint_hit_during_a_held_step_stops_the_game_as_usual() {
 
     let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
     assert!(!stopped.is_error, "{}", text_of(&stopped));
+}
+
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn headless_game_sets_a_shader_parameter_on_a_material() {
+    let _ = IGNORE;
+    let project = material_project();
+    let tools = manager(project.path());
+    let started = call(
+        &tools,
+        "godot_run_project",
+        json!({
+            "project_path": project.path(),
+            "scene": "res://scenes/main.tscn",
+            "mode": "process",
+            "headless": true
+        }),
+    )
+    .await;
+    assert!(!started.is_error, "{}", text_of(&started));
+    let run_id = run_id_of(&started);
+    let ready = call(
+        &tools,
+        "godot_game_wait",
+        json!({"run_id": run_id, "node": "Swatch", "timeout": 180}),
+    )
+    .await;
+    assert!(!ready.is_error, "{}", text_of(&ready));
+
+    let before = call(
+        &tools,
+        "godot_game_get",
+        json!({"run_id": run_id, "path": "Swatch", "properties": ["material:shader_parameter/caustics"]}),
+    )
+    .await;
+    assert!(!before.is_error, "{}", text_of(&before));
+    // Godot's get returns null for a shader uniform until something writes it, even when the
+    // uniform declares a default. The property is still there: the write below reads back.
+    assert!(
+        json_of(&before)["properties"]["material:shader_parameter/caustics"].is_null(),
+        "{}",
+        text_of(&before)
+    );
+
+    let set = call(
+        &tools,
+        "godot_game_set",
+        json!({"run_id": run_id, "path": "Swatch", "properties": {"material:shader_parameter/caustics": true}}),
+    )
+    .await;
+    assert!(!set.is_error, "{}", text_of(&set));
+    assert_eq!(
+        json_of(&set)["properties"]["material:shader_parameter/caustics"],
+        true,
+        "{}",
+        text_of(&set)
+    );
+    let after = call(
+        &tools,
+        "godot_game_get",
+        json!({"run_id": run_id, "path": "Swatch", "properties": ["material:shader_parameter/caustics"]}),
+    )
+    .await;
+    assert_eq!(
+        json_of(&after)["properties"]["material:shader_parameter/caustics"],
+        true,
+        "{}",
+        text_of(&after)
+    );
+
+    let mark = call(
+        &tools,
+        "godot_game_set",
+        json!({"run_id": run_id, "path": ".", "properties": {"mark": 2}}),
+    )
+    .await;
+    assert!(!mark.is_error, "{}", text_of(&mark));
+    assert_eq!(
+        json_of(&mark)["properties"]["mark"],
+        2,
+        "{}",
+        text_of(&mark)
+    );
+
+    for properties in [
+        json!({"material:script": "res://scenes/main.tscn"}),
+        json!({"material:shader_parameter/_hidden": true}),
+        json!({"script": "res://scenes/main.tscn"}),
+    ] {
+        let denied = call(
+            &tools,
+            "godot_game_set",
+            json!({"run_id": run_id, "path": "Swatch", "properties": properties}),
+        )
+        .await;
+        assert!(denied.is_error, "{}", text_of(&denied));
+        assert!(
+            text_of(&denied).to_lowercase().contains("refus"),
+            "{}",
+            text_of(&denied)
+        );
+    }
+    let still = call(
+        &tools,
+        "godot_game_get",
+        json!({"run_id": run_id, "path": "Swatch", "properties": ["material:shader_parameter/caustics"]}),
+    )
+    .await;
+    assert_eq!(
+        json_of(&still)["properties"]["material:shader_parameter/caustics"],
+        true,
+        "a refused write changed the uniform: {}",
+        text_of(&still)
+    );
+
+    let shots = tempfile::tempdir().expect("record dir");
+    let recorded = call(
+        &tools,
+        "godot_game_record",
+        json!({"run_id": run_id, "frames": 2, "directory": shots.path()}),
+    )
+    .await;
+    assert!(recorded.is_error, "{}", text_of(&recorded));
+    assert!(
+        text_of(&recorded).contains("headless"),
+        "{}",
+        text_of(&recorded)
+    );
+    assert!(
+        recorded
+            .content
+            .iter()
+            .all(|item| !matches!(item, godot_mcp::protocol::ToolContent::Image { .. })),
+        "a headless recording returned image bytes"
+    );
+    let leftover = std::fs::read_dir(shots.path()).unwrap().count();
+    assert_eq!(leftover, 0, "a headless recording wrote files");
+
+    let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
+    assert!(!stopped.is_error, "{}", text_of(&stopped));
+}
+
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn windowed_game_records_frames_as_png_files() {
+    let _ = IGNORE;
+    if !windowed_game_can_open() {
+        eprintln!("skipped: a windowed recording needs a display server");
+        return;
+    }
+    let project = project();
+    let tools = manager(project.path());
+    let started = call(
+        &tools,
+        "godot_run_project",
+        json!({
+            "project_path": project.path(),
+            "scene": "res://scenes/main.tscn",
+            "mode": "process"
+        }),
+    )
+    .await;
+    assert!(!started.is_error, "{}", text_of(&started));
+    let run_id = run_id_of(&started);
+    let shots = tempfile::tempdir().expect("record dir");
+    let recorded = call(
+        &tools,
+        "godot_game_record",
+        json!({
+            "run_id": run_id,
+            "frames": 4,
+            "every": 1,
+            "max_dimension": 64,
+            "directory": shots.path()
+        }),
+    )
+    .await;
+    assert!(!recorded.is_error, "{}", text_of(&recorded));
+    assert!(
+        recorded
+            .content
+            .iter()
+            .all(|item| matches!(item, godot_mcp::protocol::ToolContent::Text { .. })),
+        "a recording must return paths, not image bytes: {}",
+        text_of(&recorded)
+    );
+    let body = json_of(&recorded);
+    assert_eq!(body["count"], 4, "{body}");
+    assert_eq!(body["video"]["ffmpeg"], "not_requested", "{body}");
+    let frames = body["frames"].as_array().expect("frames");
+    assert_eq!(frames.len(), 4);
+    for (index, frame) in frames.iter().enumerate() {
+        let path = shots.path().join(format!("frame-{:04}.png", index + 1));
+        let bytes =
+            std::fs::read(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+        assert!(
+            bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+            "{}",
+            path.display()
+        );
+        assert_eq!(frame["path"], path.display().to_string(), "{frame}");
+        assert!(frame["width"].as_i64().unwrap_or(0) > 0, "{frame}");
+        assert!(frame["height"].as_i64().unwrap_or(0) > 0, "{frame}");
+        assert!(frame.get("process_frame").is_some(), "{frame}");
+        assert!(frame.get("msec").is_some(), "{frame}");
+    }
+    let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
+    assert!(!stopped.is_error, "{}", text_of(&stopped));
+}
+
+fn material_project() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("project");
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("scenes")).unwrap();
+    std::fs::create_dir_all(root.join("scripts")).unwrap();
+    std::fs::write(
+        root.join("project.godot"),
+        "config_version=5\n\n[application]\n\nconfig/name=\"MaterialProbe\"\nrun/main_scene=\"res://scenes/main.tscn\"\nconfig/features=PackedStringArray(\"4.5\")\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("scripts/swatch.gd"),
+        r#"extends Node2D
+var mark := 1
+
+func _ready() -> void:
+    var rect := ColorRect.new()
+    rect.name = "Swatch"
+    rect.size = Vector2(8, 8)
+    var shader := Shader.new()
+    shader.code = "shader_type canvas_item;\nuniform bool caustics = false;\n"
+    var material := ShaderMaterial.new()
+    material.shader = shader
+    rect.material = material
+    add_child(rect)
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("scenes/main.tscn"),
+        "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://scripts/swatch.gd\" id=\"1\"]\n\n[node name=\"Root\" type=\"Node2D\"]\nscript = ExtResource(\"1\")\n",
+    )
+    .unwrap();
+    dir
 }
