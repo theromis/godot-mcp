@@ -132,7 +132,7 @@ pub fn catalog() -> Vec<Tool> {
         ),
         tool(
             "godot_game_screenshot",
-            "Captures the running game window, a viewport, or a Camera2D/Camera3D as one PNG. frames (1 to 8) stitches shots taken every process frames into a single sheet. For a longer series saved as PNG files, use godot_game_record. The text says how many pixels changed since the previous capture of this run, and where (a sheet compares its last frame, and only against a capture of the same size). save_baseline stores the returned image under a name (at most 8, each at most 512×512 pixels). baseline compares the returned image with a saved one. roi is x, y, w, h in pixels of that returned image (roi_space returned_image), including a sheet. tolerance (0 to 255) is the allowed per-channel difference; a larger difference counts as changed. The text reports changed, sampled, ratio, bounds, tolerance, the baseline name, and whether the pixel count is exact or sampled. Fails instead of returning an empty image. Headless games have nothing to capture. While the game is held a single capture shows the last frame it drew (a sheet with frames above 1, or a camera switch, is refused: take one capture, step, take the next). A missing baseline, a bad name, or an roi outside the image is an error and does not replace a saved image.",
+            "Captures the running game window, a viewport, or a Camera2D/Camera3D as one PNG. frames (1 to 8) stitches shots taken every process frames into a single sheet. For a longer series saved as PNG files, use godot_game_record. The text names the godot_game_input coordinate space (the root viewport's visible width and height, after content scale) and the scale from returned image pixels to that space: multiply an image pixel by the scale. A sheet uses that scale per frame, after subtracting the cell origin; roi is in returned-image pixels (roi_space returned_image) and the same scale applies inside a frame. A camera capture uses the camera's viewport; when that viewport is not the root, the text also names the captured viewport and the scale to it. The text says how many pixels changed since the previous capture of this run, and where (a sheet compares its last frame, and only against a capture of the same size). save_baseline stores the returned image under a name (at most 8, each at most 512×512 pixels). baseline compares the returned image with a saved one. roi is x, y, w, h in pixels of that returned image, including a sheet. tolerance (0 to 255) is the allowed per-channel difference; a larger difference counts as changed. The text reports changed, sampled, ratio, bounds, tolerance, the baseline name, and whether the pixel count is exact or sampled. Fails instead of returning an empty image. Headless games have nothing to capture. While the game is held a single capture shows the last frame it drew (a sheet with frames above 1, or a camera switch, is refused: take one capture, step, take the next). A missing baseline, a bad name, or an roi outside the image is an error and does not replace a saved image.",
             json!({"run_id": s(""), "node": s("Viewport or node whose viewport to capture."), "camera": s("Camera2D or Camera3D to make current for the shot."), "max_dimension": i("Longest side of the returned image in pixels. Default 768."), "frames": ir("How many frames to stitch. Default 1, max 8.", 1, Some(8)), "every": ir("Process frames between shots. Default 1, max 60.", 1, Some(60)), "baseline": s("Name of a saved image to compare."), "save_baseline": s("Store the returned image under this name. Letters, digits, underscore, hyphen. At most 8 names."), "roi": roi_schema(), "tolerance": ir("Per-channel difference that still counts as unchanged. 0 to 255. Default 0.", 0, Some(255))}),
             &[],
         ),
@@ -616,6 +616,10 @@ fn screenshot_note(value: &Value, width: u32, height: u32, source: &str) -> Stri
         let columns = value.get("columns").and_then(Value::as_u64).unwrap_or(1);
         note.push_str(&format!(", {frames} frames, {columns} columns"));
     }
+    if let Some(mapping) = input_mapping(value, width, height, frames) {
+        note.push_str(", ");
+        note.push_str(&mapping);
+    }
     match value
         .get("diff")
         .and_then(|diff| diff.get("compared"))
@@ -652,6 +656,90 @@ fn screenshot_note(value: &Value, width: u32, height: u32, source: &str) -> Stri
     }
     append_baseline(&mut note, value);
     note
+}
+
+/// How returned image pixels map onto the coordinate space `godot_game_input` uses.
+///
+/// Absent when the capture did not report an input size. A sheet's scale is per frame.
+/// A capture of some other viewport names that viewport and scales to it.
+fn input_mapping(value: &Value, image_w: u32, image_h: u32, frames: u64) -> Option<String> {
+    let input_w = json_u32(value, "input_width")?;
+    let input_h = json_u32(value, "input_height")?;
+    let frame_w = json_u32(value, "frame_width").unwrap_or(image_w);
+    let frame_h = json_u32(value, "frame_height").unwrap_or(image_h);
+    if frame_w == 0 || frame_h == 0 {
+        return None;
+    }
+    let captured_w = json_u32(value, "captured_width").unwrap_or(input_w);
+    let captured_h = json_u32(value, "captured_height").unwrap_or(input_h);
+    let same_viewport = captured_w == input_w && captured_h == input_h;
+    let (scale_x, scale_y) = if same_viewport {
+        (
+            f64::from(input_w) / f64::from(frame_w),
+            f64::from(input_h) / f64::from(frame_h),
+        )
+    } else {
+        (
+            f64::from(captured_w) / f64::from(frame_w),
+            f64::from(captured_h) / f64::from(frame_h),
+        )
+    };
+    let per_frame = if frames > 1 {
+        format!(" per frame (frame {frame_w}x{frame_h})")
+    } else {
+        String::new()
+    };
+    let scale = scale_phrase(scale_x, scale_y);
+    if same_viewport {
+        Some(format!(
+            "input space {input_w}x{input_h}, image scale {scale}{per_frame}"
+        ))
+    } else {
+        Some(format!(
+            "input space {input_w}x{input_h}, captured viewport {captured_w}x{captured_h}, image scale {scale} to the captured viewport{per_frame}"
+        ))
+    }
+}
+
+fn scale_phrase(scale_x: f64, scale_y: f64) -> String {
+    if !scale_x.is_finite() || !scale_y.is_finite() {
+        return "?".into();
+    }
+    if (scale_x - scale_y).abs() < 0.005 {
+        format_scale(scale_x)
+    } else {
+        format!("{} by {}", format_scale(scale_x), format_scale(scale_y))
+    }
+}
+
+fn format_scale(value: f64) -> String {
+    if !value.is_finite() || value <= 0.0 {
+        return "?".into();
+    }
+    let rounded = (value * 1000.0).round() / 1000.0;
+    if (rounded - rounded.round()).abs() < 1e-9 {
+        return format!("{}", rounded.round() as i64);
+    }
+    format!("{rounded:.3}")
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_string()
+}
+
+fn json_u32(value: &Value, key: &str) -> Option<u32> {
+    let item = value.get(key)?;
+    if let Some(number) = item.as_u64() {
+        return u32::try_from(number).ok();
+    }
+    if let Some(number) = item.as_i64() {
+        return u32::try_from(number).ok();
+    }
+    let number = item.as_f64()?;
+    if number.is_finite() && number >= 0.0 && number <= f64::from(u32::MAX) {
+        Some(number.round() as u32)
+    } else {
+        None
+    }
 }
 
 fn append_baseline(note: &mut String, value: &Value) {
@@ -1623,19 +1711,30 @@ mod tests {
     #[test]
     fn screenshot_note_names_a_sheet_and_the_changed_rect() {
         let first = screenshot_note(
-            &json!({"frames": 1, "diff": {"compared": false}}),
+            &json!({
+                "frames": 1,
+                "input_width": 32,
+                "input_height": 16,
+                "frame_width": 32,
+                "frame_height": 16,
+                "diff": {"compared": false}
+            }),
             32,
             16,
             "main window",
         );
         assert_eq!(
             first,
-            "Game screenshot 32x16 (main window), no earlier capture to compare"
+            "Game screenshot 32x16 (main window), input space 32x16, image scale 1, no earlier capture to compare"
         );
         let sheet = screenshot_note(
             &json!({
                 "frames": 4,
                 "columns": 2,
+                "input_width": 64,
+                "input_height": 64,
+                "frame_width": 32,
+                "frame_height": 32,
                 "diff": {"compared": true, "changed": 12, "rect": {"x": 1, "y": 2, "w": 3, "h": 4}}
             }),
             64,
@@ -1644,7 +1743,66 @@ mod tests {
         );
         assert_eq!(
             sheet,
-            "Game screenshot 64x64 (main window), 4 frames, 2 columns, changed 12 px in 1,2,3x4"
+            "Game screenshot 64x64 (main window), 4 frames, 2 columns, input space 64x64, image scale 2 per frame (frame 32x32), changed 12 px in 1,2,3x4"
+        );
+    }
+
+    #[test]
+    fn screenshot_note_maps_image_pixels_onto_the_input_space() {
+        let scaled = screenshot_note(
+            &json!({
+                "frames": 1,
+                "input_width": 540,
+                "input_height": 900,
+                "captured_width": 540,
+                "captured_height": 900,
+                "frame_width": 360,
+                "frame_height": 600,
+                "diff": {"compared": false}
+            }),
+            360,
+            600,
+            "main window",
+        );
+        assert_eq!(
+            scaled,
+            "Game screenshot 360x600 (main window), input space 540x900, image scale 1.5, no earlier capture to compare"
+        );
+        let other = screenshot_note(
+            &json!({
+                "frames": 1,
+                "input_width": 540,
+                "input_height": 900,
+                "captured_width": 200,
+                "captured_height": 100,
+                "frame_width": 100,
+                "frame_height": 50
+            }),
+            100,
+            50,
+            "SubViewport",
+        );
+        assert!(
+            other.contains(
+                "input space 540x900, captured viewport 200x100, image scale 2 to the captured viewport"
+            ),
+            "{other}"
+        );
+        let uneven = screenshot_note(
+            &json!({
+                "frames": 1,
+                "input_width": 100,
+                "input_height": 40,
+                "frame_width": 50,
+                "frame_height": 10
+            }),
+            50,
+            10,
+            "main window",
+        );
+        assert!(
+            uneven.contains("input space 100x40, image scale 2 by 4"),
+            "{uneven}"
         );
     }
 
@@ -1653,6 +1811,10 @@ mod tests {
         let note = screenshot_note(
             &json!({
                 "frames": 1,
+                "input_width": 32,
+                "input_height": 16,
+                "frame_width": 32,
+                "frame_height": 16,
                 "diff": {"compared": false},
                 "baseline": {
                     "compared": true,
@@ -1674,7 +1836,7 @@ mod tests {
         );
         assert_eq!(
             note,
-            "Game screenshot 32x16 (main window), no earlier capture to compare, saved baseline menu, baseline menu changed 4 px, sampled 10, ratio 0.4, tolerance 8, exact, roi_space returned_image, roi 1,2,3x4, bounds 1,2,3x4"
+            "Game screenshot 32x16 (main window), input space 32x16, image scale 1, no earlier capture to compare, saved baseline menu, baseline menu changed 4 px, sampled 10, ratio 0.4, tolerance 8, exact, roi_space returned_image, roi 1,2,3x4, bounds 1,2,3x4"
         );
         let sampled = screenshot_note(
             &json!({
@@ -1705,6 +1867,8 @@ mod tests {
         let note = screenshot_note(
             &json!({
                 "frames": 1,
+                "input_width": 64,
+                "input_height": 64,
                 "diff": {"compared": false, "reason": "the previous capture had another size"}
             }),
             64,
@@ -1713,7 +1877,7 @@ mod tests {
         );
         assert_eq!(
             note,
-            "Game screenshot 64x64 (main window), not compared: the previous capture had another size"
+            "Game screenshot 64x64 (main window), input space 64x64, image scale 1, not compared: the previous capture had another size"
         );
     }
 

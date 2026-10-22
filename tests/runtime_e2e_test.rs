@@ -1663,6 +1663,11 @@ async fn windowed_screenshot_returns_a_sheet_and_a_diff() {
         text_of(&first)
     );
     assert!(
+        text_of(&first).contains("input space") && text_of(&first).contains("image scale"),
+        "{}",
+        text_of(&first)
+    );
+    assert!(
         first.content.iter().any(|item| matches!(
             item,
             godot_mcp::protocol::ToolContent::Image { mime_type, .. } if mime_type == "image/png"
@@ -1697,6 +1702,10 @@ async fn windowed_screenshot_returns_a_sheet_and_a_diff() {
     assert!(!sheet.is_error, "{}", text_of(&sheet));
     let note = text_of(&sheet);
     assert!(note.contains("4 frames, 2 columns"), "{note}");
+    assert!(
+        note.contains("input space") && note.contains("image scale") && note.contains("per frame"),
+        "{note}"
+    );
     assert!(
         note.contains("not compared: the previous capture had another size"),
         "{note}"
