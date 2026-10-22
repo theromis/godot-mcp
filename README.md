@@ -158,7 +158,7 @@ To report a vulnerability, follow [SECURITY.md](SECURITY.md). Never open a publi
 | `godot_resave_resources` | Editor | Refreshes the given `res://` files after external edits: assets are re-imported (synchronous), other files re-scanned. Without paths, rescans the whole project (background). |
 | `godot_run_output` | Running game | Logs, warnings and errors, with stack traces, from a managed process run or the editor's running game (`since`, `level`). |
 | `godot_game_tree` | Running game | Live nodes of the running game: path, class, position, visible text. Filter by `name`, `class`, `group` or `text`. |
-| `godot_game_get` | Running game | A live node's properties, groups and, optionally, signals and methods. A property path can step through a resource with `:` (`material:shader_parameter/caustics`). |
+| `godot_game_get` | Running game | A live node's properties, groups and, optionally, signals and methods. A property path can step through a resource with `:` (`material:shader_parameter/caustics`), including a name that starts with `_`. A requested `script` is omitted. |
 | `godot_game_set` | Running game | Sets properties on a live node, including a resource property reached with `:`. Refuses `script` and private names. Nothing is saved to disk. |
 | `godot_game_call` | Running game | Calls one method on a live node. The method must be listed in `permit`; methods that can quit, evaluate code, call other methods or free the node are refused. |
 | `godot_game_signals` | Running game | A live node's signals and their connections. |
@@ -225,7 +225,7 @@ A named baseline is the returned image, so `roi` uses that image's pixels (`roi_
 
 `script`, a segment that starts with `_`, and a value that is not a resource are refused. The change lasts until the game exits. It is not saved. A shader uniform that nothing has written yet reads as null; Godot does not return the default declared in the shader until a value is stored.
 
-`godot_game_record` writes that motion to disk when eight screenshot frames are not enough. `frames` is 1 to 240, `every` is the process frames between shots, and `frames * every` is at most 480. Omit `directory` for a temporary one. The reply has no image bytes. `format` `gif` or `mp4` runs `ffmpeg` when it is installed; otherwise the PNG files are still there.
+`godot_game_record` writes that motion to disk when eight screenshot frames are not enough. `frames` is 1 to 240, `every` is the process frames between shots, and `frames * every` is at most 480. Each frame only grabs an image. The PNG files are written after the last frame, so the timings are the capture times, and `frames × width × height × 4` must stay within 512 MB after `max_dimension`. Omit `directory` for a temporary one. The reply has no image bytes. `format` `gif` or `mp4` runs `ffmpeg` when it is installed; otherwise the PNG files are still there.
 
 ```json
 {"frames": 180, "every": 1, "max_dimension": 480, "directory": "/tmp/water-record"}

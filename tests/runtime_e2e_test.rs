@@ -61,6 +61,22 @@ fn json_of(result: &ToolResult) -> Value {
     serde_json::from_str(&text).unwrap_or_else(|_| panic!("not json: {text}"))
 }
 
+fn json_number(value: &Value) -> f64 {
+    value
+        .as_f64()
+        .or_else(|| value.as_i64().map(|number| number as f64))
+        .unwrap_or(f64::NAN)
+}
+
+fn png_size(bytes: &[u8]) -> Option<(u32, u32)> {
+    if bytes.len() < 24 || &bytes[..8] != b"\x89PNG\r\n\x1a\n" || &bytes[12..16] != b"IHDR" {
+        return None;
+    }
+    let width = u32::from_be_bytes(bytes[16..20].try_into().ok()?);
+    let height = u32::from_be_bytes(bytes[20..24].try_into().ok()?);
+    Some((width, height))
+}
+
 fn project() -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("project");
     let root = dir.path();
@@ -2686,6 +2702,93 @@ async fn headless_game_sets_a_shader_parameter_on_a_material() {
         text_of(&mark)
     );
 
+    let private = call(
+        &tools,
+        "godot_game_get",
+        json!({"run_id": run_id, "path": ".", "properties": ["_secret", "pack:_tone"]}),
+    )
+    .await;
+    assert!(!private.is_error, "{}", text_of(&private));
+    assert_eq!(
+        json_of(&private)["properties"]["_secret"],
+        9,
+        "{}",
+        text_of(&private)
+    );
+    assert_eq!(
+        json_of(&private)["properties"]["pack:_tone"],
+        4,
+        "{}",
+        text_of(&private)
+    );
+    let named = call(
+        &tools,
+        "godot_game_get",
+        json!({"run_id": run_id, "path": ".", "properties": ["script", "name"]}),
+    )
+    .await;
+    assert!(!named.is_error, "{}", text_of(&named));
+    let named_props = &json_of(&named)["properties"];
+    assert!(
+        named_props.get("script").is_none(),
+        "a requested script name is omitted, not an error: {}",
+        text_of(&named)
+    );
+    assert_eq!(named_props["name"], "Root", "{}", text_of(&named));
+
+    let nested = call(
+        &tools,
+        "godot_game_set",
+        json!({"run_id": run_id, "path": "WaterPaper", "properties": {"material_override:shader_parameter/caustics": true}}),
+    )
+    .await;
+    assert!(!nested.is_error, "{}", text_of(&nested));
+    let nested_read = call(
+        &tools,
+        "godot_game_get",
+        json!({"run_id": run_id, "path": "WaterPaper", "properties": ["material_override:shader_parameter/caustics"]}),
+    )
+    .await;
+    assert_eq!(
+        json_of(&nested_read)["properties"]["material_override:shader_parameter/caustics"],
+        true,
+        "{}",
+        text_of(&nested_read)
+    );
+
+    for (path, properties) in [
+        (".", json!({"_secret": 0})),
+        (
+            "WaterPaper",
+            json!({"material_override:script": "res://scenes/main.tscn"}),
+        ),
+    ] {
+        let denied = call(
+            &tools,
+            "godot_game_set",
+            json!({"run_id": run_id, "path": path, "properties": properties}),
+        )
+        .await;
+        assert!(denied.is_error, "{}", text_of(&denied));
+        assert!(
+            text_of(&denied).to_lowercase().contains("refus"),
+            "{}",
+            text_of(&denied)
+        );
+    }
+    let secret_still = call(
+        &tools,
+        "godot_game_get",
+        json!({"run_id": run_id, "path": ".", "properties": ["_secret"]}),
+    )
+    .await;
+    assert_eq!(
+        json_of(&secret_still)["properties"]["_secret"],
+        9,
+        "a refused write changed _secret: {}",
+        text_of(&secret_still)
+    );
+
     for properties in [
         json!({"material:script": "res://scenes/main.tscn"}),
         json!({"material:shader_parameter/_hidden": true}),
@@ -2772,9 +2875,9 @@ async fn windowed_game_records_frames_as_png_files() {
         "godot_game_record",
         json!({
             "run_id": run_id,
-            "frames": 4,
+            "frames": 8,
             "every": 1,
-            "max_dimension": 64,
+            "max_dimension": 480,
             "directory": shots.path()
         }),
     )
@@ -2789,25 +2892,44 @@ async fn windowed_game_records_frames_as_png_files() {
         text_of(&recorded)
     );
     let body = json_of(&recorded);
-    assert_eq!(body["count"], 4, "{body}");
+    assert_eq!(body["count"], 8, "{body}");
     assert_eq!(body["video"]["ffmpeg"], "not_requested", "{body}");
     let frames = body["frames"].as_array().expect("frames");
-    assert_eq!(frames.len(), 4);
+    assert_eq!(frames.len(), 8);
+    let mut steps = Vec::new();
+    let mut previous = json_number(&frames[0]["msec"]);
+    assert!(
+        previous <= 5.0,
+        "the first frame's msec includes work after the grab: {previous} {body}"
+    );
     for (index, frame) in frames.iter().enumerate() {
         let path = shots.path().join(format!("frame-{:04}.png", index + 1));
         let bytes =
             std::fs::read(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-        assert!(
-            bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
-            "{}",
-            path.display()
-        );
+        let (width, height) =
+            png_size(&bytes).unwrap_or_else(|| panic!("{} is not a PNG", path.display()));
         assert_eq!(frame["path"], path.display().to_string(), "{frame}");
-        assert!(frame["width"].as_i64().unwrap_or(0) > 0, "{frame}");
-        assert!(frame["height"].as_i64().unwrap_or(0) > 0, "{frame}");
+        assert_eq!(json_number(&frame["width"]), width as f64, "{frame}");
+        assert_eq!(json_number(&frame["height"]), height as f64, "{frame}");
+        assert!(
+            width > 0 && height > 0 && width.max(height) <= 480,
+            "{frame}"
+        );
         assert!(frame.get("process_frame").is_some(), "{frame}");
-        assert!(frame.get("msec").is_some(), "{frame}");
+        let msec = json_number(&frame["msec"]);
+        if index > 0 {
+            steps.push(msec - previous);
+        }
+        previous = msec;
     }
+    steps.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    let median = steps[steps.len() / 2];
+    // every 1 captures consecutive process frames. 40 ms covers a 30 fps machine and
+    // still fails the old path, which spent the PNG encode inside each frame (~50 ms).
+    assert!(
+        (4.0..=40.0).contains(&median),
+        "median frame step {median} ms is not one frame: {steps:?}"
+    );
     let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
     assert!(!stopped.is_error, "{}", text_of(&stopped));
 }
@@ -2823,11 +2945,27 @@ fn material_project() -> tempfile::TempDir {
     )
     .unwrap();
     std::fs::write(
+        root.join("scripts/pack.gd"),
+        "extends Resource\nvar _tone := 4\n",
+    )
+    .unwrap();
+    std::fs::write(
         root.join("scripts/swatch.gd"),
         r#"extends Node2D
+var _secret := 9
 var mark := 1
+var pack: Resource
 
 func _ready() -> void:
+    pack = load("res://scripts/pack.gd").new()
+    var paper := MeshInstance3D.new()
+    paper.name = "WaterPaper"
+    var shader3 := Shader.new()
+    shader3.code = "shader_type spatial;\nuniform bool caustics = false;\n"
+    var material3 := ShaderMaterial.new()
+    material3.shader = shader3
+    paper.material_override = material3
+    add_child(paper)
     var rect := ColorRect.new()
     rect.name = "Swatch"
     rect.size = Vector2(8, 8)

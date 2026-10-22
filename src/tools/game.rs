@@ -60,7 +60,7 @@ pub fn catalog() -> Vec<Tool> {
         ),
         tool(
             "godot_game_get",
-            "Reads a live node's properties, groups and, optionally, signals and methods. A property may step through resources with ':' (material_override:shader_parameter/caustics). script, a private segment, and a path that is not a resource are refused.",
+            "Reads a live node's properties, groups and, optionally, signals and methods. A property may step through resources with ':' (material_override:shader_parameter/caustics), including a segment that starts with _. A requested script name is omitted, not rejected. A path that is not a resource is refused.",
             json!({"run_id": s(""), "path": s("Node path relative to the current scene, or /root/..."), "properties": {"type": "array", "items": {"type": "string"}}, "signals": b(), "methods": b()}),
             &[],
         ),
@@ -126,7 +126,7 @@ pub fn catalog() -> Vec<Tool> {
         ),
         tool(
             "godot_game_record",
-            "Records the game window as PNG files on disk, for motion that a sheet of 8 frames cannot cover. frames is 1 to 240 (default 60). every is the process frames between shots, 1 to 60 (default 1). frames * every must be at most 480. max_dimension is the longest side of each file (default 768, 16 to 4096). directory is an absolute host path; omit it for a new temporary directory. The reply lists each file's path, size and timing, and does not embed image bytes. format png (default) writes only those files. gif or mp4 also builds recording.gif or recording.mp4 when ffmpeg is on PATH; without ffmpeg the PNG files are still returned. Refused while the game is held, and a headless game has nothing to record.",
+            "Records the game window as PNG files on disk, for motion that a sheet of 8 frames cannot cover. frames is 1 to 240 (default 60). every is the process frames between shots, 1 to 60 (default 1). frames * every must be at most 480. max_dimension is the longest side of each file (default 768, 16 to 4096). Each frame only grabs an image. The PNG files are written after the last frame, and the timings are those capture instants. frames × width × height × 4 must stay within 512 MB after max_dimension. directory is an absolute host path; omit it for a new temporary directory. The reply lists each file's path, size and timing, and does not embed image bytes. format png (default) writes only those files. gif or mp4 also builds recording.gif or recording.mp4 when ffmpeg is on PATH; without ffmpeg the PNG files are still returned. Refused while the game is held, and a headless game has nothing to record.",
             json!({
                 "run_id": s(""),
                 "frames": i("How many PNG files to save. 1 to 240, default 60."),
@@ -635,6 +635,11 @@ impl ToolManager {
 /// How long a held step may take before the server stops waiting. The game still finishes it.
 const HELD_STEP_WAIT: Duration = Duration::from_secs(60);
 
+/// How long a recording may take. Capturing is at most 480 process frames. The PNG files are
+/// written after the last frame and before the runtime answers, so this wait covers that disk
+/// time. The 512 MB pixel cap keeps the write inside it.
+const RECORD_WAIT: Duration = Duration::from_secs(120);
+
 /// A runtime call that knows whether the game is held: a held step gets the long wait, a timeout
 /// of one says the game is still running it, and the answer to a physics call keeps the run's
 /// idea of "held" current.
@@ -644,8 +649,11 @@ async fn held_aware_call(
     params: Value,
 ) -> Result<Value, McpError> {
     let physics = method == "game.physics";
+    let recording = method == "game.record";
     let was_held = physics && run.is_held();
-    let wait = if method == "game.record" || was_held {
+    let wait = if recording {
+        RECORD_WAIT
+    } else if was_held {
         HELD_STEP_WAIT
     } else {
         Duration::from_secs(20)
@@ -661,7 +669,13 @@ async fn held_aware_call(
             run.set_held(held);
         }
     }
-    outcome.map_err(|error| held_step_timeout(was_held, error))
+    outcome.map_err(|error| {
+        if recording {
+            record_timeout(error)
+        } else {
+            held_step_timeout(was_held, error)
+        }
+    })
 }
 
 /// A timeout while a held step runs is not a failure of the game: it goes on and holds again.
@@ -671,6 +685,18 @@ fn held_step_timeout(was_held: bool, error: McpError) -> McpError {
             McpError::Process(format!(
                 "the held step did not finish within {} s ({message}). The game finishes it and holds again. Read godot_game_physics with action status before stepping again, or lower ticks or max",
                 HELD_STEP_WAIT.as_secs()
+            ))
+        }
+        other => other,
+    }
+}
+
+/// A recording that outlives its wait is still writing the PNG files. That is not a held step.
+fn record_timeout(error: McpError) -> McpError {
+    match error {
+        McpError::Process(message) if message.starts_with("timed out") => {
+            McpError::Process(format!(
+                "timed out while the game was writing the recorded PNG files ({message}). The frames were already captured. Wait and look in the directory, or record fewer or smaller frames"
             ))
         }
         other => other,
@@ -1125,6 +1151,21 @@ mod tests {
             held_step_timeout(true, other()).to_string(),
             other().to_string()
         );
+    }
+
+    #[test]
+    fn a_recording_timeout_says_the_png_files_are_still_being_written() {
+        let timeout = || {
+            McpError::Process(
+                "timed out waiting for the game runtime to answer 'game.record'".into(),
+            )
+        };
+        let text = record_timeout(timeout()).to_string();
+        assert!(text.contains("writing the recorded PNG files"), "{text}");
+        assert!(text.contains("already captured"), "{text}");
+        assert!(!text.to_lowercase().contains("held step"), "{text}");
+        let other = || McpError::Process("the game disconnected".into());
+        assert_eq!(record_timeout(other()).to_string(), other().to_string());
     }
 
     #[test]
