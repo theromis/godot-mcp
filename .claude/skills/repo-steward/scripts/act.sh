@@ -120,18 +120,38 @@ protected_hits() {
 
 # A merge the script itself refuses, whatever the agent decided: a pull request by someone
 # without write permission that changes a protected path (new and old names of every file). The
-# check fails closed: when GitHub does not answer, the merge does not happen.
+# check fails closed: when GitHub does not answer, or the list of files is not the whole list,
+# the merge does not happen. It leaves the head commit it looked at in `head_sha`; the merge is
+# made for exactly that commit, so a push after the check turns the merge down.
+head_sha=""
 guard_merge() {
 	[ "${STEWARD_OFFLINE:-0}" != 1 ] || return 0
-	local author permission files hits paths
-	author=$(gh pr view "$1" -R "$repo" --json author --jq .author.login | tr -d '\r') ||
-		fail "cannot read the author of #$1; nothing was merged"
+	local info author is_bot changed permission rows count files hits paths bot allowed
+	info=$(gh pr view "$1" -R "$repo" --json author,headRefOid,changedFiles \
+		--jq '[.author.login, .author.is_bot, .headRefOid, .changedFiles] | @tsv' | tr -d '\r') ||
+		fail "cannot read #$1; nothing was merged"
+	IFS=$'\t' read -r author is_bot head_sha changed <<<"$info"
+	[ -n "$author" ] && [ -n "$head_sha" ] || fail "cannot read the author and head of #$1; nothing was merged"
+	if [ "$is_bot" = true ]; then
+		# A dependency bot is governed by autonomy.merge_bots; it must be one the profile names.
+		bot=${author#app/}
+		bot=${bot%\[bot\]}
+		for allowed in $(bash "$here/profile.sh" get limits.allowed_bots); do
+			[ "$allowed" != "$bot[bot]" ] || return 0
+		done
+		fail "$author is not in limits.allowed_bots; nothing was merged"
+	fi
 	permission=$(bash "$here/api.sh" permission "$author") ||
 		fail "cannot read the permission of $author; nothing was merged"
 	case "$permission" in admin | maintain | write) return 0 ;; esac
-	files=$(gh api --paginate "repos/$repo/pulls/$1/files" --jq '.[] | .filename, (.previous_filename // empty)' | tr -d '\r') ||
+	rows=$(gh api --paginate "repos/$repo/pulls/$1/files" --jq '.[] | [.filename, (.previous_filename // "")] | @tsv' | tr -d '\r') ||
 		fail "cannot list the files of #$1; nothing was merged"
-	[ -n "$files" ] || fail "the file list of #$1 is empty; nothing was merged"
+	count=$(printf '%s\n' "$rows" | grep -c .) || true
+	# GitHub lists at most 3000 files; a shorter list than the pull request has would hide some.
+	case "$changed" in '' | *[!0-9]*) fail "cannot read the number of files of #$1; nothing was merged" ;; esac
+	{ [ "$count" -eq "$changed" ] && [ "$changed" -lt 3000 ]; } ||
+		fail "the file list of #$1 ($count of $changed) is not the whole change; nothing was merged"
+	files=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep . || true)
 	mapfile -t paths <<<"$files"
 	if hits=$(protected_hits "${paths[@]}"); then return 0; fi
 	fail "#$1 changes a protected path ($(printf '%s' "$hits" | head -3 | tr '\n' ' ')); the steward does not merge it. Label it 'status: needs-maintainer' and list it in the report"
@@ -213,7 +233,13 @@ merge)
 	one_line "$3" subject
 	case "$2" in squash | merge | rebase) guard_merge "$1" ;; esac
 	case "$2" in
-	squash | merge | rebase) run gh pr merge "$1" -R "$repo" "--$2" --subject "$3" ;;
+	squash | merge | rebase)
+		if [ -n "$head_sha" ]; then
+			run gh pr merge "$1" -R "$repo" "--$2" --subject "$3" --match-head-commit "$head_sha"
+		else
+			run gh pr merge "$1" -R "$repo" "--$2" --subject "$3"
+		fi
+		;;
 	*) fail "merge method must be squash, merge or rebase" ;;
 	esac
 	;;
