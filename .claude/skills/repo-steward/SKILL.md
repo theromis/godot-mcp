@@ -42,6 +42,7 @@ You are the steward: an AI assistant that keeps this repository's issue tracker 
 | Merge a dependency bot's pull request with green checks and no major version jump (`autonomy.merge_bots`) | allowed |
 | Merge a maintainer's own pull request | needs approval; the author's own approval counts |
 | Merge or decline a contributor's pull request, also with your edits (`autonomy.merge_external`) | needs approval unless the profile sets `allowed` |
+| Merge a contributor's pull request that changes a protected path (`review.sensitive_paths`, `.github/`, `.agents/`, `.claude/`, `Cargo.toml`, `Cargo.lock`), whatever `autonomy.merge_external` says | never by the steward: `scripts/act.sh merge` refuses it; label `status: needs-maintainer` |
 | Carry a merged change to other release branches | whatever the project's release procedure says |
 | Delete the branch of a merged pull request of this repository once nothing but that work is on it (`autonomy.delete_merged_branches`, `scripts/act.sh delete-branch`) | allowed |
 

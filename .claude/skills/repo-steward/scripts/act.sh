@@ -12,6 +12,7 @@
 #   act.sh edit-comment <comment-id> <body>
 #   act.sh approve-run <run-id>
 #   act.sh merge <pr> squash|merge|rebase <subject>
+#   act.sh sensitive <path>...      print the paths a contributor's merge may not touch (exit 1 when any)
 #   act.sh open-pr <base> <head> <title> <body>
 #   act.sh delete-branch <branch>   delete a branch whose pull request is merged (checks below)
 #
@@ -89,6 +90,53 @@ run() {
 	fi
 }
 
+# Paths a contributor's change must never reach the default branch through the steward alone:
+# what runs while the project builds (review.sensitive_paths), the steward's and the agents' own
+# instructions and scripts, and the dependency manifests. A name ending in "/" is a directory
+# anywhere in the tree; any other name is a file of that name anywhere. Compared in lower case.
+protected_paths() {
+	local entry
+	for entry in $(bash "$here/profile.sh" get review.sensitive_paths) .github/ .agents/ .claude/ Cargo.toml Cargo.lock; do
+		printf '%s\n' "$entry" | tr '[:upper:]' '[:lower:]'
+	done | sort -u
+}
+
+# Prints each given path that is protected; the status is 1 when there is one.
+protected_hits() {
+	local entries path lower entry hit=0
+	entries=$(protected_paths)
+	for path in "$@"; do
+		lower=$(printf '%s' "$path" | tr '[:upper:]' '[:lower:]')
+		while IFS= read -r entry; do
+			[ -n "$entry" ] || continue
+			case "$entry" in
+			*/) case "$lower" in "$entry"* | *"/$entry"*) printf '%s\n' "$path" && hit=1 && break ;; esac ;;
+			*) case "$lower" in "$entry" | *"/$entry") printf '%s\n' "$path" && hit=1 && break ;; esac ;;
+			esac
+		done <<<"$entries"
+	done
+	return $hit
+}
+
+# A merge the script itself refuses, whatever the agent decided: a pull request by someone
+# without write permission that changes a protected path (new and old names of every file). The
+# check fails closed: when GitHub does not answer, the merge does not happen.
+guard_merge() {
+	[ "${STEWARD_OFFLINE:-0}" != 1 ] || return 0
+	local author permission files hits paths
+	author=$(gh pr view "$1" -R "$repo" --json author --jq .author.login | tr -d '\r') ||
+		fail "cannot read the author of #$1; nothing was merged"
+	permission=$(bash "$here/api.sh" permission "$author") ||
+		fail "cannot read the permission of $author; nothing was merged"
+	case "$permission" in admin | maintain | write) return 0 ;; esac
+	files=$(gh api --paginate "repos/$repo/pulls/$1/files" --jq '.[] | .filename, (.previous_filename // empty)' | tr -d '\r') ||
+		fail "cannot list the files of #$1; nothing was merged"
+	[ -n "$files" ] || fail "the file list of #$1 is empty; nothing was merged"
+	mapfile -t paths <<<"$files"
+	if hits=$(protected_hits "${paths[@]}"); then return 0; fi
+	fail "#$1 changes a protected path ($(printf '%s' "$hits" | head -3 | tr '\n' ' ')); the steward does not merge it. Label it 'status: needs-maintainer' and list it in the report"
+}
+
 repo=$(bash "$here/context.sh" get repo)
 [ -n "$repo" ] || fail "cannot tell the repository"
 
@@ -150,6 +198,10 @@ edit-comment)
 	message_file "$2"
 	run gh api -X PATCH "repos/$repo/issues/comments/$1" -F "body=@$file" --silent
 	;;
+sensitive)
+	[ $# -ge 1 ] || fail "usage: sensitive <path>..."
+	if protected_hits "$@"; then exit 0; else exit 1; fi
+	;;
 approve-run)
 	[ $# -eq 1 ] || fail "usage: approve-run <run-id>"
 	number "$1"
@@ -159,6 +211,7 @@ merge)
 	[ $# -eq 3 ] || fail "usage: merge <pr> squash|merge|rebase <subject>"
 	number "$1"
 	one_line "$3" subject
+	case "$2" in squash | merge | rebase) guard_merge "$1" ;; esac
 	case "$2" in
 	squash | merge | rebase) run gh pr merge "$1" -R "$repo" "--$2" --subject "$3" ;;
 	*) fail "merge method must be squash, merge or rebase" ;;

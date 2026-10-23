@@ -811,3 +811,58 @@ fn deleting_a_finished_branch_is_allowed_by_default() {
         "deleting a finished branch is allowed by default"
     );
 }
+
+#[test]
+fn the_steward_never_merges_a_contributor_change_to_a_protected_path() {
+    let Some(bash) = bash() else {
+        eprintln!("skipped: no bash found (Git for Windows' bash on Windows)");
+        return;
+    };
+    for path in [
+        ".github/workflows/ci.yml",
+        ".GitHub/workflows/ci.yml",
+        ".agents/skills/repo-steward/scripts/act.sh",
+        ".claude/settings.json",
+        "Cargo.toml",
+        "Cargo.lock",
+        "crates/inner/Cargo.toml",
+        "build.rs",
+        ".cargo/config.toml",
+        "tools/.cargo/config.toml",
+    ] {
+        let (ok, text) = run_script(&bash, "act.sh", &["sensitive", path], &[]);
+        assert!(
+            !ok && text.trim() == path,
+            "{path} must be protected from a steward merge:\n{text}"
+        );
+    }
+    for path in [
+        "src/tools.rs",
+        "README.md",
+        "addons/godot_mcp/runtime/ops/rt_live.gd",
+        "tests/steward_test.rs",
+        "docs/agents.md",
+        "src/build.rs.bak",
+    ] {
+        let (ok, text) = run_script(&bash, "act.sh", &["sensitive", path], &[]);
+        assert!(ok, "{path} is not a protected path:\n{text}");
+    }
+    // One protected file among ordinary ones is enough, and only it is named.
+    let (ok, text) = run_script(
+        &bash,
+        "act.sh",
+        &["sensitive", "src/tools.rs", "Cargo.lock", "README.md"],
+        &[],
+    );
+    assert!(!ok && text.trim() == "Cargo.lock", "{text}");
+    // The merge itself calls the check before it calls gh.
+    let script = read(&format!("{SKILL}/scripts/act.sh"));
+    let guard = script
+        .find("guard_merge \"$1\"")
+        .expect("merge calls the guard");
+    let merge = script.find("run gh pr merge").expect("merge call");
+    assert!(
+        guard < merge,
+        "act.sh must check the paths before it merges"
+    );
+}

@@ -141,7 +141,7 @@ GODOT_PATH=/path/to/godot cargo test --test runtime_e2e_test -- --ignored --test
 An AI assistant, the repo steward, works the issue tracker and the pull requests on behalf of the maintainers. Every message it writes says that an AI wrote it.
 
 - **What it does:** it gives each new issue a type and a priority, asks for missing details, answers questions, closes duplicates, reviews pull requests, fixes accepted issues through pull requests of its own, and keeps the project board "godot-mcp issues and pull requests" current.
-- **What the maintainers decide:** whether the project takes on a feature, and every release. The assistant merges or declines a contributor's pull request itself (`autonomy.merge_external` in `.github/steward.yml`), after it has read the whole diff and run the checks of [Verification](#verification) on every Godot line the change affects; a maintainer can step in at any time.
+- **What the maintainers decide:** whether the project takes on a feature, and every release. The assistant merges or declines a contributor's pull request itself (`autonomy.merge_external` in `.github/steward.yml`), after it has read the whole diff and run the checks of [Verification](#verification) on every Godot line the change affects; a change to a protected path (`.github/`, `.agents/`, `.claude/`, build scripts and dependency manifests) it never merges itself and leaves to a maintainer; a maintainer can step in at any time.
 - **Priorities:**
 
   | Priority | Meaning |
