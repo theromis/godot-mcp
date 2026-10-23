@@ -13,6 +13,7 @@
 #   act.sh approve-run <run-id>
 #   act.sh merge <pr> squash|merge|rebase <subject>
 #   act.sh sensitive <path>...      print the paths a contributor's merge may not touch (exit 1 when any)
+#   act.sh pins-only < patch        succeed when a workflow patch only moves `uses:` pins within one major version
 #   act.sh open-pr <base> <head> <title> <body>
 #   act.sh delete-branch <branch>   delete a branch whose pull request is merged (checks below)
 #
@@ -118,6 +119,31 @@ protected_hits() {
 	return $hit
 }
 
+# Reads a unified patch (the `patch` field GitHub gives for a file) on stdin and succeeds only
+# when it does nothing but move `uses:` lines of a workflow to another version of the same
+# actions: every changed line is a `uses: owner/name@ref` line, ref is a tag or a commit with the
+# version in a trailing comment, the actions removed are the actions added, and none changes its
+# major version. That is what a dependency bot's update of pinned actions looks like; a new
+# action, a changed step or a major jump is not, and fails closed.
+pins_only() {
+	local pin='^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*([A-Za-z0-9._-]+/[A-Za-z0-9._/-]+)@([A-Za-z0-9._-]+)([[:space:]]+#[[:space:]]*([A-Za-z0-9._-]+))?[[:space:]]*$'
+	local line sign name ref note version major removed="" added=""
+	while IFS= read -r line; do
+		case "$line" in '' | '@@'* | ' '* | '\'*) continue ;; esac
+		sign=${line:0:1}
+		[[ "$sign" == + || "$sign" == - ]] || return 1
+		[[ "${line:1}" =~ $pin ]] || return 1
+		name=${BASH_REMATCH[2]}
+		ref=${BASH_REMATCH[3]}
+		note=${BASH_REMATCH[5]:-}
+		if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then version=$note; else version=$ref; fi
+		[[ "$version" =~ ^v?([0-9]+) ]] || return 1
+		major=${BASH_REMATCH[1]}
+		if [ "$sign" = - ]; then removed+="$name $major"$'\n'; else added+="$name $major"$'\n'; fi
+	done
+	[ -n "$added" ] && [ "$(printf '%s' "$removed" | sort -u)" = "$(printf '%s' "$added" | sort -u)" ]
+}
+
 # A merge the script itself refuses, whatever the agent decided: a pull request by someone
 # without write permission that changes a protected path (new and old names of every file). The
 # check fails closed: when GitHub does not answer, or the list of files is not the whole list,
@@ -156,15 +182,26 @@ guard_merge() {
 	case "$changed" in '' | *[!0-9]*) fail "cannot read the number of files of #$1; nothing was merged" ;; esac
 	{ [ "$count" -eq "$changed" ] && [ "$changed" -lt 3000 ]; } ||
 		fail "the file list of #$1 ($count of $changed) is not the whole change; nothing was merged"
-	files=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep . || true)
-	mapfile -t paths <<<"$files"
 	if [ "$from_bot" = 1 ]; then
-		local kept=()
-		for path in "${paths[@]}"; do
-			case "${path##*/}" in Cargo.toml | Cargo.lock) ;; *) kept+=("$path") ;; esac
-		done
+		# A bot's business: the dependency manifests and lockfiles, and the version in the `uses:`
+		# lines of a workflow (pins_only). Everything else is checked like a contributor's change.
+		local kept=() old patch
+		while IFS=$'\t' read -r path old; do
+			[ -n "$path" ] || continue
+			case "${path##*/}" in Cargo.toml | Cargo.lock) continue ;; esac
+			if [ -z "$old" ] && [[ "$path" =~ ^\.github/workflows/[A-Za-z0-9._-]+\.ya?ml$ ]]; then
+				patch=$(gh api "repos/$repo/pulls/$1/files" --paginate \
+					--jq ".[] | select(.filename == \"$path\") | .patch // \"\"" | tr -d '\r') || patch=""
+				if [ -n "$patch" ] && pins_only <<<"$patch"; then continue; fi
+			fi
+			kept+=("$path")
+			[ -z "$old" ] || kept+=("$old")
+		done <<<"$rows"
 		[ ${#kept[@]} -gt 0 ] || return 0
 		paths=("${kept[@]}")
+	else
+		files=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep . || true)
+		mapfile -t paths <<<"$files"
 	fi
 	if hits=$(protected_hits "${paths[@]}"); then return 0; fi
 	fail "#$1 changes a protected path ($(printf '%s' "$hits" | head -3 | tr '\n' ' ')); the steward does not merge it. Label it 'status: needs-maintainer' and list it in the report"
@@ -230,6 +267,10 @@ edit-comment)
 	number "$1"
 	message_file "$2"
 	run gh api -X PATCH "repos/$repo/issues/comments/$1" -F "body=@$file" --silent
+	;;
+pins-only)
+	[ $# -eq 0 ] || fail "usage: pins-only < patch"
+	pins_only
 	;;
 sensitive)
 	[ $# -ge 1 ] || fail "usage: sensitive <path>..."
