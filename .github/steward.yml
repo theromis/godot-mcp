@@ -20,6 +20,13 @@ review:
 limits:
   allowed_bots: dependabot[bot]
 
+autonomy:
+  # The steward merges or declines a contributor's pull request itself, after reading the whole
+  # diff and running the checks of CONTRIBUTING.md on every Godot line. It is the project's
+  # choice for maximum automation: a single maintainer cannot answer every pull request. The
+  # hard limits of the skill stay: no release, no force push, no settings or secrets.
+  merge_external: allowed
+
 release:
   procedure: .agents/skills/release/SKILL.md, procedure C
   skip_subjects: chore(release) chore(line)
