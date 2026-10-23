@@ -137,11 +137,37 @@ pins_only() {
 		ref=${BASH_REMATCH[3]}
 		note=${BASH_REMATCH[5]:-}
 		if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then version=$note; else version=$ref; fi
-		[[ "$version" =~ ^v?([0-9]+) ]] || return 1
+		[[ "$version" =~ ^v?([0-9]+)(\.[0-9]+){0,2}$ ]] || return 1
 		major=${BASH_REMATCH[1]}
 		if [ "$sign" = - ]; then removed+="$name $major"$'\n'; else added+="$name $major"$'\n'; fi
 	done
-	[ -n "$added" ] && [ "$(printf '%s' "$removed" | sort -u)" = "$(printf '%s' "$added" | sort -u)" ]
+	# Line for line: the same actions, the same number of times, not merely the same set.
+	[ -n "$added" ] && [ "$(printf '%s' "$removed" | sort)" = "$(printf '%s' "$added" | sort)" ]
+}
+
+# Reads the same patch and prints "owner/name commit version" for every added line that pins a
+# commit. The version is only a comment in the file; pins_match_tags checks it against GitHub.
+added_commits() {
+	local pin='^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*([A-Za-z0-9._-]+/[A-Za-z0-9._/-]+)@([0-9a-f]{40})[[:space:]]+#[[:space:]]*([A-Za-z0-9._-]+)[[:space:]]*$'
+	local line
+	while IFS= read -r line; do
+		[[ "${line:0:1}" == + ]] || continue
+		if [[ "${line:1}" =~ $pin ]]; then
+			printf '%s %s %s\n' "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}"
+		fi
+	done
+	return 0
+}
+
+# True when every commit a patch pins is the commit of the tag its comment names. GitHub is
+# asked; an answer that does not come is a no.
+pins_match_tags() {
+	local action sha tag resolved
+	while read -r action sha tag; do
+		resolved=$(gh api "repos/$(printf '%s' "$action" | cut -d/ -f1,2)/commits/$tag" --jq .sha 2>/dev/null | tr -d '\r') || return 1
+		[ "$resolved" = "$sha" ] || return 1
+	done < <(added_commits <<<"$1")
+	return 0
 }
 
 # A merge the script itself refuses, whatever the agent decided: a pull request by someone
@@ -188,11 +214,14 @@ guard_merge() {
 		local kept=() old patch
 		while IFS=$'\t' read -r path old; do
 			[ -n "$path" ] || continue
-			case "${path##*/}" in Cargo.toml | Cargo.lock) continue ;; esac
-			if [ -z "$old" ] && [[ "$path" =~ ^\.github/workflows/[A-Za-z0-9._-]+\.ya?ml$ ]]; then
-				patch=$(gh api "repos/$repo/pulls/$1/files" --paginate \
-					--jq ".[] | select(.filename == \"$path\") | .patch // \"\"" | tr -d '\r') || patch=""
-				if [ -n "$patch" ] && pins_only <<<"$patch"; then continue; fi
+			# A renamed file is never exempt: its old name is checked as well (below).
+			if [ -z "$old" ]; then
+				case "$(printf '%s' "${path##*/}" | tr '[:upper:]' '[:lower:]')" in cargo.toml | cargo.lock) continue ;; esac
+				if [[ "$path" =~ ^\.github/workflows/[A-Za-z0-9._-]+\.ya?ml$ ]]; then
+					patch=$(gh api "repos/$repo/pulls/$1/files" --paginate \
+						--jq ".[] | select(.filename == \"$path\") | .patch // \"\"" | tr -d '\r') || patch=""
+					if [ -n "$patch" ] && pins_only <<<"$patch" && pins_match_tags "$patch"; then continue; fi
+				fi
 			fi
 			kept+=("$path")
 			[ -z "$old" ] || kept+=("$old")

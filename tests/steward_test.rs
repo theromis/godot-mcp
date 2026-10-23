@@ -965,6 +965,23 @@ fn a_bot_may_move_workflow_pins_within_a_major_version_and_do_nothing_else() {
                 pin("a/b", new, "v1.0.1")
             ),
         ),
+        (
+            "an added line that only repeats an action",
+            format!(
+                "@@ -1,2 +1,3 @@
+-{}
++{}
++{}
+",
+                pin("a/b", old, "v1.0.0"),
+                pin("a/b", new, "v1.0.1"),
+                pin("a/b", new, "v1.0.1")
+            ),
+        ),
+        (
+            "a tag that only starts like a version",
+            patch("      - uses: a/b@v7", "      - uses: a/b@v7evil"),
+        ),
         ("an empty patch", String::new()),
     ] {
         assert!(!pins_only(&bash, &refused), "pins-only must refuse {why}");
