@@ -43,11 +43,12 @@ Desktop.ini
 # Agents
 /.*/settings*.json
 
-# Skills (each skill directory is ignored unless listed below)
+# Skills: .agents/ is the only committed copy. The links agents-init makes in the
+# agent directories are kept out of git status locally, in .git/info/exclude.
 /.*/skills/*
-!/.*/skills/release
-!/.*/skills/repo-steward
-!/.*/skills/agents-init
+!/.agents/skills/release
+!/.agents/skills/repo-steward
+!/.agents/skills/agents-init
 
 # SDD engine
 /.magic/

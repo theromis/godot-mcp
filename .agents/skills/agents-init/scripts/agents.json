@@ -4,9 +4,7 @@
         "workflows": "commands",
         "skills": "skills",
         "rules": "rules",
-        "files": [
-            "CLAUDE.md"
-        ],
+        "files": [],
         "description": "Claude Code (Anthropic)"
     },
     "gemini": {
@@ -29,13 +27,21 @@
         ],
         "description": "Qwen Code (Alibaba)"
     },
+    "cursor": {
+        "dir": ".cursor",
+        "workflows": null,
+        "skills": null,
+        "rules": "rules",
+        "files": [],
+        "description": "Cursor"
+    },
     "copilot": {
         "dir": ".github",
         "workflows": "prompts",
         "skills": "skills",
         "rules": "rules",
         "files": [
-            "copilot-instructions.md"
+            ".github/copilot-instructions.md"
         ],
         "description": "GitHub Copilot"
     },
