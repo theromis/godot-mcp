@@ -8,13 +8,22 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-25
+
+The AI can now run a GDScript headless and get its errors back, write to a deep property path of a running game and be told when a write did not take, see analyzer warnings in `godot_validate_script`, and refresh imported resources even when the editor is closed. The release holds the files for Godot 4.5, 4.6 and 4.7 as before: download the files whose names end in `-godotM.N` for your Godot version, and update the server and the addon together. Everything below works on all three versions.
+
 ### Added
 
+- `godot_resave_resources` works without the editor: it runs `godot --headless --path <project> --import` and lists the sources whose `.import` file appeared or changed (`imported`, `not_scanned`). Pass `project_path` to name the project; without the editor and without a project the error names that command. Thanks to @theromis.
+- `godot_resave_resources` takes `wait: true` for a full rescan: the answer comes after scanning and importing finish (at most 60 seconds) and reports how many files were imported and whether the wait timed out.
 - `godot_run_script` runs a GDScript that extends `SceneTree` headless with the configured Godot binary (`--path`, `-s`, `user_args` after `--`). It returns the exit code, stdout, stderr and each `SCRIPT ERROR` with its file and line. `timeout_seconds` defaults to 120 (maximum 600); on timeout the process tree is killed and the last output lines are included. Paths outside the project are refused.
 - `godot_game_input` takes `emulate_mouse: false` to turn off the engine's emulated mouse events for a touch step during one call; the previous value is restored afterwards.
 
 ### Changed
 
+- `godot_resave_resources` no longer reports a file the editor has never scanned as reimported: such a path is scanned first and is listed under `reimported` only once its `.import` file exists, otherwise under `not_scanned` (`load()` would find no loader). Thanks to @theromis.
+- `godot_run_script` stops when a `SCRIPT ERROR` has been printed and the process then sits idle for 1.5 seconds, as it does after an error in `_init`, instead of waiting out the timeout; the answer sets `stopped_idle`. Thanks to @theromis.
+- `roi` of `godot_game_screenshot` is documented as the comparison region of a baseline: it requires `baseline` and never crops the returned image. Thanks to @theromis.
 - `godot_game_set` writes a `/` path through an Object field or a Dictionary key, the same walk `godot_game_get` uses. A missing property or key is an error that names it (a new Dictionary key is not created), a `/` step into another Node is refused, and the written value is read back: a write that did not take is an error instead of success with `null`. Floats, vectors, colors and transforms are compared approximately, because many engine floats are 32-bit.
 - `godot_game_screenshot` names the `godot_game_input` coordinate space (the root viewport's visible size, after content scale) and the scale from returned image pixels to that space, per frame for a sheet and also for an `roi` and a camera capture.
 - Pointer positions of `godot_game_input` (mouse, touch, swipe, path, circle) are pixels of the root viewport's visible rectangle: the content scale is applied before the event is parsed, so a stretched window delivers the position that was asked for. Without stretching nothing changes.
@@ -227,7 +236,7 @@ part of every release), and note the behaviour changes below.
   property operations, viewport capture), headless CLI fallback for version, script validation
   and launching the editor.
 
-[Unreleased]: https://github.com/zeegzoog/godot-mcp/compare/v0.7.0...master
+[Unreleased]: https://github.com/zeegzoog/godot-mcp/compare/v0.8.0...master
 [0.4.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.1.0...v0.2.0
