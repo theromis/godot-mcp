@@ -1,6 +1,6 @@
 # Held Stepping
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-controlled-time.md
@@ -52,7 +52,8 @@ The runtime already steps physics by pausing the tree, which leaves idle frames,
 src/
 ├── godot/runs.rs              held launch: --fixed-fps and the runtime's user arguments; hold state on Run
 ├── tools.rs                   godot_run_project held option, refused without mode "process"
-└── tools/game.rs              godot_game_physics hold / held step arguments, 60 s held-step wait, debug pause refusal
+├── tools/game.rs, tools/game/ godot_game_physics hold / held step arguments (catalog.rs), 60 s held-step wait (session.rs), debug pause refusal (debug.rs)
+└── tools/scenario.rs          godot_game_scenario: steps, snapshots, the run lock, the deadline and the release of input
 addons/godot_mcp/runtime/
 ├── mcp_runtime.gd             hold flag consulted in _dispatch; close-request and exit handling
 └── ops/
@@ -105,10 +106,10 @@ The step decision is the counter of the parent concept (its §4.2). The loop wai
 | Served at once | Refused (with the held replacement) |
 | --- | --- |
 | `game.tree`, `game.get`, `game.signals`, `game.snapshot`, output reads | `input.wait` (frames, node, signal, property, scene generation) → held step, with `until` for a property |
-| `game.set`, `game.call` (RO-6 unchanged) | `game.observe` → held step, then `godot_game_signals` / a read |
+| `game.set`, `game.call` (RO-6 unchanged), `game.body`, `game.pause` | `game.observe` → held step, then `godot_game_signals` / a read |
 | `game.physics` held actions | `game.screenshot` with `frames` > 1 or `camera` → single capture between held steps |
 | `game.screenshot`, one frame, no camera: the viewport's last drawn frame, no render wait; an error asks for one held tick when nothing was drawn yet | `input.run` steps `wait`, `text`, `swipe` → instant steps with held steps between them |
-| `input.run` with only `key`, `mouse_button`, `touch`, `joy_button` (press, release, tap), `click`, `click_node`, `mouse_move`, `joy_axis`, `time_scale`; taps and clicks release after `hold_ticks` (default 2, 1 to 600) | — |
+| `input.run` with only `key`, `action` (an Input Map action), `mouse_button`, `touch` (also its `move` phase), `joy_button` (press, release, tap), `click`, `click_node`, `mouse_move`, `joy_axis`, `time_scale`; taps and clicks release after `hold_ticks` (default 2, 1 to 600) | — |
 | `input.release_all` (also clears the schedule) | — |
 
 ### 5.6 Exactness
@@ -119,6 +120,19 @@ The step decision is the counter of the parent concept (its §4.2). The loop wai
 ### 5.7 Release Lines
 
 The change is a new capability, so it lands on `master` and is carried to every supported line, newest to oldest. Every engine call it uses exists in 4.5.0 (§2), so the carried copies need no guard; each line's end-to-end run proves it with that line's Godot build.
+
+### 5.8 Scenario [ADDED]
+
+`godot_game_scenario` plays one input sequence in a held managed process run and answers with what the game did. It builds on the held step (CT-3), the tick-scheduled input (CT-7) and the runtime methods `game.pause`, `game.body` and `game.get`.
+
+- **Steps.** 1 to 32 steps. Each has `frames` (0 to 600 ticks; 3600 in the whole call), `actions` (Input Map `action`, `phase` press, release or tap, `strength` 0 to 1) and `pointers` (mouse or touch, `phase` press, release, move or tap, `x`, `y`, `index` 0 to 9, `button`), and an optional `pause`. At most 32 actions and pointers in a step, 16 `bodies`, 16 `nodes` with 32 properties each, action names of 64 characters and other names of 256. The default phase is tap: down for the step's ticks, then released, so a tap with `frames` 0 is refused.
+- **A step** sets the pause if asked, applies the step's presses, advances `frames` ticks with the held step, releases the taps, and takes the snapshot: `bodies` (CharacterBody2D or 3D: position, velocity, floor, wall and ceiling flags, up to 8 slide collisions) and `nodes` (public properties through `game.get`). A property name with a segment starting with `_` is refused before the game is touched. A missing node or another class is an entry in the snapshot's errors, which fails the scenario.
+- **The run.** The newest process run, or `run_id`, is selected once at entry and kept (a process started meanwhile changes nothing). An editor Play run and a missing run are refused with the way to start a managed one. The game is held when it was not and stays held afterwards; `godot_game_physics` `resume` lets it run and lifts the pause a scenario set (a pause that was already on, the game's own, is left alone).
+- **One at a time.** A run is locked for the length of a scenario; a second call on it is refused at once with that reason, so two scenarios cannot release each other's input or fight over the step.
+- **Deadline and release.** One 60 s budget covers the call; 3 s of it are reserved for `input.release_all`. Input is released when the call ends, when a step fails, and when the call is cancelled: the cancelled call's guard retries the release in the background and keeps the run locked until it is done. A step that timed out may still finish in the game; the answer says so.
+- **Answer.** `{ok, run_id, held, deterministic, deterministic_reason, paused, ticks_run, steps[{index, frames, ticks_run, applied, snapshot}], warnings, errors, released, output{lines, errors}, recovery}`. `output` holds only what the game logged during this call. `ok` is false when a step, a read or the cleanup failed, and then `recovery` lists what to look at; a game error that appears only in `output.errors` does not change `ok`. `screenshot: true` adds one capture of the last drawn frame, only when the scenario is still `ok`, and the picture is attached only to a successful answer (a headless game records a warning and no picture).
+
+The runtime follows each change of the pause state made by `game.pause`; a pause that was already on is not claimed, so `resume` of a held game lifts only the pause a scenario set.
 
 ## 6. Implementation Notes
 
@@ -136,7 +150,7 @@ Tests: `runtime_e2e_test.rs` for every row above and for `deterministic` on a he
 - **The editor's remote debugger pause during a hold** breaks inside runtime code; accepted and documented (CT-10).
 - **A dedicated tool** (`godot_game_time`): rejected; one physics tool with a held mode keeps a single place for stepping, and the free-game behaviour is unchanged.
 - **Holding with a node at the lowest physics priority** instead of the tree signal: works, but picking runs before it; the signal is earlier.
-- **InputMap action input** (pressing an action by name): useful with held steps but a separate capability of the input tools; not part of this specification.
+- **InputMap action input** (pressing an action by name): built since: the `action` step of `godot_game_input` and the scenario tool (§5.8).
 
 ## Canonical References
 
@@ -147,7 +161,9 @@ Tests: `runtime_e2e_test.rs` for every row above and for `deterministic` on a he
 | `[INPUT]` | `addons/godot_mcp/runtime/ops/rt_input.gd` | Input steps, property-wait parsing and comparison reused by `until` |
 | `[VIEW]` | `addons/godot_mcp/runtime/ops/rt_view.gd` | Capture job and its render wait |
 | `[RUNS]` | `src/godot/runs.rs` | Managed launch arguments and `Run` state |
-| `[GAME]` | `src/tools/game.rs` | Tool schemas, runtime call timeout, debugger tools |
+| `[GAME]` | `src/tools/game.rs`, `src/tools/game/` | Tool schemas, runtime call timeout, debugger tools |
+| `[SCENARIO]` | `src/tools/scenario.rs` | The scenario tool |
+| `[SCENARIO-E2E]` | `tests/scenario_e2e_test.rs` | Real-game tests of the scenario: moves, pause, release, run pinning, the run lock |
 | `[E2E]` | `tests/runtime_e2e_test.rs` | Real-game tests that pin the hold behaviour |
 
 ## Document History
@@ -156,3 +172,4 @@ Tests: `runtime_e2e_test.rs` for every row above and for `deterministic` on a he
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-21 | Agent (magic.spec) | Created with the controlled-time concept: hold loop on `physics_frame`, channel pumped through `EngineDebugger.line_poll()` (checked in the 4.5-stable sources), held tool contract, served and refused operations, tick-scheduled input, exactness through a server-declared fixed rate. Promoted to Stable after Post-Update Review. |
 | 1.1.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] Engine facts marked verified; the CT-9 row drops the `is_active()` trigger, which does not turn false when the server disappears (measured), and states the limitation; the deferred keepalive recorded in the drawbacks. Re-reviewed and Stable. |
+| 1.2.0 | 2026-10-26 | Agent (magic.spec) | [ADDED] §5.8: the scenario tool as merged (steps, snapshots, the run lock, the deadline and the release of input, the pause it lifts); the Input Map action drawback closed. Stable → RFC → Stable after Post-Update Review. The references name the `tools/game/` modules. |

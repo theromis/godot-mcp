@@ -1,6 +1,6 @@
 # Controlled Time
 
-**Version:** 1.1.1
+**Version:** 1.1.2
 **Status:** Stable
 **Layer:** concept
 
@@ -96,7 +96,7 @@ reason when false: one of "not started held with a fixed frame rate", "fixed rat
 
 | Alias | Path | Purpose |
 | --- | --- | --- |
-| `[GAME]` | `src/tools/game.rs` | Hold, step and resume through the running-game tools |
+| `[GAME]` | `src/tools/game.rs`, `src/tools/game/` | Hold, step and resume through the running-game tools |
 | `[RUNS]` | `src/godot/runs.rs` | Held launch and the run record |
 | `[HOLD]` | `addons/godot_mcp/runtime/ops/rt_hold.gd` | The hold at the start of a physics tick |
 | `[E2E]` | `tests/runtime_e2e_test.rs` | Real-game proof of held stepping |
@@ -108,3 +108,4 @@ reason when false: one of "not started held with a fixed frame rate", "fixed rat
 | 1.0.0 | 2026-10-21 | Agent (magic.spec) | Created from the request to bring exact time control into the server under its own rules: opt-in hold, exact and conditional steps without an evaluator, declared exactness, tick-scheduled input, refusal of time-driven operations while held, safe ending. Promoted to Stable after Post-Update Review. |
 | 1.1.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] CT-9 no longer promises that a vanished driver ends the hold: the game cannot detect it (measured on a real engine in the first held-stepping task). The limitation, the premise and a deferred keepalive alternative are recorded; the other nine invariants are unchanged. Re-reviewed and Stable. |
 | 1.1.1 | 2026-10-21 | Agent (magic.spec) | Added the missing Canonical References section. No requirement changed. |
+| 1.1.2 | 2026-10-26 | Agent (magic.spec) | The `[GAME]` reference names `src/tools/game/`. No requirement changed. |

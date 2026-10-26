@@ -1,6 +1,6 @@
 # Test Suite
 
-**Version:** 1.4.1
+**Version:** 1.5.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-quality-assurance.md
@@ -54,6 +54,8 @@ tests/
 ├── steward_test.rs            repo-steward: readiness on a fixture repository, workflow least privilege
 ├── editor_e2e_test.rs         (ignored) real headless editor: security, scene/property tools, undo, resave, authoring tools, a game tool right after Play
 ├── runtime_e2e_test.rs        (ignored) real games and language server: process run, live tree, input and gestures, waits, breakpoints, windowed screenshot, diagnostics
+├── scenario_e2e_test.rs       (ignored) real game: scenario steps, pause, input release, run pinning and the run lock
+├── model_chain_e2e_test.rs    (ignored) real exporter and engine: export, import, sidecar and stale checks (needs FROXEL_BIN and GODOT_PATH)
 └── addon_export_test.rs       (ignored) export policy unit check + real pack export without the addon
 examples/
 └── fake_gh.rs                 stand-in for the GitHub client; not part of any release artifact
@@ -71,6 +73,8 @@ Unit tests live next to the code in `src/paths.rs`, `src/validation.rs`, `src/cl
 | Bridge client behaviour | `tests/bridge_client_test.rs` |
 | Editor command behaviour | `tests/editor_e2e_test.rs` |
 | Running game, debugger, language server on a real Godot [ADDED] | `tests/runtime_e2e_test.rs` |
+| Scenario tool on a real Godot [ADDED] | `tests/scenario_e2e_test.rs` |
+| Voxel model chain with a real exporter and Godot [ADDED] | `tests/model_chain_e2e_test.rs` |
 | Export exclusion | `tests/addon_export_test.rs` |
 | Process independence | `tests/detach_test.rs` |
 | Release line identity (version string, minimum engine version, engine build) | `tests/version_sync_test.rs` |
@@ -95,6 +99,8 @@ Unit tests live next to the code in `src/paths.rs`, `src/validation.rs`, `src/cl
 | `[STEWARD]` | `tests/steward_test.rs` | Repo steward readiness and workflow guards |
 | `[E2E]` | `tests/editor_e2e_test.rs` | Real-editor tests |
 | `[RUNTIME]` | `tests/runtime_e2e_test.rs` | Real-game and language-server tests |
+| `[SCENARIO]` | `tests/scenario_e2e_test.rs` | Real-game scenario tests |
+| `[MODEL]` | `tests/model_chain_e2e_test.rs` | Real-exporter voxel model tests |
 | `[EXPORT]` | `tests/addon_export_test.rs` | Export tests |
 | `[GUIDE]` | `AGENTS.md` | Verification checklist |
 | `[FAKE-GH]` | `examples/fake_gh.rs` | Stand-in for the GitHub client used by the tests |
@@ -110,3 +116,4 @@ Unit tests live next to the code in `src/paths.rs`, `src/validation.rs`, `src/cl
 | 1.3.0 | 2026-10-20 | Agent (magic.spec) | [ADDED] The repo steward's test file, its routing row and reference. Stable → RFC → Stable after Post-Update Review. |
 | 1.4.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] The runtime test file with its routing row and reference; the editor test file now covers the authoring tools and Play. |
 | 1.4.1 | 2026-10-21 | Agent (magic.spec) | Added the stand-in GitHub client to Canonical References. No requirement changed. |
+| 1.5.0 | 2026-10-26 | Agent (magic.spec) | [ADDED] The two end-to-end files of the scenario tool and the voxel model check to the layout, the routing table and the references. Stable → RFC → Stable after Post-Update Review. |

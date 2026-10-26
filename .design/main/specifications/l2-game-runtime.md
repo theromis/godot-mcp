@@ -1,6 +1,6 @@
 # Game Runtime Channel
 
-**Version:** 1.4.0
+**Version:** 1.5.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-runtime-observability.md
@@ -37,7 +37,7 @@ Godot already has a debugger protocol that every editor-launched game speaks. Sp
 | RO-4 The component never ships | `ensure_runtime` uses the project's own addon when it has every runtime file; otherwise it writes a private copy under `.godot/godot_mcp/run-<id>/` (not scanned by the editor, ignored by version control) and never touches the project's `addons` folder; copies older than a day (a crashed run's) are swept. `inject_override` writes `res://override.cfg` with a marker line and `restore_override` puts the user's file back and removes the copy and the folders it emptied, on exit, on drop and, after a crash, on the next run. The runtime does nothing unless `EngineDebugger.is_active()`. `export_plugin.gd` excludes the whole addon folder from exports. |
 | RO-5 Local access | `DebugSession::listen` binds `127.0.0.1` on a free port, accepts one connection and stops listening. |
 | RO-6 No caller code | `game_call` requires `permit` to name the method and rejects, by name, `quit`, `set_script`, `call`, `callv`, `call_deferred`, `call_group`, `call_group_flags`, `propagate_call`, `rpc`, `rpc_id`, `set`, `set_deferred`, `set_indexed`, `emit_signal`, `notification`, `propagate_notification`, `free`, `queue_free` and `replace_by`; changing the tree by adding, removing or reparenting a node stays allowed, because it changes only the running game (RO-1); the runtime repeats that list (`rt_live.gd`), and one test per name keeps the two lists equal and the list effective. Before the call the runtime reads the method's declared argument types and converts a JSON string to `StringName` or `NodePath` where the method asks for it; any other mismatch stays `BAD_PARAMS`; [MODIFIED] `game.set` refuses `script`, names starting with `_`, a `:` step that is not a Resource, and a `/` step into another Node; the runtime has no evaluator. |
-| RO-7 Held input released | `rt_input.gd` remembers every press; `input.release_all`, a failing step and `_exit_tree` release them all. |
+| RO-7 Held input released | `rt_input.gd` remembers every press, including an Input Map action and a touch (also one dragged by `move`); `input.release_all`, a failing step and `_exit_tree` release them all. |
 | RO-8 Real pictures | `screenshot` checks the PNG magic and the IHDR size before returning an image; a headless game returns an error; the runtime compares a capture with the previous one only when both have the same size. |
 | RO-9 Bounded waits | A runtime call has 20 s on the server; a physics step waits in time (2 s plus four times the ticks' own duration, at most 15 s); debugger waits are capped at `MAX_WAIT_SECONDS` (300 s); frame waits are capped at 600 frames, a swipe at 60, a sheet at 8 frames; a wait for a node or signal has a frame timeout and reports when it ran out. |
 | RO-10 Debugging only where the server is the debugger | `debug_ctl.rs` talks only to a `Run`'s own session; editor Play is reached through `game_relay.gd`, which forwards `mcp:*` messages and leaves every other prefix to the editor's debugger. |
@@ -54,7 +54,8 @@ src/
 │   ├── debug_session.rs  loopback listener, framing, message queue
 │   ├── debug_ctl.rs      breakpoints, pause, continue, step, stack, frame variables
 │   └── variant.rs        encode and decode of Godot's binary Variant (bounded)
-└── tools/game.rs         catalog and handlers of the godot_run_output, godot_game_* and godot_debug_* tools
+└── tools/game.rs         routing and the log and method-call tools of the godot_run_output, godot_game_* and godot_debug_* tools
+    tools/game/           catalog.rs (definitions), input.rs, screenshot.rs, record.rs, debug.rs, session.rs (a managed run or the editor's Play session, and the waits)
 addons/godot_mcp/
 ├── core/runtime_override.gd   override.cfg for editor Play, restored afterwards
 ├── editor/game_relay.gd       EditorDebuggerPlugin relaying mcp:* messages
@@ -80,7 +81,7 @@ addons/godot_mcp/
 | --- | --- |
 | `game.tree`, `game.get`, `game.set`, `game.signals`, `game.observe`, `game.snapshot` | `godot_game_tree`, `godot_game_get`, `godot_game_set`, `godot_game_signals`, `godot_game_observe`, `godot_game_snapshot` |
 | `input.run`, `input.release_all`, `input.wait` | `godot_game_input`, `godot_game_input_release`, `godot_game_wait` |
-| `game.physics` | `godot_game_physics` |
+| `game.physics`, `game.pause`, `game.body` | `godot_game_physics`; `godot_game_scenario` (pause and CharacterBody reads) |
 | `game.screenshot` | `godot_game_screenshot` |
 | `game.record` | `godot_game_record` |
 | output and errors | `godot_run_output` |
@@ -114,7 +115,8 @@ A click on a node uses the node's transform with its canvas, so a scrolling came
 | `[SESSION]` | `src/godot/debug_session.rs` | Debugger session |
 | `[CTL]` | `src/godot/debug_ctl.rs` | Breakpoints and stepping |
 | `[VARIANT]` | `src/godot/variant.rs` | Variant codec |
-| `[GAME]` | `src/tools/game.rs` | Tools |
+| `[GAME]` | `src/tools/game.rs`, `src/tools/game/` | Tools |
+| `[SCENARIO]` | `src/tools/scenario.rs` | The scenario tool; see [l2-held-stepping.md](l2-held-stepping.md) §5.8 |
 | `[RUNTIME]` | `addons/godot_mcp/runtime/` | In-game component |
 | `[RELAY]` | `addons/godot_mcp/editor/game_relay.gd` | Editor Play relay |
 | `[E2E]` | `tests/runtime_e2e_test.rs` | Process run tests |
@@ -131,3 +133,4 @@ A click on a node uses the node's transform with its canvas, so a scrolling came
 | 1.2.2 | 2026-10-21 | Agent (magic.spec) | Document History rows put in version order. No requirement changed. |
 | 1.3.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] RO-3, RO-6 (the extended refusal list with one test per name, argument type conversion) and the answer details; [ADDED] RO-11 (delivered or failed, with the headless pointer cause left open). Cancellation is documented, not required: a cancelled call aborts the server task only, and a held step already sent to the game finishes (at most 3600 ticks) and holds again. Source: simulation QA of 2026-10-21 (Q2, Q5, Q6, Q19, Q27, R28). Stable → RFC → Stable after Post-Update Review. |
 | 1.4.0 | 2026-10-22 | Agent (magic.run) | [MODIFIED] RO-3 (the run record as built: `ended_by`, `ended_at`, `exit_code`, `stop_all`) and RO-11 (a viewport warning; the open cause is isolated and its TBD removed). Output answers carry the scene-hash note once, as 1.3.0 said. Stable → RFC → Stable after Post-Update Review. |
+| 1.5.0 | 2026-10-26 | Agent (magic.spec) | [ADDED] The runtime operations `game.pause` and `game.body`, the `action` input step with its release (RO-7) and the touch `move` phase, used by the scenario tool. Stable → RFC → Stable after Post-Update Review. The file map and references name the `tools/game/` modules. |
