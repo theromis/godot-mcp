@@ -840,6 +840,7 @@ var hp := 1
 var stats := {"hp": 1}
 var samples := [1, 2]
 var mark: Node2D
+var goal: Variant = null
 var physics_ticks := 0
 var physics_time := 0.0
 var slide := 0.0
@@ -1026,6 +1027,49 @@ async fn headless_game_waits_for_a_value_a_new_scene_and_real_physics_ticks() {
     assert!(!exists.is_error, "{}", text_of(&exists));
     assert_eq!(json_of(&exists)["exists"], true, "{}", text_of(&exists));
 
+    // null compares with any type: eq null holds only for a null value, ne null for any
+    // other, so a wait can see a Variant property being cleared.
+    let is_null = call(
+        &tools,
+        "godot_game_wait",
+        json!({"run_id": run_id, "node": ".", "property": "goal", "op": "eq", "value": null}),
+    )
+    .await;
+    assert!(!is_null.is_error, "{}", text_of(&is_null));
+    assert!(
+        json_of(&is_null)["observed"].is_null(),
+        "{}",
+        text_of(&is_null)
+    );
+    for property in ["hp", "mark", "stats"] {
+        let not_null = call(
+            &tools,
+            "godot_game_wait",
+            json!({"run_id": run_id, "node": ".", "property": property, "op": "ne", "value": null}),
+        )
+        .await;
+        assert!(!not_null.is_error, "{property}: {}", text_of(&not_null));
+    }
+    let never_null = call(
+        &tools,
+        "godot_game_wait",
+        json!({"run_id": run_id, "node": ".", "property": "hp", "op": "eq", "value": null, "timeout": 2}),
+    )
+    .await;
+    let never_text = text_of(&never_null);
+    assert!(never_null.is_error, "{never_text}");
+    assert!(!never_text.contains("Type mismatch"), "{never_text}");
+    assert!(never_text.contains("\"observed\""), "{never_text}");
+    assert_error(
+        &call(
+            &tools,
+            "godot_game_wait",
+            json!({"run_id": run_id, "node": ".", "property": "goal", "op": "lt", "value": null, "timeout": 1}),
+        )
+        .await,
+        "ordering",
+    );
+
     assert_error(
         &call(
             &tools,
@@ -1166,6 +1210,18 @@ async fn headless_game_waits_for_a_value_a_new_scene_and_real_physics_ticks() {
     )
     .await;
     assert!(!reloaded.is_error, "{}", text_of(&reloaded));
+    // The scene root left the tree during the call: the answer says so and names the path it
+    // had, and the runtime logs no engine error of its own while answering.
+    let reloaded_json = json_of(&reloaded);
+    assert_eq!(reloaded_json["path"], ".", "{reloaded_json}");
+    assert_eq!(reloaded_json["left_tree"], true, "{reloaded_json}");
+    assert!(
+        reloaded_json["note"]
+            .as_str()
+            .unwrap_or("")
+            .contains("left the scene tree"),
+        "{reloaded_json}"
+    );
     let waited = call(
         &tools,
         "godot_game_wait",
@@ -1218,6 +1274,16 @@ async fn headless_game_waits_for_a_value_a_new_scene_and_real_physics_ticks() {
     assert_eq!(
         first_ready["scene"]["script_sha256"], loaded_hash,
         "an old error was restamped with the reloaded script: {first_ready}"
+    );
+    let runtime_noise = stale["lines"].as_array().and_then(|lines| {
+        lines.iter().find(|line| {
+            let text = line["text"].as_str().unwrap_or("");
+            text.contains("is_inside_tree") || text.contains("mcp_runtime.gd")
+        })
+    });
+    assert!(
+        runtime_noise.is_none(),
+        "answering a call that reloaded the scene logged an engine error: {runtime_noise:?}"
     );
 
     let scaled = call(
