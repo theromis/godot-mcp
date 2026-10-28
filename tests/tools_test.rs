@@ -166,6 +166,78 @@ async fn only_gd_files_can_be_created() {
     assert!(!project.path().join("notes.txt").exists());
 }
 
+/// A fake editor with `project` open whose script tab for res://open.gd is in the given state.
+async fn editor_with_open_tab(project: &Path, dirty: bool) -> common::MockBridge {
+    use common::{MockBridge, Reply};
+    let dir = project.to_string_lossy().replace('\\', "/");
+    MockBridge::start(move |command| match command["type"].as_str() {
+        Some("get_project_info") => Reply::Ok(json!({"project_dir": dir})),
+        Some("script_tab") => {
+            let reload = command["params"]["reload"] == true;
+            Reply::Ok(json!({
+                "path": command["params"]["script_path"], "open": true, "dirty": dirty,
+                "stale": !dirty && !reload, "reloaded": !dirty && reload
+            }))
+        }
+        _ => Reply::Ok(json!({})),
+    })
+    .await
+}
+
+#[tokio::test]
+async fn overwriting_a_script_open_with_unsaved_changes_is_refused() {
+    let project = project_dir();
+    write_script(project.path(), "open.gd", b"extends Node\n# mine\n");
+    let bridge = editor_with_open_tab(project.path(), true).await;
+    let manager = Arc::new(ToolManager::new(
+        BridgeClient::new(bridge.port),
+        CliRunner::new(PathBuf::from("unused-godot")),
+    ));
+    let result = manager
+        .call_tool(
+            "godot_create_script",
+            json!({"script_path": "res://open.gd", "overwrite": true}),
+        )
+        .await;
+    assert!(result.is_error, "{}", text(&result));
+    assert!(
+        text(&result).contains("unsaved changes"),
+        "{}",
+        text(&result)
+    );
+    assert_eq!(
+        std::fs::read_to_string(project.path().join("open.gd")).expect("file"),
+        "extends Node\n# mine\n",
+        "the file is untouched"
+    );
+}
+
+#[tokio::test]
+async fn overwriting_a_script_open_in_a_clean_tab_reloads_the_tab() {
+    let project = project_dir();
+    write_script(project.path(), "open.gd", b"extends Node\n# old\n");
+    let bridge = editor_with_open_tab(project.path(), false).await;
+    let manager = Arc::new(ToolManager::new(
+        BridgeClient::new(bridge.port),
+        CliRunner::new(PathBuf::from("unused-godot")),
+    ));
+    let result = manager
+        .call_tool(
+            "godot_create_script",
+            json!({"script_path": "res://open.gd", "overwrite": true}),
+        )
+        .await;
+    assert!(!result.is_error, "{}", text(&result));
+    assert!(text(&result).contains("reloaded"), "{}", text(&result));
+    let reloads: Vec<Value> = bridge
+        .received()
+        .into_iter()
+        .filter(|command| command["type"] == "script_tab" && command["params"]["reload"] == true)
+        .collect();
+    assert_eq!(reloads.len(), 1, "{:?}", bridge.received());
+    assert_eq!(reloads[0]["params"]["script_path"], "res://open.gd");
+}
+
 #[tokio::test]
 async fn an_offline_editor_names_the_bridge_port_the_server_is_using() {
     let port = free_port();
@@ -1053,6 +1125,37 @@ fn the_physics_tool_offers_hold_conditions_and_the_input_tool_hold_ticks() {
     );
     assert!(schema("godot_game_input")["properties"]["hold_ticks"].is_object());
     assert!(schema("godot_run_project")["properties"]["held"].is_object());
+}
+
+#[test]
+fn a_wait_value_declares_null_so_a_client_does_not_send_it_as_text() {
+    let tools = ToolManager::list_tools();
+    let schema = |name: &str| {
+        tools
+            .iter()
+            .find(|tool| tool.name == name)
+            .unwrap_or_else(|| panic!("no tool {name}"))
+            .input_schema
+            .clone()
+    };
+    let wait = schema("godot_game_wait");
+    let physics = schema("godot_game_physics");
+    for value in [
+        &wait["properties"]["value"],
+        &physics["properties"]["until"]["properties"]["value"],
+    ] {
+        let types = value["type"].as_array().expect("value lists its types");
+        assert!(types.contains(&json!("null")), "{value}");
+        assert!(types.contains(&json!("string")), "{value}");
+        assert!(types.contains(&json!("number")), "{value}");
+    }
+    assert!(
+        wait["properties"]["value"]["description"]
+            .as_str()
+            .unwrap_or("")
+            .contains("null"),
+        "{wait}"
+    );
 }
 
 #[test]
