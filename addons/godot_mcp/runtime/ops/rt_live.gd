@@ -677,7 +677,8 @@ static func _coerce(value: Variant, expected: int) -> Variant:
     if value is String and expected == TYPE_NODE_PATH:
         return NodePath(value)
     # Any other typed value may be a Godot literal such as "Transform3D(...)", as in the editor tool.
-    if value is String and expected != TYPE_NIL and expected != TYPE_STRING:
+    # An Object is never built from text: an Object(...) literal would create one in the game.
+    if value is String and expected != TYPE_NIL and expected != TYPE_STRING and expected != TYPE_OBJECT:
         var parsed: Variant = str_to_var(value)
         if typeof(parsed) == expected:
             return parsed
