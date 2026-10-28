@@ -8,18 +8,40 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-28
+
+The AI can now create a project, play a repeatable input scenario in a held game, check a voxel model, list and edit InputMap actions, and be told what an overwritten script tab, a saved scene and a loaded scene did to the editor. Several running-game calls stop failing quietly.
+
 ### Added
 
-- `godot_game_input` and `godot_game_scenario` take `coordinate_space`: `viewport` (the default, unchanged) or `window`. `viewport` is the root viewport's visible rectangle after content scale, the space `_input` sees and Control global positions use; `window` is pixels of the game window, mapped into viewport space when the call is parsed. Every input answer names the space (`coordinate_space`) and the mapping between the two (`space`: both sizes, `window_per_viewport_pixel`, `window_offset`), and a `click_node` step returns `at`, the point it clicked, in that space. Before 0.8.0 pointer positions were window pixels, while `click_node` aimed at viewport coordinates; a test written for one space can now say which it means instead of being converted by hand.
+- `godot_create_project` creates a Godot project through MCP. Thanks to @theromis.
+- `godot_game_scenario` plays one input sequence in a held managed game: Input Map actions and pointers, a known number of physics ticks per step, and snapshots, optional screenshots and the call's logs in one answer. `godot_game_input` takes an `action` step for an Input Map action. Thanks to @theromis.
+- `godot_check_voxel_model` exports up to 16 `.vox` models through Froxel (`FROXEL_BIN`, or `froxel` on `PATH`), imports the `.glb` files into the project and checks the `.import` files. It needs a Froxel build with `export_models`. Thanks to @theromis.
+- `godot_get_input_map` and `godot_edit_input_action` (editor only) list the InputMap actions, add or remove key, mouse button and joypad events, set a deadzone, and create or delete an action. A change is one undo step and is saved through the editor; it is all or nothing. `godot_set_project_setting` refuses `input/` keys and points to these tools. Built-in `ui_` actions can be edited but not deleted. Thanks to @theromis.
+- `godot_game_input` and `godot_game_scenario` take `coordinate_space`: `viewport` (the default, unchanged) or `window`. Every input answer names the space and the mapping between the two, and a `click_node` step returns the point it clicked.
 - `godot_code_diagnostics` adds `warnings_hidden`, and `godot_validate_script` a line, for a script under `res://addons/` in a project that keeps Godot's default `debug/gdscript/warnings/exclude_addons=true`: the analyzer reports no warnings for such a script, so a clean answer did not mean the script was clean.
+- `godot_open_scene` lists in `load_errors` what Godot reported while loading, for example a node renamed because its name clashed with a child of an instanced scene, and names the editor dialog that shows it. From Godot 4.7 on, `unsaved` says whether the load left the scene with unsaved changes. Thanks to @theromis.
+- `godot_read_script` reports `stale_tab: true` when an open script tab without unsaved changes shows older text than the file. `godot_resave_resources` reloads such a tab (`reloaded_tabs`) and keeps one with unsaved changes (`unsaved_tabs`). Thanks to @theromis.
+- `godot_save_scene` names the scripts the editor saved with the scene (`scripts_saved`) and returns `scene_path`. Thanks to @theromis.
+- `godot_game_call` answers `left_tree: true`, with the path the node had before the call, when the method took the node out of the tree, for example by reloading the scene. Thanks to @theromis.
+
+### Changed
+
+- `godot_create_script` with `overwrite: true` refuses to replace a script whose editor tab has unsaved changes, and reloads a clean tab with the new text. Thanks to @theromis.
+- `godot_game_wait` and the `until` condition of `godot_game_physics` accept `null` as a value, so a wait can see a property being cleared: `eq null` holds only while the value is null. Thanks to @theromis.
+- `godot_game_set` reads a Godot literal string such as `Transform3D(...)` for any typed property except an Object, and refuses a value of the wrong type with a message that names the property's type. Thanks to @theromis.
+- `godot_game_screenshot` waits up to 30 process frames for a new drawn frame and marks the image `STALE` when the window drew nothing new, for example a minimized or covered window.
+- Tokio and uuid are updated to 1.54.1 and 1.29.0.
 
 ### Fixed
 
-- The addon's own scripts have no GDScript analyzer warnings (unused parameters, shadowed names, integer division, an int used as an enum, an incompatible ternary). They were never reported because Godot leaves `addons/` out of warnings by default and `--check-only` prints none. The addon development project now sets `debug/gdscript/warnings/exclude_addons=false`, and `addon_scripts_have_no_analyzer_warnings` in `tests/runtime_e2e_test.rs` asks the language server about every addon script.
+- `godot_save_scene` no longer reformats the open scripts: the editor's convert-indent and trim-on-save settings are held off for the length of the save. Thanks to @theromis.
+- `godot_game_set` no longer logs a script error in the running game when the stored and the written values have different types. Thanks to @theromis.
+- The addon's own scripts have no GDScript analyzer warnings. The addon development project now sets `debug/gdscript/warnings/exclude_addons=false`, and `addon_scripts_have_no_analyzer_warnings` in `tests/runtime_e2e_test.rs` asks the language server about every addon script.
 
 ### Tests
 
-- `click_node_completes_a_click_while_the_tree_is_paused` clicks a button that works while the game has paused its tree, with `click_node`, a touch `click_node`, `click` and a mouse tap, in a headless and a stretched windowed game and in a held one, and in both coordinate spaces. A paused tree was not the cause of the missed clicks reported from a game with a 1920 x 1080 viewport in a 1280 x 720 window: before 0.8.0, `click_node` aimed at viewport coordinates and the event treated them as window pixels. The test fails if the content-scale mapping is removed.
+- `click_node_completes_a_click_while_the_tree_is_paused` clicks a button that works while the game has paused its tree, in a headless and a stretched windowed game and in a held one, and in both coordinate spaces.
 
 ## [0.8.0] - 2026-10-25
 
@@ -249,7 +271,7 @@ part of every release), and note the behaviour changes below.
   property operations, viewport capture), headless CLI fallback for version, script validation
   and launching the editor.
 
-[Unreleased]: https://github.com/zeegzoog/godot-mcp/compare/v0.8.0...master
+[Unreleased]: https://github.com/zeegzoog/godot-mcp/compare/v0.9.0...master
 [0.4.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.1.0...v0.2.0
