@@ -1,6 +1,6 @@
 # Game Runtime Channel
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-runtime-observability.md
@@ -16,6 +16,7 @@ How the Rust server and the GDScript addon reach a running game: managed process
 - [l2-godot-editor-addon.md](l2-godot-editor-addon.md) - The addon this channel adds files to.
 - [l1-tool-catalog.md](l1-tool-catalog.md) - TL-6: a managed process run is the one launch the server owns.
 - [l2-held-stepping.md](l2-held-stepping.md) - The held mode of the physics step, built on this channel.
+- [l2-project-adapter.md](l2-project-adapter.md) - The project adapter's loading and its two methods, built on this channel. [ADDED]
 
 ## 1. Motivation
 
@@ -84,6 +85,7 @@ addons/godot_mcp/
 | `game.physics`, `game.pause`, `game.body` | `godot_game_physics`; `godot_game_scenario` (pause and CharacterBody reads) |
 | `game.screenshot` | `godot_game_screenshot` |
 | `game.record` | `godot_game_record` |
+| `project.state`, `project.command` | `godot_game_state`, `godot_game_command`; see [l2-project-adapter.md](l2-project-adapter.md) [ADDED] |
 | output and errors | `godot_run_output` |
 | (debugger commands, not runtime methods) | `godot_debug_breakpoints`, `godot_debug_control`, `godot_debug_state` |
 
@@ -134,3 +136,4 @@ A click on a node uses the node's transform with its canvas, so a scrolling came
 | 1.3.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] RO-3, RO-6 (the extended refusal list with one test per name, argument type conversion) and the answer details; [ADDED] RO-11 (delivered or failed, with the headless pointer cause left open). Cancellation is documented, not required: a cancelled call aborts the server task only, and a held step already sent to the game finishes (at most 3600 ticks) and holds again. Source: simulation QA of 2026-10-21 (Q2, Q5, Q6, Q19, Q27, R28). Stable → RFC → Stable after Post-Update Review. |
 | 1.4.0 | 2026-10-22 | Agent (magic.run) | [MODIFIED] RO-3 (the run record as built: `ended_by`, `ended_at`, `exit_code`, `stop_all`) and RO-11 (a viewport warning; the open cause is isolated and its TBD removed). Output answers carry the scene-hash note once, as 1.3.0 said. Stable → RFC → Stable after Post-Update Review. |
 | 1.5.0 | 2026-10-26 | Agent (magic.spec) | [ADDED] The runtime operations `game.pause` and `game.body`, the `action` input step with its release (RO-7) and the touch `move` phase, used by the scenario tool. Stable → RFC → Stable after Post-Update Review. The file map and references name the `tools/game/` modules. |
+| 1.6.0 | 2026-10-29 | Agent (magic.spec) | [ADDED] The runtime methods `project.state` and `project.command` in the operations table, realized in [l2-project-adapter.md](l2-project-adapter.md). Stable → RFC → Stable after Post-Update Review. |

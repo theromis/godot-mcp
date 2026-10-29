@@ -1,13 +1,13 @@
 # Implementation Plan
 
-**Version:** 1.7.1
-**Generated:** 2026-10-21
-**Based on:** .design/main/INDEX.md v1.7.0
+**Version:** 1.8.0
+**Generated:** 2026-10-29
+**Based on:** .design/main/INDEX.md v1.8.0
 **Status:** Active
 
 ## Overview
 
-The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unreleased changes at commit 94e4540), so Phases 0 and 1 describe what is already implemented and verified. Phase 2 closes the gaps the first analysis found: a shipped-artifact hygiene gap, a stale comment, an unverified security property, and contributor guidance for the specification-driven workflow. Phase 3 adds the agent feedback channel: tools that let an agent record what is missing or broken and hand the maintainers a scrubbed report as text or as an approved issue submission. Phase 4 splits the product into one release line per Godot minor version (4.5, 4.6, 4.7) with the development line on `master` targeting Godot 4.8, rewrites the release procedure around carrying changes between lines and releasing each line on its own, and fills the security policy and contributor guide. Phase 5 adds repository stewardship: a portable agent skill that triages, plans, fixes, answers, reviews, merges and closes issues and pull requests within autonomy limits, keeps a Kanban board, and announces when a release is due and what it holds for each Godot line, installed in this repository with its profile, workflows, forms and guide changes. Phase 6 records the series of contributor pull requests that gave the server a running-game channel, a debugger client, a language-server client and the authoring tools, and the specifications written for them. Phase 7 adds controlled time: holding a running game still at the start of a physics tick and stepping it by exact or conditional ticks over the existing debugger channel, specified before the code. Phase 8 adds script reading and fragment editing to the authoring tools, through the editor when it is connected and through the file when it is not, after a feasibility check of the script editor on a real engine. Phase 9 brings the product in line with the eleven specifications amended from the simulation QA of 2026-10-21: the named project wins over the editor, the running-game guards keep their promise, the file fallbacks accept what the editor accepts, and answers, hints and defaults say what happened. Roadmap concepts wait in the Backlog until their open questions are answered.
+The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unreleased changes at commit 94e4540), so Phases 0 and 1 describe what is already implemented and verified. Phase 2 closes the gaps the first analysis found: a shipped-artifact hygiene gap, a stale comment, an unverified security property, and contributor guidance for the specification-driven workflow. Phase 3 adds the agent feedback channel: tools that let an agent record what is missing or broken and hand the maintainers a scrubbed report as text or as an approved issue submission. Phase 4 splits the product into one release line per Godot minor version (4.5, 4.6, 4.7) with the development line on `master` targeting Godot 4.8, rewrites the release procedure around carrying changes between lines and releasing each line on its own, and fills the security policy and contributor guide. Phase 5 adds repository stewardship: a portable agent skill that triages, plans, fixes, answers, reviews, merges and closes issues and pull requests within autonomy limits, keeps a Kanban board, and announces when a release is due and what it holds for each Godot line, installed in this repository with its profile, workflows, forms and guide changes. Phase 6 records the series of contributor pull requests that gave the server a running-game channel, a debugger client, a language-server client and the authoring tools, and the specifications written for them. Phase 7 adds controlled time: holding a running game still at the start of a physics tick and stepping it by exact or conditional ticks over the existing debugger channel, specified before the code. Phase 8 adds script reading and fragment editing to the authoring tools, through the editor when it is connected and through the file when it is not, after a feasibility check of the script editor on a real engine. Phase 9 brings the product in line with the eleven specifications amended from the simulation QA of 2026-10-21: the named project wins over the editor, the running-game guards keep their promise, the file fallbacks accept what the editor accepts, and answers, hints and defaults say what happened. Phase 10 adds the project adapter: a project names one development-only script that registers its own states and commands, with the registration contract of godot-dev-bridge so its adapters move over unchanged, and the running-game tools read and run them by name; a feasibility test of how the engine reports a script error inside the adapter comes first. Roadmap concepts wait in the Backlog until their open questions are answered.
 
 ## Phase 0 — Requirements (Layer 1: Concept)
 
@@ -110,6 +110,16 @@ The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unrelease
 - [x] Editor and runtime: **Godot Editor Addon** 1.6.0, **Game Runtime Channel** 1.4.0 [L2]
 - [x] User-facing text and validation
 - [x] Carried to `godot-v4.7`, `godot-v4.6`, `godot-v4.5` (one local commit each); pushing gated on approval
+
+## Phase 10 — Project Adapter (Layers 1 and 2)
+
+*Specified first; a feasibility test on a real engine gates the error reporting. Requires Phase 6 (the runtime channel) and Phase 7 (the held dispatch). Left out by decision: a command-line client, a second channel into the game, an evaluator and runs that outlive the server (l1-project-adapter.md §7). See [TASKS.md](TASKS.md).*
+
+- [ ] **Project Adapter** ([l1-project-adapter.md](specifications/l1-project-adapter.md)) [L1]
+- [ ] **Project Adapter Runtime** ([l2-project-adapter.md](specifications/l2-project-adapter.md)) [L2]
+- [ ] Amendments: Runtime Observability 1.3.0 (RO-1, RO-6), Tool Catalog 1.8.0, Game Runtime Channel 1.6.0
+- [ ] User-facing text and validation
+- [ ] Carried to `godot-v4.7`, `godot-v4.6`, `godot-v4.5`; pushing gated on approval
 
 ## Backlog
 
