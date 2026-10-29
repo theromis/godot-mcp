@@ -261,13 +261,13 @@ async fn an_unknown_argument_is_refused_with_its_name_and_the_accepted_ones() {
     let project = project_dir();
     let result = call(
         "godot_create_script",
-        json!({"script_path": "res://patch.gd", "content": "extends SceneTree\n",
+        json!({"script_path": "res://patch.gd", "contents": "extends SceneTree\n",
                "project_path": project.path()}),
     )
     .await;
     assert!(result.is_error);
     let shown = text(&result);
-    assert!(shown.contains("Unknown parameter 'content'"), "{shown}");
+    assert!(shown.contains("Unknown parameter 'contents'"), "{shown}");
     for accepted in [
         "'script_path'",
         "'file_path'",
