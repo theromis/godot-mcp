@@ -175,3 +175,45 @@ fn supported_lines_are_listed_and_the_development_line_is_not() {
         );
     }
 }
+
+/// Parses `X.Y.Z` into a comparable triple.
+fn triple(version: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = version.split('.');
+    let triple = (
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+    );
+    parts.next().is_none().then_some(triple)
+}
+
+#[test]
+fn development_version_is_newer_than_the_last_release() {
+    // `master` is never released, but it must report a number above the newest release in the
+    // changelog; otherwise a build of `master` claims to be an older release. A release commit
+    // on `master` moves the development version to the next patch with `-dev`.
+    let version = env!("CARGO_PKG_VERSION");
+    if !version.contains("-dev") {
+        return;
+    }
+    let core = version.split(['-', '+']).next().unwrap_or(version);
+    let current = triple(core).unwrap_or_else(|| panic!("version {version} has no X.Y.Z core"));
+
+    let changelog = read("CHANGELOG.md");
+    let newest = changelog
+        .lines()
+        .filter_map(|line| line.strip_prefix("## ["))
+        .filter_map(|rest| triple(rest.split(']').next()?))
+        .max()
+        .expect("CHANGELOG.md has no `## [X.Y.Z]` release heading");
+
+    assert!(
+        current > newest,
+        "development version {version} is not newer than the newest released {}.{}.{} in \
+         CHANGELOG.md; set Cargo.toml and addons/godot_mcp/plugin.cfg to the next patch with \
+         -dev and run cargo build",
+        newest.0,
+        newest.1,
+        newest.2
+    );
+}

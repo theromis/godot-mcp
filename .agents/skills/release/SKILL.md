@@ -131,9 +131,12 @@ A release covers every line in `.github/lines`. Work on the branches or on one w
    - Heading `## [0.5.1] - YYYY-MM-DD`, then Added / Changed / Fixed / Security, written for users: behaviour changes first, nothing about planning or tasks. Mark what applies to some lines only ("Godot 4.6 only: …").
    - No compare link for the version itself: commits of different lines are not comparable. Do move the `[Unreleased]` link at the end of the file to `compare/vX.Y.Z...master` of the new release.
    - Check it: `bash .github/scripts/release-notes.sh v0.5.1`.
+   - Move the development version of `master` past the release: set `Cargo.toml` and `addons/godot_mcp/plugin.cfg` to the next patch with `-dev`, for example `0.5.2-dev+godot.4.8` after releasing 0.5.1 (`master` is never released, so it does not take the release number itself). Without this `master` keeps reporting the version of an older release.
 
    ```bash
-   git add CHANGELOG.md
+   cargo build                                   # updates Cargo.lock
+   cargo test --test version_sync_test
+   git add CHANGELOG.md Cargo.toml Cargo.lock addons/godot_mcp/plugin.cfg
    git commit -m "chore(release): godot-mcp 0.5.1"
    ```
 
