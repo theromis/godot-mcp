@@ -275,7 +275,7 @@ static func _locate(root: Object, path: String, writing: bool) -> Dictionary:
         var current: Variant = target.get(segments[index])
         if current == null:
             var verb_null := "changed" if writing else "read"
-            return {"error": R.err(R.BAD_PARAMS, "Property '%s' holds no resource (it is null or not a property of %s), so '%s' cannot be %s through it. Assign a resource to '%s' first." % [segments[index], target.get_class(), path, verb_null, segments[index]])}
+            return {"error": R.err(R.BAD_PARAMS, "Property '%s' is null (or not a property of %s), not a resource, so '%s' cannot be %s through it. Assign a resource to '%s' first." % [segments[index], target.get_class(), path, verb_null, segments[index]])}
         if not current is Resource:
             var verb := "changed" if writing else "read"
             var slash := "/".join(segments)

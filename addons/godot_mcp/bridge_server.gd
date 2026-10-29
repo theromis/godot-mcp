@@ -768,22 +768,22 @@ func get_node_properties(peer: WebSocketPeer, cmd_id: String, params: Dictionary
         return
 
     var wanted: Array = params.get("properties", [])
-    for name: Variant in wanted:
-        if not name is String:
-            send_error(peer, cmd_id, "Parameter 'properties' must be an array of property names, got %s" % describe_value(name))
+    for prop_path: Variant in wanted:
+        if not prop_path is String:
+            send_error(peer, cmd_id, "Parameter 'properties' must be an array of property names, got %s" % describe_value(prop_path))
             return
 
     var props: Dictionary = {}
     if not wanted.is_empty():
         # Only the named properties, each of which may step through resources with ':'.
         var errors: Dictionary = {}
-        for name: String in wanted:
-            var resolved: Dictionary = resolve_property(target_node, name, false)
+        for prop_path: String in wanted:
+            var resolved: Dictionary = resolve_property(target_node, prop_path, false)
             if resolved.has("error"):
-                errors[name] = resolved["error"]
+                errors[prop_path] = resolved["error"]
             elif not resolved.has("skip"):
                 var holder: Object = resolved["object"]
-                props[name] = {
+                props[prop_path] = {
                     "type": property_type_name(resolved["info"]),
                     "value": describe_value(holder.get(str(resolved["property"]))),
                 }
@@ -810,21 +810,21 @@ func get_node_properties(peer: WebSocketPeer, cmd_id: String, params: Dictionary
 ## Writing refuses a resource saved outside the edited scene: a .tres file or another scene's
 ## sub-resource is shared, and changing it here would change every scene that uses it.
 ## Returns {"object", "property", "info"}, {"skip": true} for a requested script, or {"error": String}.
-func resolve_property(node: Node, name: String, writing: bool) -> Dictionary:
+func resolve_property(node: Node, prop_path: String, writing: bool) -> Dictionary:
     var holder: Object = node
-    var leaf: String = name
-    if name.contains(":"):
-        var located: Dictionary = RtLive._locate(node, name, writing)
+    var leaf: String = prop_path
+    if prop_path.contains(":"):
+        var located: Dictionary = RtLive._locate(node, prop_path, writing)
         if located.has("error"):
             var failure: Dictionary = located["error"]["error"]
-            return {"error": str(failure.get("message", "Cannot resolve '%s'" % name))}
+            return {"error": str(failure.get("message", "Cannot resolve '%s'" % prop_path))}
         if bool(located.get("skip", false)):
             return {"skip": true}
         if writing:
             for resource: Resource in located["resources"]:
                 var problem: String = foreign_resource_problem(resource)
                 if not problem.is_empty():
-                    return {"error": "'%s' %s" % [name, problem]}
+                    return {"error": "'%s' %s" % [prop_path, problem]}
         holder = located["target"]
         leaf = str(located["leaf"])
     for prop: Dictionary in holder.get_property_list():
@@ -832,7 +832,7 @@ func resolve_property(node: Node, name: String, writing: bool) -> Dictionary:
             return {"object": holder, "property": leaf, "info": prop}
     if holder == node:
         return {"error": "Unknown property '%s' on %s" % [leaf, node.get_class()]}
-    return {"error": "Unknown property '%s' on %s (in '%s'); read the resource's properties with this tool to see their names" % [leaf, holder.get_class(), name]}
+    return {"error": "Unknown property '%s' on %s (in '%s'); read the resource's properties with this tool to see their names" % [leaf, holder.get_class(), prop_path]}
 
 ## "" when the resource belongs to the edited scene alone: built into it, or not saved anywhere
 ## yet. Otherwise why changing it from this scene is refused and what to do instead.
