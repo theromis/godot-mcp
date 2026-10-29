@@ -1,6 +1,6 @@
 # Project Adapter
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Stable
 **Layer:** concept
 
@@ -40,7 +40,7 @@ godot-dev-bridge, a separate command-line tool by the same maintainer, proved a 
 - **PA-6 Failures in the project's code are reported, not hidden.** Every answer of the two tools, and the run's status, say whether the adapter was named, loaded and registered, which registrations were refused, and why. A script error the engine logs while a provider or a command runs fails that provider's entry or that command with the error's text; other errors and warnings logged meanwhile come with the answer.
 - **PA-7 Providers are isolated.** A provider that is missing, no longer valid or failing answers an error for itself only; the others still answer.
 - **PA-8 One conversion, bounded answers.** Provider and command values are converted to JSON exactly as property reads of the running game convert them. An answer larger than the bound the implementation fixes is not returned: the call fails with the size of each requested state and asks for fewer names. Nothing is cut silently.
-- **PA-9 Held games and deferred effects.** A held game reads state and runs commands — they are reads and explicit changes (CT-2) and need no time to pass, so CT-8 does not refuse them. The answer is what the provider or the handler returned at once; whatever the project's code defers or awaits takes effect when the game next advances, so an agent steps before reading the result.
+- **PA-9 Held games and deferred effects.** A held game reads state and runs commands — they are reads and explicit changes (CT-2) and need no time to pass, so CT-8 does not refuse them. The answer is what the provider or the handler returned at once; whatever the project's code defers (a deferred call, a timer, a signal) takes effect when the game next advances, so an agent steps before reading the result. A provider or handler that awaits is not supported: the engine logs a script error when it is called, and the call fails with that error (PA-6). [MODIFIED]
 - **PA-10 Wherever the component runs, and only there.** The in-game component loads the adapter once when it starts, in a managed process run and in editor Play alike. A game started without the component (RO-4) never loads it.
 
 ## 4. Detailed Design
@@ -99,3 +99,4 @@ sequenceDiagram
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-29 | Agent (magic.spec) | Created from the comparison with godot-dev-bridge: the one capability of that tool godot-mcp lacked is the project adapter, so its contract is brought over unchanged, with failures in the project's code reported through the engine's log instead of hidden. Its command-line client, file channel, evaluator and long-lived sessions are left out, with reasons. Promoted to Stable after Post-Update Review. |
+| 1.1.0 | 2026-10-29 | Agent (magic.run) | [MODIFIED] PA-9: a provider or handler that awaits is not supported and fails through PA-6; the first version assumed it would hand back at its first `await`, which a real engine contradicts (measured by the feasibility test). Stable → RFC → Stable after Post-Update Review. |

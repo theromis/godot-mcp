@@ -1,6 +1,6 @@
 # Project Adapter Runtime
 
-**Version:** 1.0.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-project-adapter.md
@@ -28,7 +28,7 @@ The runtime already has a channel into the game, a value encoding and an output 
 - Addon scripts declare no `class_name` and are loaded by path; an adapter's `register(registry)` receives the registry untyped, as in godot-dev-bridge.
 - [DR] Two tools, `godot_game_state` and `godot_game_command`, not one tool with an action: the read is annotated read-only and repeatable, the command destructive and not repeatable, and one tool could carry only one of those annotations. Rejected: `godot_game_do` (says less than `command`); `godot_game_project` with an `action` (wrong annotations for one of the two uses). Override: `/magic.spec amend l2-project-adapter.md "one tool"`.
 - [DR] The answer bound is 256 KiB of JSON text: larger than any adapter answer treaker produces, small enough for an agent's context. Override: `/magic.spec amend l2-project-adapter.md "another bound"`.
-- Engine premise, checked before the registry is written (§6 step 1): the logger sees a script error raised inside a handler that the component calls through `Callable.call()` synchronously, on the main thread, with the script error type and not that of `push_error`. If the check fails, PA-6 is amended to attach every error logged during the call without failing it, before any code relies on the premise.
+- Engine facts, measured on the build named in `.github/godot-version` (4.8-beta1) by the end-to-end test `logger_sees_a_script_error_of_a_called_handler_at_once`: (1) a script error raised inside a handler that the component calls through `Callable.call()` is in the logger by the time the call returns, on the main thread, with the engine's script error type; its text is in the entry's `code`, the `rationale` is empty, and the handler returns null while the caller goes on; (2) `push_error` in a handler is logged with the plain error type, so the two are told apart; (3) a handler that awaits, called without `await`, makes the engine log a script error that names the *calling* function and ends that function, which returns its type's default; the function above it goes on; (4) `await handler.call(args)` from a coroutine runs an awaiting handler and a plain one alike. PA-6 stands on (1) to (3); (4) is not used, see §7.
 
 ## 4. Invariant Compliance
 
@@ -39,10 +39,10 @@ The runtime already has a channel into the game, a value encoding and an output 
 | PA-3 Only what was registered | `project.command` looks the name up in the registry only; there is no method-name path. An unknown name answers `NOT_FOUND` with `data.commands`, an unknown state name an `{error}` entry. `game.call` keeps its permit list and refusal list. |
 | PA-4 The project decides | No refusal list is applied to a registered command. `godot_game_command` is annotated `[false, true, false]` (read-only, destructive, idempotent) like `godot_game_call`; `godot_game_state` `[true, false, true]` like `godot_game_get`. The tools' descriptions say that a command does what the project wrote, which may include files. |
 | PA-5 Refusal is explicit | `refuse(message) -> Dictionary` returns `{"__bad_args__": str(message)}`, godot-dev-bridge's key; a result that is exactly that one key answers `BAD_PARAMS` with the message. |
-| PA-6 Failures reported | The output logger gains a mark (its next sequence number) and a read of the entries since a mark. Around `register`, each provider and each handler the component takes a mark; a logged entry of the engine's script error type makes that call fail (`GODOT_ERROR` for a command, `{error}` for a provider, the status `error` for `register`), and the other error and warning entries come back as `errors`. The status `{configured, path, loaded, error, states, commands, refused}` (`states` lists the provider names, `commands` maps each command name to its help) is in the hello, in every `project.*` answer and in `godot_get_run_status` for each run whose hello the server holds (every managed run; editor Play once its hello came through the relay). |
+| PA-6 Failures reported | The output logger gains a mark (its next sequence number) and a read of the entries since a mark. Around `register`, each provider and each handler the component takes a mark; a logged entry of the engine's script error type makes that call fail (`GODOT_ERROR` for a command, `{error}` for a provider, the status `error` for `register`), and the other error and warning entries come back as `errors`. Each call into the project's code sits in a function of its own in `rt_registry.gd` with a typed return (`call_provider`, `call_command`): a script error ends only the function it occurs in, which returns its type's default, so the caller finds the logged entry and an absent value and still answers, and nothing waits for a reply that would never come. The status `{configured, path, loaded, error, states, commands, refused}` (`states` lists the provider names, `commands` maps each command name to its help) is in the hello, in every `project.*` answer and in `godot_get_run_status` for each managed run (the server keeps the hello of a run it started; for editor Play the status is in the answers). |
 | PA-7 Isolation | `read_state` calls each named provider apart; one entry's failure leaves the others. |
-| PA-8 Conversion and bound | Values go through `rt.encode`, the encoder of `game.get`. When the JSON text of the result exceeds 262 144 bytes the method answers `BAD_PARAMS` with `data.sizes` (bytes per requested name) and a message to ask for fewer names. |
-| PA-9 Held games | `project.state` and `project.command` are not in the held refusal list (`Hold.refusal`) and need no held variant: they run inside the hold like `game.get` and `game.set`. A handler that awaits hands control back at its first `await`; the answer carries what the call returned at that moment, and the rest of the handler runs as the game advances. |
+| PA-8 Conversion and bound | Values go through `rt.encode`, the encoder of `game.get`. When the JSON text of the states together exceeds 262 144 bytes `project.state` answers `BAD_PARAMS` with `data.sizes` (bytes per requested name) and a message to ask for fewer names. A command's value over the same bound answers `GODOT_ERROR` that says the command ran, with its size: asking again would run it again, so the message asks for a smaller value instead. |
+| PA-9 Held games | `project.state` and `project.command` are added to the served list of the hold (`Hold.SERVED`; the hold refuses every method not on it) and need no held variant: they run inside the hold like `game.get` and `game.set`. A handler or provider that awaits is not supported: called plainly it makes the engine log a script error against the calling function and ends that function (fact 3 of §2), which PA-6 turns into a failed call; the answer says that handlers and providers must not await. What a handler defers (`call_deferred`, a timer, a signal) takes effect when the game next advances. |
 | PA-10 Wherever the component runs | Loading lives in the component, so a managed run and editor Play load it alike; `RUNTIME_FILES` in `runs.rs` gains the two scripts, so a private runtime copy carries them too. An adapter that extends `Node` and is not in the tree is freed in `_exit_tree`. |
 
 ## 5. Detailed Design
@@ -55,7 +55,7 @@ addons/godot_mcp/runtime/
 └── ops/
     ├── rt_registry.gd    the registry handed to register(registry)
     ├── rt_project.gd     adapter loading and status; project.state and project.command
-    └── rt_output.gd      gains mark() and since(mark) for PA-6
+    └── rt_output.gd      gains mark() and lines_since(mark) for PA-6
 src/
 ├── godot/runs.rs         RUNTIME_FILES gains the two scripts; the run summary shows `adapter`
 └── tools/game/
@@ -78,8 +78,9 @@ tests/
 | no adapter, or one that did not load | `UNSUPPORTED` | set `godot_mcp/adapter` with `godot_set_project_setting` and start the run again; read the status's `error` |
 | unknown command | `NOT_FOUND` | the registered names, and `godot_game_state` for their help |
 | refused arguments | `BAD_PARAMS` | the command's help |
-| script error, or a handler no longer valid | `GODOT_ERROR` | `godot_run_output` level `error` for the stack |
-| answer over the bound | `BAD_PARAMS` | ask for fewer names; `data.sizes` |
+| script error, an awaiting handler, or a handler no longer valid | `GODOT_ERROR` | `godot_run_output` level `error` for the stack; a handler must not await |
+| states over the bound | `BAD_PARAMS` | ask for fewer names; `data.sizes` |
+| a command's value over the bound | `GODOT_ERROR` | the command ran; have it return less |
 
 ### 5.3 Tools
 
@@ -100,7 +101,7 @@ Built on `master` and carried to `godot-v4.7`, `godot-v4.6` and `godot-v4.5`: no
 
 ## 6. Implementation Notes
 
-1. Feasibility first, on the Godot build of `.github/godot-version`: a handler that raises a script error inside `Callable.call()` from the component is seen by the logger synchronously, on the main thread, with the script error type and not that of `push_error`; and what `Callable.call()` returns for a handler that awaits. The result confirms the engine premise in §2 or triggers its amendment.
+1. Feasibility first, done: the end-to-end test `logger_sees_a_script_error_of_a_called_handler_at_once` pins the engine facts of §2 on the build of `.github/godot-version`; the awaiting handler turned out not to hand control back, which amended PA-9 here and in the concept.
 2. `rt_output.gd` mark and read, `rt_registry.gd`, `rt_project.gd`, the hello and `RUNTIME_FILES`, with the fixture adapter's real-game tests (registration, refusals, isolation, script errors, the bound, a held game, editor Play).
 3. The server tools, annotations and run status, with their protocol tests.
 4. Documentation and the check lists.
@@ -109,6 +110,7 @@ Built on `master` and carried to `godot-v4.7`, `godot-v4.6` and `godot-v4.5`: no
 ## 7. Drawbacks & Alternatives
 
 - **Errors from other threads**: an error another thread logs while a handler runs is attributed to that call. Accepted: the window is one synchronous call on the main thread, and the entry keeps its own text.
+- **Awaiting handlers**: supporting them would mean awaiting the call in a coroutine all the way up from the engine's message callback, and holding the reply until the handler ends, with a limit on how long. godot-dev-bridge does not support them either (it calls the handler plainly), so no adapter written for it awaits. Not worth the machinery; the failure is reported instead (PA-9). Revisit when a project needs a handler that waits.
 - **A typed registry argument**: rejected; it would need a `class_name` (forbidden in the addon) and would break godot-dev-bridge adapters that declare `register(registry)` untyped.
 
 ## Canonical References
@@ -129,3 +131,5 @@ Built on `master` and carried to `godot-v4.7`, `godot-v4.6` and `godot-v4.5`: no
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-29 | Agent (magic.spec) | Created with the project adapter concept: the registry and loader in the in-game component, failures detected through the output logger, the two methods and tools, the answer bound, documentation and the release lines; the logger's view of script errors left to a feasibility test. Promoted to Stable after Post-Update Review. |
+| 1.1.0 | 2026-10-29 | Agent (magic.run) | [MODIFIED] The engine facts measured by the feasibility test replace the premise (§2); PA-6 names the contained function per call; PA-9: an awaiting handler is not supported, with the measured reason, and §7 records the alternative. Stable → RFC → Stable after Post-Update Review. |
+| 1.1.1 | 2026-10-29 | Agent (magic.run) | The two methods are added to the served list of the hold, which refuses everything not on it (the first text said they needed no change); a command's value over the bound is a `GODOT_ERROR` that says the command ran. No other requirement changed. |

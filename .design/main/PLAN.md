@@ -115,10 +115,10 @@ The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unrelease
 
 *Specified first; a feasibility test on a real engine gates the error reporting. Requires Phase 6 (the runtime channel) and Phase 7 (the held dispatch). Left out by decision: a command-line client, a second channel into the game, an evaluator and runs that outlive the server (l1-project-adapter.md §7). See [TASKS.md](TASKS.md).*
 
-- [ ] **Project Adapter** ([l1-project-adapter.md](specifications/l1-project-adapter.md)) [L1]
-- [ ] **Project Adapter Runtime** ([l2-project-adapter.md](specifications/l2-project-adapter.md)) [L2]
-- [ ] Amendments: Runtime Observability 1.3.0 (RO-1, RO-6), Tool Catalog 1.8.0, Game Runtime Channel 1.6.0
-- [ ] User-facing text and validation
+- [x] **Project Adapter** ([l1-project-adapter.md](specifications/l1-project-adapter.md)) [L1]
+- [x] **Project Adapter Runtime** ([l2-project-adapter.md](specifications/l2-project-adapter.md)) [L2]
+- [x] Amendments: Runtime Observability 1.3.0 (RO-1, RO-6), Tool Catalog 1.8.0, Game Runtime Channel 1.6.0
+- [x] User-facing text and validation
 - [ ] Carried to `godot-v4.7`, `godot-v4.6`, `godot-v4.5`; pushing gated on approval
 
 ## Backlog
