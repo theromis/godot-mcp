@@ -8,6 +8,10 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ## [Unreleased]
 
+### Fixed
+
+- `godot_run_script` no longer reports success for a script Godot did not run. Godot 4.8 exits with code 0 when the script does not extend `SceneTree` or `MainLoop`, does not parse or cannot be opened; the answer is now an error with Godot's message in `load_error` and in `script_errors`, and the summary says the script did not run. A script whose `extends` (followed through base scripts and the project's `class_name`s) is not `SceneTree` or `MainLoop` is refused before Godot starts. Thanks to @theromis.
+
 ## [0.10.0] - 2026-10-29
 
 The AI can read and act in a game through the project's own adapter, delete files and create scripts and node metadata through the editor, and step into a node's resources with `:`. Tools now refuse arguments they do not declare, and several calls that used to look like success say what happened.
