@@ -8,6 +8,10 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ## [Unreleased]
 
+### Changed
+
+- The editor bridge port is derived from the project path when no port is set, so editors of several projects, such as git worktrees of one repository, can run at once, each reached by a server started in its own project directory. The plugin uses the project setting `godot_mcp/bridge_port`, then the editor's `GODOT_DEBUG_PORT`, then FNV-1a 32 of the canonical project path mapped to 10000–29999; the server uses `--debug-port`, then `GODOT_DEBUG_PORT`, then the same formula for the project found from its working directory, and `9333` outside any project. A plugin with no configured port also listens on `9333` while that is free, so configs that set `GODOT_DEBUG_PORT=9333` keep reaching the first editor. Editors started by `godot_launch_editor` get the server's port. The busy-port and unreachable-editor errors name where the port came from. Thanks to @theromis.
+
 ## [0.11.0] - 2026-10-30
 
 A level can be assembled from saved scenes, typed array and dictionary properties are set element by element, and the code tools stop answering from another project's editor. Several calls that used to fail quietly now say what happened.
