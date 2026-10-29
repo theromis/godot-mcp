@@ -141,7 +141,7 @@ To report a vulnerability, follow [SECURITY.md](SECURITY.md). Never open a publi
 | `godot_open_scene` | Editor | Opens a scene by `res://` path. If that tab is already open and the file on disk has changed, reloads it and drops its undo history. A reload over unsaved editor changes, typed by hand or made by a tool, is refused unless you pass `discard: true`; `reload: true` reloads an open scene even when the file is unchanged. |
 | `godot_save_scene` | Editor | Saves the active scene. Names in `scripts_saved` any open script tab with unsaved typing that the editor saved with it; clean scripts are not reformatted. |
 | `godot_get_scene_tree` | Editor | Node hierarchy of the active scene, or of another open tab via `scene_path`. Paths are relative to the scene root. |
-| `godot_add_node` | Editor | Adds a node of any instantiable `Node` class or global script class (undoable). |
+| `godot_add_node` | Editor | Adds a node of any instantiable `Node` class or global script class, or an instance of a saved scene (`scene`), with optional initial `properties` (undoable). |
 | `godot_remove_node` | Editor | Removes a node, restoring order and ownership on undo. |
 | `godot_get_node_properties` | Editor | Reads a node's editor-visible properties as `{type, value}` in Godot's text format. |
 | `godot_set_node_properties` | Editor | Sets properties (undoable), converting values to the property's type: `[10, 20]` or `{"x": 10, "y": 20}` for vectors, `"#ff0000"` for colors, `res://` paths for resources. The whole call is rejected if any property is unknown or unconvertible. |
