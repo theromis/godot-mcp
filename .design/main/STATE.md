@@ -4,7 +4,7 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-10-29 12:49
+**Updated:** 2026-10-29 13:42
 **Phase:** 10 — Project Adapter
 **Status:** Blocked
 
@@ -12,7 +12,7 @@
 
 - **Task:** T-10E01 Carry to the release lines (after validation)
 - **Spec:** l2-ci-release-pipeline.md §4 (DS-8)
-- **Next Action:** T-10E01 and any other open tasks need user or blocker action — see STATE.md ## Blockers / the phase's ## Detailed Tracking, then run /magic.run main
+- **Next Action:** Run /magic.task main to update the plan
 
 ## Progress
 
