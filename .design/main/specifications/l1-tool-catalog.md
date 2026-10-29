@@ -1,6 +1,6 @@
 # Tool Catalog
 
-**Version:** 1.7.0
+**Version:** 1.8.0
 **Status:** Stable
 **Layer:** concept
 
@@ -17,6 +17,7 @@ Defines the set of MCP tools godot-mcp offers, how each one chooses between the 
 - [l1-content-authoring.md](l1-content-authoring.md) - Tools for creating scenes and resources, attaching scripts, connecting signals and changing project settings. [MODIFIED]
 - [l1-runtime-observability.md](l1-runtime-observability.md) - Tools for observing and driving a running game, and debugging a managed one. [MODIFIED]
 - [l1-code-intelligence.md](l1-code-intelligence.md) - GDScript queries answered by Godot's language server. [ADDED]
+- [l1-project-adapter.md](l1-project-adapter.md) - The project's own states and commands in a running game (PA-1 to PA-10). [ADDED]
 
 ## 1. Motivation
 
@@ -84,6 +85,8 @@ Agents call tools without seeing the implementation; a tool's contract has to be
 | `godot_game_tree`, `godot_game_get`, `godot_game_signals`, `godot_game_snapshot` | game | no | Live tree, properties, signals, summary of the running game [ADDED] |
 | `godot_game_set`, `godot_game_call`, `godot_game_observe` | game | running game only | Property writes, including a `/` Object or Dictionary path (an unknown property is an error), permitted method calls, short signal observation [MODIFIED] |
 | `godot_game_input`, `godot_game_input_release`, `godot_game_wait`, `godot_game_physics` | game | running game only | Key, Input Map action, mouse, touch and gamepad input, gestures, drags along a path or a circle, waits for frames, a node, a signal, a property value or a newer scene, time scale, a step of N physics ticks [ADDED] |
+| `godot_game_state` | game | no | Values of the state the project's adapter registered, the adapter's status and its commands with their help [ADDED] |
+| `godot_game_command` | game | what the project's command does | Runs one command the project's adapter registered, by name, with a dictionary of arguments [ADDED] |
 | `godot_game_scenario` | game | managed process run only | One held play-through: Input Map actions and pointers, a known number of physics ticks per step, body and property snapshots, logs; one scenario per run; releases all input when it ends [ADDED] |
 | `godot_game_screenshot` | game (windowed) | session memory of the run | PNG of the game, an optional frame sheet, pixel diff against the previous capture, named baselines with a region and a tolerance [ADDED] |
 | `godot_game_record` | game (windowed) | PNG files below the system temporary directory | Up to 240 frames of the game window written after the last grab; optional gif or mp4 through `ffmpeg`; refused while held [ADDED] |
@@ -135,3 +138,4 @@ graph TD
 | 1.5.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] TL-10 (the named project wins over a connected editor) and TL-11 (honest stop and status answers); [MODIFIED] TL-1 (ranges, object schemas), TL-5 (every project file argument; node-name question left open), TL-7 (hint classes, no generic hint, `res://` spelling). Source: simulation QA of 2026-10-21 (Q1, Q4, Q12, Q20, Q21, Q22, Q24, Q25, Q26, Q28). Stable → RFC → Stable after Post-Update Review. |
 | 1.6.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] TL-5: node names are data and any name Godot accepts is accepted; the identifier pattern stays for class identifiers. Resolves the open question of 1.5.0. `AGENTS.md` ("Identifier Sanitization") must follow. Stable → RFC → Stable after Post-Update Review. |
 | 1.7.0 | 2026-10-26 | Agent (magic.spec) | [ADDED] `godot_create_project`, `godot_game_scenario` and `godot_check_voxel_model` in the catalog; [MODIFIED] the input row (Input Map actions) and TL-6 (a helper program the server waits for). Stable → RFC → Stable after Post-Update Review. |
+| 1.8.0 | 2026-10-29 | Agent (magic.spec) | [ADDED] `godot_game_state` and `godot_game_command` in the catalog and the link to the project adapter concept. Stable → RFC → Stable after Post-Update Review. |

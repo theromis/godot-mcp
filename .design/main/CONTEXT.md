@@ -1,6 +1,6 @@
 # Project Context
 
-**Generated:** 2026-10-22
+**Generated:** 2026-10-29
 
 ## Active Technologies
 
@@ -14,12 +14,17 @@
 │   ├── rules/
 │   ├── skills/
 │   └── workflows/
+├── .claude/
+│   ├── commands/
+│   ├── rules/
+│   └── skills/
 ├── .design/
 │   ├── .version
 │   ├── INDEX.md
 │   ├── RULES.md
 │   ├── main/
 │   └── workspace.json
+├── .editorconfig
 ├── .env.example
 ├── .gitattributes
 ├── .github/
@@ -35,9 +40,9 @@
 ├── .gitignore
 ├── .magic/
 ├── .markdownlint-cli2.jsonc
-├── .vscode/
 ├── AGENTS.md
 ├── CHANGELOG.md
+├── CLAUDE.md
 ├── CONTRIBUTING.md
 ├── Cargo.lock
 ├── Cargo.toml
@@ -47,7 +52,8 @@
 ├── addons/
 │   └── godot_mcp/
 ├── docs/
-│   └── feature-parity.md
+│   ├── feature-parity.md
+│   └── game-checks.md
 ├── examples/
 │   └── fake_gh.rs
 ├── project.godot
@@ -77,7 +83,9 @@
     ├── detach_test.rs
     ├── editor_e2e_test.rs
     ├── feedback_test.rs
+    ├── model_chain_e2e_test.rs
     ├── runtime_e2e_test.rs
+    ├── scenario_e2e_test.rs
     ├── server_test.rs
     ├── stdio_protocol_test.rs
     ├── steward_test.rs
