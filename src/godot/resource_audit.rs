@@ -14,6 +14,8 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use crate::paths::skipped_by_godot;
+
 /// Files larger than this are only fingerprinted, never read.
 const MAX_READ: u64 = 16 * 1024 * 1024;
 
@@ -379,10 +381,11 @@ fn walk(project: &Path, dir: &Path, visit: &mut dyn FnMut(String, &Path)) {
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
+        if skipped_by_godot(&path, kind.is_dir()) {
+            continue;
+        }
         if kind.is_dir() {
-            if !matches!(name, ".godot" | ".git") {
-                walk(project, &path, visit);
-            }
+            walk(project, &path, visit);
             continue;
         }
         if !kind.is_file() || !is_text_resource(name) {
@@ -609,5 +612,23 @@ shader_parameter/speed = 3.0
         assert_eq!(uid_text(5_610_405_182_049_170_494), "uid://cl6ys3a78gc43");
         assert_eq!(uid_text(0x7FFF_FFFF_FFFF_FFFF), "uid://d4n4ub6itg400");
         assert_eq!(uid_text(0), "uid://a");
+    }
+
+    #[test]
+    fn folders_godot_does_not_scan_are_not_audited() {
+        let dir = tempfile::tempdir().expect("project");
+        let root = dir.path();
+        for folder in [".hidden", "docs", "nested"] {
+            fs::create_dir(root.join(folder)).expect("mkdir");
+            fs::write(root.join(folder).join("pond.tscn"), EDITOR_SAVED).expect("scene");
+        }
+        fs::write(root.join("docs/.gdignore"), "").expect("gdignore");
+        fs::write(root.join("nested/project.godot"), "").expect("nested");
+        let snapshot = TextResourceSnapshot::take(root);
+        assert!(snapshot.files.is_empty());
+        for folder in [".hidden", "docs", "nested"] {
+            fs::write(root.join(folder).join("pond.tscn"), HEADLESS_SAVED).expect("rewrite");
+        }
+        assert!(snapshot.damage_since(root).is_empty());
     }
 }
