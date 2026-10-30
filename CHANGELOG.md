@@ -8,7 +8,19 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-30
+
+A level can be assembled from saved scenes, typed array and dictionary properties are set element by element, and the code tools stop answering from another project's editor. Several calls that used to fail quietly now say what happened.
+
+### Added
+
+- `godot_add_node` takes `scene`, the `res://` path of a saved scene, instead of `node_type`. The scene is instanced the way the editor's Instantiate Child Scene does, so it is saved as an instance that keeps the scene's uid, and the whole call is one undo step. A missing file, a resource that is not a scene, the edited scene itself and a scene that contains it are refused. `properties` sets initial values (position, transform, ...) with the conversions of `godot_set_node_properties`; a bad value adds nothing. Thanks to @theromis.
+
 ### Fixed
+
+- `godot_set_node_properties` and `godot_add_node` convert a JSON array or object for a typed array or dictionary property (`Array[NodePath]`, `Dictionary[String, int]`) element by element. A typed array used to keep only elements of its own type, so `["../Bed"]` for an `Array[NodePath]` left the property empty while the answer said `updated: true`. An element that does not convert now refuses the whole call and names the element; a Godot literal is parsed and its elements are checked the same way. `godot_get_node_properties` reports the element type. Thanks to @theromis.
+
+- `godot_game_set` assigns a saved resource to an Object property from its `res://` path (`{"mesh": "res://quad.tres"}`) as `godot_set_node_properties` does, instead of failing with "Property 'mesh' is <Object#null> after writing". A missing file, a path outside the project and a resource of another class are refused before anything is written, naming the path and the class expected; writing `null` to an Object property no longer counts as a write that did not take. Thanks to @theromis.
 
 - `godot_validate_script` and the `godot_code_*` tools no longer report diagnostics from another project's language server. With several editors open, the one holding port 6005 answered for every project, so a script just created in your project was a missing preload and its `class_name` an unknown type. A language server that says it has another project open is now refused, and a private headless editor of the right project is used instead; that editor is started again when another script of the project changed since it started, so a new `class_name` is known. `godot_create_script` with a `project_path` naming the editor's project now tells the editor about a new script too. Thanks to @theromis.
 
@@ -300,7 +312,7 @@ part of every release), and note the behaviour changes below.
   property operations, viewport capture), headless CLI fallback for version, script validation
   and launching the editor.
 
-[Unreleased]: https://github.com/zeegzoog/godot-mcp/compare/v0.10.0...master
+[Unreleased]: https://github.com/zeegzoog/godot-mcp/compare/v0.11.0...master
 [0.4.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.1.0...v0.2.0
