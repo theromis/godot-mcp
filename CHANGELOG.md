@@ -10,6 +10,7 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ### Fixed
 
+- A scene or resource saved by a `godot_run_script` script keeps its `uid://` references. Headless Godot's saver asks for uids through a callback only the editor's file system installs, so it writes none; the server now writes back what the editor would have written into every `.tscn`/`.tres` the script rewrote: the file's own uid (the one it had, or a new one for a new file), the uid of each `[ext_resource]` whose target has one, and no `shader_parameter/<name> = null` lines for uniforms the script never set. `resource_repairs` lists what was written back. When the editor has the same project open, it refreshes the repaired files (`editor_refresh`), so its file system and uid cache know the new uids. `resource_damage` and the warning remain for a file the server could not write. Thanks to @theromis.
 - `godot_run_script` no longer reports success for a script Godot did not run. Godot 4.8 exits with code 0 when the script does not extend `SceneTree` or `MainLoop`, does not parse or cannot be opened; the answer is now an error with Godot's message in `load_error` and in `script_errors`, and the summary says the script did not run. A script whose `extends` (followed through base scripts and the project's `class_name`s) is not `SceneTree` or `MainLoop` is refused before Godot starts. Thanks to @theromis.
 
 ## [0.10.0] - 2026-10-29
