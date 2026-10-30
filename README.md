@@ -57,7 +57,7 @@ Install the Godot MCP server (https://github.com/zeegzoog/godot-mcp) for this Go
 
 The addon warns in the editor's Output panel when your Godot is newer than the release was made for, and refuses to start in an older Godot.
 
-**2. Enable the plugin.** Copy `addons/godot_mcp` from the addon archive into your project's `addons/` folder, open the project, and enable **Godot MCP Bridge** in **Project → Project Settings → Plugins**. The bridge listens on port `9333`. The addon is editor-only and leaves itself out of exported games while the plugin is enabled; if you export with it disabled, add `addons/godot_mcp/*` to the export preset's exclude filter.
+**2. Enable the plugin.** Copy `addons/godot_mcp` from the addon archive into your project's `addons/` folder, open the project, and enable **Godot MCP Bridge** in **Project → Project Settings → Plugins**. The bridge listens on a port derived from the project's path, which a server started in the project directory derives too (see [Bridge port](#bridge-port)), so editors of several projects or git worktrees can run at once. The addon is editor-only and leaves itself out of exported games while the plugin is enabled; if you export with it disabled, add `addons/godot_mcp/*` to the export preset's exclude filter.
 
 **3. Register the server** in your MCP client, pointing `command` at the extracted binary and `GODOT_PATH` at your Godot executable:
 
@@ -68,8 +68,7 @@ The addon warns in the editor's Output panel when your Godot is newer than the r
       "command": "/path/to/godot-mcp",
       "args": [],
       "env": {
-        "GODOT_PATH": "/path/to/Godot_v4.x-stable",
-        "GODOT_DEBUG_PORT": "9333"
+        "GODOT_PATH": "/path/to/Godot_v4.x-stable"
       }
     }
   }
@@ -95,7 +94,7 @@ The server reads its settings from CLI flags, the environment (e.g. the MCP clie
 | Variable | Flag | Default | Purpose |
 | --- | --- | --- | --- |
 | `GODOT_PATH` | `--godot-path` | auto-detect | Godot executable. If unset, the server tries a few common install locations, then `godot` on `PATH`; set it explicitly. A value that points to a missing file is not replaced: tools that run Godot fail and name the path. |
-| `GODOT_DEBUG_PORT` | `--debug-port` | `9333` | Editor bridge port. |
+| `GODOT_DEBUG_PORT` | `--debug-port` | derived | Editor bridge port. When unset, derived from the path of the project the server was started in, the way the plugin derives it; `9333` when the server runs outside any project. See [Bridge port](#bridge-port). |
 | `GODOT_MCP_LSP_PORT` | | `6005` | Port of a running editor's GDScript language server. The `godot_code_*` tools and `godot_validate_script` use it if an editor with the same project open listens there, and otherwise start a private headless editor of the project (started again when another script of the project changed). |
 | `GODOT_MCP_TOKEN` | | generated | Shared secret for the bridge. Normally unnecessary, see [Security](#security). |
 | `GODOT_CONSOLE_PATH` | `--godot-console-path` | | Windows console wrapper. Unused by the server; the editor end-to-end tests use it for editor logs. |
@@ -106,7 +105,15 @@ An empty value counts as "not set", so placeholders in a copied `.env.example` o
 
 In a `.env` file, put **Windows paths in single quotes** (`GODOT_PATH='C:\Program Files\Godot\Godot.exe'`). In double quotes a backslash starts an escape sequence and the whole file fails to load; the server logs a warning when that happens. See [.env.example](.env.example).
 
-The plugin picks its port from the project setting `godot_mcp/bridge_port` if you add one, otherwise from the editor's own `GODOT_DEBUG_PORT` environment variable, otherwise `9333`. Keep it equal to the server's port. Set the environment variable `GODOT_MCP_NO_BRIDGE=1` for an editor that must not open the bridge at all; the server does this for the private editor it starts for the language server. Add the project setting `godot_mcp/verbose` = `true` to log every client connection in the editor's Output panel. Editor Play loads the running-game runtime unless `godot_mcp/runtime_on_play` is `false`.
+### Bridge port
+
+The plugin picks its port from the project setting `godot_mcp/bridge_port` if you add one, otherwise from the editor's own `GODOT_DEBUG_PORT` environment variable, otherwise it derives one from the project's path. The server does the same: `--debug-port` or `GODOT_DEBUG_PORT` if set, otherwise the port derived from the project found from its working directory (the directory itself, a parent, or its only subdirectory with a `project.godot`). So a server started in a project directory finds that project's editor with no port setting at all, and editors of different projects, such as git worktrees of one repository, never compete for one port. An editor started by `godot_launch_editor` is given the server's port. Both log the port and where it came from (the editor in its Output panel, the server on stderr), and an unreachable or busy port is reported with that origin.
+
+The derived port is FNV-1a 32 of the canonical project path (symlinks resolved, no trailing slash; on Windows `/` separators and ASCII letters in lower case) in UTF-8, modulo 20000, plus 10000: a port from 10000 to 29999. [tests/bridge-port-vectors.json](tests/bridge-port-vectors.json) lists examples that both implementations are tested against. Two projects can, rarely, get the same port; the second editor then reports the busy port, and a `godot_mcp/bridge_port` setting (with the same `--debug-port` for the server) resolves it.
+
+Setups made before 0.10.1 used `9333`. A plugin without a configured port therefore also listens on `9333` while no other editor holds it, so a server with `GODOT_DEBUG_PORT=9333` in its config, or one started outside any project, still reaches the first editor opened. Remove `GODOT_DEBUG_PORT` from the server's config to have each server talk to its own project's editor.
+
+Set the environment variable `GODOT_MCP_NO_BRIDGE=1` for an editor that must not open the bridge at all; the server does this for the private editor it starts for the language server. Add the project setting `godot_mcp/verbose` = `true` to log every client connection in the editor's Output panel. Editor Play loads the running-game runtime unless `godot_mcp/runtime_on_play` is `false`.
 
 ## Security
 
@@ -162,7 +169,7 @@ Every tool takes only the parameters its schema lists (`additionalProperties: fa
 | `godot_read_script` | — | Reads an existing `.gd` script as the editor would save it: the editor's unsaved text when the script is open with unsaved changes (`dirty: true`), otherwise the file. Returns the text and a `version` label for it; `stale_tab: true` means an open tab still shows older text than the file, and `godot_resave_resources` with the path reloads it. Without the editor it reads the file. Scripts over 1 MiB are not handled. |
 | `godot_edit_script` | — | Replaces one fragment of an existing `.gd` script: `old_text` must occur exactly once, and `new_text` takes its place. With the editor the change is one undoable action and the script is saved; it is refused while the script has unsaved changes in the editor (save or discard them, then read again). Pass the `version` from `godot_read_script` to refuse the edit if the script changed since. Without the editor the file is replaced as a whole and keeps its line endings. Never creates a file. |
 | `godot_validate_script` | — | Checks a `.gd` file. When a language server is already running, lists its errors and warnings (`file:line:col`, code, message); a warning does not fail the check. Without one, `godot --headless --check-only` sees parse errors only and the answer says analyzer warnings were not checked. |
-| `godot_run_script` | Godot binary | Runs an `extends SceneTree` script headless (`--path` project, `-s` script, `user_args` after `--`). Returns the exit code, stdout, stderr, and each `SCRIPT ERROR` with its file and line. `timeout_seconds` defaults to 120 (max 600); on timeout the process tree is killed and the last output lines are included. A `SCRIPT ERROR` that leaves the main loop idle (the process stays up, as an error in `_init` does) stops the run then, and the answer says so, instead of waiting out the timeout. A script that does not extend `SceneTree` or `MainLoop` is refused before Godot starts; a script Godot could not load (parse error, wrong base, missing file) is an error with `load_error`, even though Godot exits with code 0. Paths outside the project are refused. A `.tscn`/`.tres` the script saves loses its `uid://` references and gets `null` for every shader uniform it never set (headless Godot has no editor file system and no renderer); `resource_damage` names what each rewritten file lost, so edit scenes through the editor tools instead. |
+| `godot_run_script` | Godot binary | Runs an `extends SceneTree` script headless (`--path` project, `-s` script, `user_args` after `--`). Returns the exit code, stdout, stderr, and each `SCRIPT ERROR` with its file and line. `timeout_seconds` defaults to 120 (max 600); on timeout the process tree is killed and the last output lines are included. A `SCRIPT ERROR` that leaves the main loop idle (the process stays up, as an error in `_init` does) stops the run then, and the answer says so, instead of waiting out the timeout. A script that does not extend `SceneTree` or `MainLoop` is refused before Godot starts; a script Godot could not load (parse error, wrong base, missing file) is an error with `load_error`, even though Godot exits with code 0. Paths outside the project are refused. Headless Godot saves a `.tscn`/`.tres` without `uid://` references and with `null` for every shader uniform the script never set; the server writes the uids back and removes those lines afterwards (`resource_repairs`), and an editor open on the project refreshes the files. `resource_damage` names what a file the server could not write still lacks. |
 | `godot_delete_file` | — | Deletes project files (`paths`, up to 64) with their `.uid`, `.import` and `.godot/imported` data. Refuses a file another project file still names by `res://` path or `uid://` unless `force: true`, and lists those `references`; refuses `project.godot`, `.godot/`, the Godot MCP addon, a `.uid`/`.import` whose file exists, and directories (an empty one with `allow_empty_dir: true`). All or nothing: while any path is `refused`, nothing is deleted. With the editor, open scene and script tabs of the files are closed (a tab with unsaved changes is refused), the FileSystem dock is updated and the files go to the system trash unless `trash: false`. Without the editor the files are deleted permanently and `rescan_needed` is true. `dry_run: true` only reports. |
 | `godot_resave_resources` | — | Refreshes the given `res://` files after external edits. With the editor, assets it already knows are re-imported synchronously and other files are re-scanned; an open script tab without unsaved changes is reloaded from its file (`reloaded_tabs`), and one with unsaved changes is kept (`unsaved_tabs`). A path it has never scanned is scanned first and listed under `reimported` only once a `.import` file exists; otherwise it is `not_scanned`. Without paths, rescans the whole project in the background. `wait: true` returns only after scanning and importing finish (up to 60s) and reports how many files were imported. Without the editor, runs `godot --headless --path <project> --import` and reports the sources whose `.import` sidecar appeared or changed. |
 | `godot_check_voxel_model` | Froxel | Exports one `.vox`, or up to 16 `models`, through `froxel mcp`, writes each `.glb` into the project, imports it and checks the `.import` sidecar. `preview: true` adds a Froxel path-traced PNG. See [Checking voxel model exports](#checking-voxel-model-exports). |
@@ -351,7 +358,7 @@ func _grant(args: Dictionary) -> Dictionary:
 ## How it works
 
 ```
-AI client <-stdio JSON-RPC-> godot-mcp <-WebSocket :9333-> addons/godot_mcp (inside the Godot editor)
+AI client <-stdio JSON-RPC-> godot-mcp <-WebSocket :<bridge port>-> addons/godot_mcp (inside the Godot editor)
                                  |
                                  +-> Godot binary (headless fallback)
 ```

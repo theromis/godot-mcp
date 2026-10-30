@@ -136,6 +136,17 @@ async fn start_editor_with(
     files: &[(&str, &str)],
     project_tail: &str,
 ) -> Editor {
+    start_editor_with_args(hook, helpers, files, project_tail, &[]).await
+}
+
+/// `start_editor_with`, passing `editor_args` to the editor as well.
+async fn start_editor_with_args(
+    hook: Option<&str>,
+    helpers: &str,
+    files: &[(&str, &str)],
+    project_tail: &str,
+    editor_args: &[&str],
+) -> Editor {
     let (godot, console) = godot_binaries();
     let dir = tempfile::tempdir().expect("project dir");
     let project = dir.path().to_path_buf();
@@ -152,6 +163,9 @@ async fn start_editor_with(
     std::fs::write(project.join("main.tscn"), MAIN_SCENE).expect("main.tscn");
     std::fs::write(project.join("script.gd"), "extends Node\n").expect("script.gd");
     for (name, text) in files {
+        if let Some(parent) = project.join(name).parent() {
+            std::fs::create_dir_all(parent).expect("fixture folder");
+        }
         std::fs::write(project.join(name), text).expect("fixture file");
     }
 
@@ -201,6 +215,7 @@ async fn start_editor_with(
     let child = Command::new(&console)
         .args(["--headless", "--editor", "--path"])
         .arg(&project)
+        .args(editor_args)
         .env("GODOT_DEBUG_PORT", port.to_string())
         .stdout(Stdio::from(log_file.try_clone().expect("clone log")))
         .stderr(Stdio::from(log_file))
@@ -1970,6 +1985,55 @@ async fn edit_script_replaces_one_fragment_and_never_overwrites_typing() {
     assert_eq!(file("notes.txt"), "hello\n");
 }
 
+/// Two scripts with the same file name in different folders are both open in the script
+/// editor, whose tabs then carry the parent folder ("b/x.gd"); each edits through its own tab.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn same_named_scripts_in_different_folders_edit_through_their_own_tabs() {
+    let a_text = "extends Node\n\nvar a = 1\n";
+    let b_text = "extends Node\n\nvar b = 1\n";
+    let editor = start_editor_with(
+        Some(SCRIPT_PROBE_HOOK),
+        SCRIPT_PROBE_HELPERS,
+        &[("a/x.gd", a_text), ("b/x.gd", b_text)],
+        "",
+    )
+    .await;
+    let bridge = &editor.bridge;
+    let file = |name: &str| std::fs::read_to_string(editor.project.join(name)).expect("file");
+    let edit = |path: &'static str, old: &str, new: &str| {
+        let params = json!({"script_path": path, "old_text": old, "new_text": new});
+        async move { bridge.send_command("edit_script", params).await }
+    };
+
+    edit("res://a/x.gd", "var a = 1", "var a = 2")
+        .await
+        .expect("edit a/x.gd while only it is open");
+    // b/x.gd is closed: the edit opens it next to a/x.gd, and both tabs get folder prefixes.
+    edit("res://b/x.gd", "var b = 1", "var b = 2")
+        .await
+        .expect("edit b/x.gd, which the edit opens next to a/x.gd");
+    assert_eq!(file("b/x.gd"), "extends Node\n\nvar b = 2\n");
+    edit("res://a/x.gd", "var a = 2", "var a = 3")
+        .await
+        .expect("edit a/x.gd while both are open");
+    edit("res://b/x.gd", "var b = 2", "var b = 3")
+        .await
+        .expect("edit b/x.gd while both are open");
+    assert_eq!(file("a/x.gd"), "extends Node\n\nvar a = 3\n");
+    assert_eq!(file("b/x.gd"), "extends Node\n\nvar b = 3\n");
+
+    let read = bridge
+        .send_command("read_script", json!({"script_path": "res://b/x.gd"}))
+        .await
+        .expect("read b/x.gd");
+    assert_eq!(read["text"], "extends Node\n\nvar b = 3\n", "{read}");
+    assert!(
+        read.get("editor_state").is_none(),
+        "the read matches the tab: {read}"
+    );
+}
+
 /// A script tab that shows older text than the file is reported by a read, reloaded by
 /// godot_resave_resources and by godot_create_script's overwrite, and an overwrite of a script
 /// with unsaved typing is refused.
@@ -2305,6 +2369,75 @@ async fn a_new_script_in_the_named_editor_project_is_picked_up_by_the_editor() {
         );
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
+}
+
+/// Creates `StreamLane` (class_name) through the editor and then a script that uses it as a
+/// type, and validates that script with a server whose language server port is `lsp_port`.
+async fn validate_a_script_using_a_class_created_just_before(
+    editor: &Editor,
+    lsp_port: u16,
+) -> godot_mcp::protocol::ToolResult {
+    use godot_mcp::cli_runner::CliRunner;
+    use godot_mcp::tools::ToolManager;
+    use std::sync::Arc;
+
+    let (godot, _) = godot_binaries();
+    let tools = Arc::new(
+        ToolManager::new(BridgeClient::new(editor.port), CliRunner::new(godot))
+            .with_working_dir(editor.project.clone())
+            .with_lsp_port(lsp_port),
+    );
+    let call = |name: &'static str, args: Value| {
+        let tools = Arc::clone(&tools);
+        async move { tools.call_tool(name, args).await }
+    };
+    let lane = call(
+        "godot_create_script",
+        json!({
+            "script_path": "res://world/stream_lane.gd",
+            "extends_class": "Path3D",
+            "class_name": "StreamLane",
+        }),
+    )
+    .await;
+    assert!(!lane.is_error, "{}", tool_text(&lane));
+    let current = call(
+        "godot_create_script",
+        json!({
+            "script_path": "res://world/stream_current.gd",
+            "content": "extends Node3D\n\n@export var lane_path: NodePath\n\nfunc lane() -> StreamLane:\n\tvar node: Node = get_node_or_null(lane_path)\n\tif node is StreamLane:\n\t\treturn node as StreamLane\n\treturn null\n",
+        }),
+    )
+    .await;
+    assert!(!current.is_error, "{}", tool_text(&current));
+    call(
+        "godot_validate_script",
+        json!({"script_path": "res://world/stream_current.gd"}),
+    )
+    .await
+}
+
+/// The project's own editor serves the language server. A class created through it and a script
+/// that uses that class right away validate clean: the editor's class list is not stale.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn a_script_using_a_class_created_just_before_validates_in_the_editors_language_server() {
+    let lsp_port = common::free_port();
+    let lsp_arg = lsp_port.to_string();
+    let editor = start_editor_with_args(None, "", &[], "", &["--lsp-port", &lsp_arg]).await;
+    let validated = validate_a_script_using_a_class_created_just_before(&editor, lsp_port).await;
+    assert!(!validated.is_error, "{}", tool_text(&validated));
+}
+
+/// The editor's language server is not reachable (its port was taken by another editor), so
+/// the headless check runs. It knows a class the editor registered moments ago.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn a_script_using_a_class_created_just_before_validates_in_the_headless_check() {
+    let editor = start_editor(false).await;
+    let validated =
+        validate_a_script_using_a_class_created_just_before(&editor, common::free_port()).await;
+    assert!(!validated.is_error, "{}", tool_text(&validated));
 }
 
 /// A second editor on a port that is taken says so, and says what it means for the server.
@@ -2766,7 +2899,8 @@ const DELETE_PROBE_HOOK: &str = r#"        "__test_delete_probe":
 
 /// godot_delete_file through the editor: a referenced script and a scene with unsaved changes are
 /// refused; a script with its .uid, an imported image with its .import and imported data, and an
-/// open scene are deleted, their tabs closed and the FileSystem dock updated.
+/// open scene are deleted, their tabs closed and the FileSystem dock updated. A reference from a
+/// nested project, which Godot does not scan, does not count.
 #[tokio::test]
 #[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
 async fn files_are_deleted_through_the_editor_with_companions_and_tabs() {
@@ -2786,6 +2920,11 @@ async fn files_are_deleted_through_the_editor_with_companions_and_tabs() {
                 "[gd_scene format=3]\n\n[ext_resource type=\"Script\" path=\"res://used.gd\" id=\"1\"]\n\n[node name=\"Uses\" type=\"Node\"]\nscript = ExtResource(\"1\")\n",
             ),
             ("old.gd", "extends Node\n"),
+            ("nested/project.godot", "config_version=5\n"),
+            (
+                "nested/uses_old.tscn",
+                "[gd_scene format=3]\n\n[ext_resource type=\"Script\" path=\"res://old.gd\" id=\"1\"]\n\n[node name=\"Uses\" type=\"Node\"]\nscript = ExtResource(\"1\")\n",
+            ),
             ("old_scene.tscn", simple_scene),
             ("dirty.tscn", simple_scene),
             (
@@ -3585,6 +3724,336 @@ async fn node_properties_step_through_the_scenes_own_resources() {
         std::fs::read_to_string(editor.project.join("shared_glow.tres")).expect("tres"),
         shared_before
     );
+}
+
+/// A class_name script written to disk while the editor is open is not in the editor's class
+/// list until the editor rescans, so its language server calls the class unknown. Validation
+/// registers the declaring script through the editor and asks again.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn a_class_written_behind_the_editors_back_is_registered_before_validation() {
+    use godot_mcp::cli_runner::CliRunner;
+    use godot_mcp::tools::ToolManager;
+    use std::sync::Arc;
+
+    let lsp_port = common::free_port();
+    let lsp_arg = lsp_port.to_string();
+    let editor = start_editor_with_args(None, "", &[], "", &["--lsp-port", &lsp_arg]).await;
+    std::fs::create_dir_all(editor.project.join("world")).expect("world dir");
+    std::fs::write(
+        editor.project.join("world/stream_lane.gd"),
+        "class_name StreamLane\nextends Path3D\n",
+    )
+    .expect("stream_lane.gd");
+    std::fs::write(
+        editor.project.join("world/stream_current.gd"),
+        "extends Node3D\n\nfunc lane(node: Node) -> StreamLane:\n\tif node is StreamLane:\n\t\treturn node as StreamLane\n\treturn null\n",
+    )
+    .expect("stream_current.gd");
+    let (godot, _) = godot_binaries();
+    let tools = Arc::new(
+        ToolManager::new(BridgeClient::new(editor.port), CliRunner::new(godot))
+            .with_working_dir(editor.project.clone())
+            .with_lsp_port(lsp_port),
+    );
+    let validated = tools
+        .call_tool(
+            "godot_validate_script",
+            json!({"script_path": "res://world/stream_current.gd"}),
+        )
+        .await;
+    assert!(!validated.is_error, "{}", tool_text(&validated));
+}
+
+const UID_PROBE_HOOK: &str = r#"        "__test_uid_probe":
+            var path: String = str(params.get("path", ""))
+            var id: int = ResourceLoader.get_resource_uid(path)
+            send_success(peer, cmd_id, {"uid": ResourceUID.id_to_text(id) if id != ResourceUID.INVALID_ID else "", "cached_path": ResourceUID.get_id_path(id) if ResourceUID.has_id(id) else "", "in_filesystem": _filesystem_has(EditorInterface.get_resource_filesystem(), path)})
+"#;
+
+/// A level placed by a headless script, as Frog World places its scenes: a new scene that
+/// instances another scene and uses a shader and a script, plus an existing scene saved again.
+const PLACE_SCRIPT: &str = "extends SceneTree\n\nfunc _initialize() -> void:\n\tvar root := Node3D.new()\n\troot.name = \"Placed\"\n\tvar frog: Node = (load(\"res://frog.tscn\") as PackedScene).instantiate()\n\troot.add_child(frog)\n\tfrog.owner = root\n\tvar water := MeshInstance3D.new()\n\twater.name = \"Water\"\n\troot.add_child(water)\n\twater.owner = root\n\tvar material := ShaderMaterial.new()\n\tmaterial.shader = load(\"res://water.gdshader\")\n\tmaterial.set_shader_parameter(\"speed\", 2.0)\n\twater.material_override = material\n\twater.set_script(load(\"res://helper.gd\"))\n\tvar placed := PackedScene.new()\n\tplaced.pack(root)\n\tprint(\"PLACED \", ResourceSaver.save(placed, \"res://placed.tscn\"))\n\troot.free()\n\tvar frog_scene: PackedScene = load(\"res://frog.tscn\")\n\tprint(\"FROG \", ResourceSaver.save(frog_scene))\n\tquit(0)\n";
+
+/// godot_run_script with the editor open on the same project: the uids the headless saver drops
+/// are written back, and the editor's file system and uid cache learn the new scene's uid.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn run_script_keeps_uids_and_the_editor_follows_the_saved_files() {
+    use godot_mcp::cli_runner::CliRunner;
+    use godot_mcp::tools::ToolManager;
+    use std::sync::Arc;
+
+    let hook = format!("{UID_PROBE_HOOK}{UNDO_HOOK}");
+    let editor = start_editor_with(
+        Some(&hook),
+        "",
+        &[
+            (
+                "water.gdshader",
+                "shader_type spatial;\nuniform float speed = 1.0;\nuniform vec4 tint : source_color = vec4(1.0);\nvoid fragment() { ALBEDO = tint.rgb * speed; }\n",
+            ),
+            ("helper.gd", "extends Node\n"),
+            (
+                "frog.tscn",
+                "[gd_scene format=3 uid=\"uid://cfrogscene1\"]\n\n[node name=\"Frog\" type=\"Node3D\"]\n",
+            ),
+            ("place.gd", PLACE_SCRIPT),
+        ],
+        "",
+    )
+    .await;
+    let project = editor.project.clone();
+    let uid_file = |name: &str| {
+        std::fs::read_to_string(project.join(name))
+            .unwrap_or_else(|_| panic!("{name}: the import gives it a .uid"))
+            .trim()
+            .to_string()
+    };
+    let shader_uid = uid_file("water.gdshader.uid");
+    let helper_uid = uid_file("helper.gd.uid");
+    let (godot, _) = godot_binaries();
+    let tools = Arc::new(
+        ToolManager::new(BridgeClient::new(editor.port), CliRunner::new(godot))
+            .with_working_dir(project.clone()),
+    );
+
+    let result = Arc::clone(&tools)
+        .call_tool(
+            "godot_run_script",
+            json!({"script": "res://place.gd", "timeout_seconds": 120}),
+        )
+        .await;
+    let answer = tool_text(&result);
+    assert!(!result.is_error, "{answer}");
+    assert!(
+        answer.contains("PLACED 0") && answer.contains("FROG 0") && !answer.starts_with("WARNING"),
+        "{answer}"
+    );
+    let body: Value = serde_json::from_str(&answer).expect("JSON answer");
+    assert_eq!(body["resource_damage"], json!([]), "{answer}");
+
+    let frog = std::fs::read_to_string(project.join("frog.tscn")).expect("frog");
+    assert!(
+        frog.starts_with("[gd_scene format=3 uid=\"uid://cfrogscene1\"]"),
+        "{frog}"
+    );
+    let placed = std::fs::read_to_string(project.join("placed.tscn")).expect("placed");
+    let header = placed.lines().next().unwrap_or_default();
+    let placed_uid = header
+        .split("uid=\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .unwrap_or_else(|| panic!("the new scene has no uid: {placed}"))
+        .to_string();
+    for (target, uid) in [
+        ("res://frog.tscn", "uid://cfrogscene1"),
+        ("res://water.gdshader", shader_uid.as_str()),
+        ("res://helper.gd", helper_uid.as_str()),
+    ] {
+        assert!(
+            placed.contains(&format!("uid=\"{uid}\" path=\"{target}\"")),
+            "{target} lost its uid {uid}:\n{placed}"
+        );
+    }
+    assert!(!placed.contains("= null"), "{placed}");
+
+    let refreshed = body["editor_refresh"]["refreshed"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        refreshed.contains(&json!("res://placed.tscn"))
+            && refreshed.contains(&json!("res://frog.tscn")),
+        "{answer}"
+    );
+    let probe = editor
+        .bridge
+        .send_command("__test_uid_probe", json!({"path": "res://placed.tscn"}))
+        .await
+        .expect("uid probe");
+    assert_eq!(
+        probe,
+        json!({"uid": placed_uid, "cached_path": "res://placed.tscn", "in_filesystem": true})
+    );
+}
+
+/// Runs `tests/bridge-port-vectors.json` through the addon's formula and prints the canonical
+/// path and port of its own project.
+const BRIDGE_PORT_CHECK: &str = r#"extends SceneTree
+
+const BridgePort: GDScript = preload("res://bridge_port.gd")
+
+func _init() -> void:
+    var vectors: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(OS.get_cmdline_user_args()[0]))
+    var failures: int = 0
+    for case: Dictionary in vectors["ports"]:
+        var port: int = BridgePort.port_for(str(case["path"]))
+        if port != int(case["port"]):
+            failures += 1
+            print("MISMATCH port ", case["path"], " ", port, " != ", int(case["port"]))
+    for case: Dictionary in vectors["normalize"]:
+        var canonical: String = BridgePort.normalize(str(case["input"]), bool(case["windows"]))
+        if canonical != str(case["canonical"]):
+            failures += 1
+            print("MISMATCH normalize ", case["input"], " -> ", canonical, " != ", case["canonical"])
+    var project: String = BridgePort.project_path()
+    print("PROJECT=", project)
+    print("PORT=", BridgePort.port_for(project))
+    print("FAILURES=", failures)
+    quit()
+"#;
+
+/// The addon and the server compute the same bridge port: the shared vectors hold for the
+/// GDScript formula, and both canonicalize a project reached through a symlink the same way.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn the_addon_derives_the_same_bridge_port_as_the_server() {
+    let (godot, _) = godot_binaries();
+    let dir = tempfile::tempdir().expect("project dir");
+    let real = dir.path().join("real");
+    std::fs::create_dir(&real).expect("mkdir");
+    std::fs::write(real.join("project.godot"), "config_version=5\n").expect("project.godot");
+    std::fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("addons/godot_mcp/core/bridge_port.gd"),
+        real.join("bridge_port.gd"),
+    )
+    .expect("copy bridge_port.gd");
+    std::fs::write(real.join("check.gd"), BRIDGE_PORT_CHECK).expect("check.gd");
+    // The temporary directory is itself reached through a symlink on macOS (/var -> /private/var).
+    #[cfg(unix)]
+    let project = {
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).expect("symlink");
+        link
+    };
+    #[cfg(not(unix))]
+    let project = real.clone();
+
+    let output = timeout(
+        Duration::from_secs(120),
+        Command::new(&godot)
+            .args(["--headless", "--path"])
+            .arg(&project)
+            .args(["--script", "res://check.gd", "--"])
+            .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/bridge-port-vectors.json"))
+            .stdin(Stdio::null())
+            .output(),
+    )
+    .await
+    .expect("check timed out")
+    .expect("run godot");
+    let text = String::from_utf8_lossy(&output.stdout).to_string()
+        + &String::from_utf8_lossy(&output.stderr);
+    let line = |key: &str| {
+        text.lines()
+            .find_map(|line| line.strip_prefix(key))
+            .unwrap_or_else(|| panic!("no {key} line in:\n{text}"))
+            .trim()
+            .to_string()
+    };
+    assert_eq!(line("FAILURES="), "0", "{text}");
+    let canonical = godot_mcp::bridge_port::canonical_project_path(&project);
+    assert_eq!(line("PROJECT="), canonical, "{text}");
+    assert_eq!(
+        line("PORT="),
+        godot_mcp::bridge_port::port_for(&canonical).to_string(),
+        "{text}"
+    );
+}
+
+/// With no port configured on either side, a server started in the project reaches the
+/// editor on the port derived from the project path.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn an_editor_without_a_port_setting_is_found_on_the_derived_port() {
+    use clap::Parser;
+    use godot_mcp::config::Config;
+
+    let (godot, console) = godot_binaries();
+    let dir = tempfile::tempdir().expect("project dir");
+    let project = dir.path();
+    std::fs::write(
+        project.join("project.godot"),
+        "config_version=5\n\n[application]\n\nconfig/name=\"Derived Port\"\nconfig/features=PackedStringArray(\"4.5\")\n\n\
+         [editor_plugins]\n\nenabled=PackedStringArray(\"res://addons/godot_mcp/plugin.cfg\")\n",
+    )
+    .expect("project.godot");
+    copy_dir(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("addons/godot_mcp"),
+        &project.join("addons/godot_mcp"),
+    );
+    let imported = timeout(
+        Duration::from_secs(180),
+        Command::new(&godot)
+            .args(["--headless", "--path"])
+            .arg(project)
+            .arg("--import")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status(),
+    )
+    .await
+    .expect("import timed out")
+    .expect("run godot --import");
+    assert!(imported.success(), "godot --import failed");
+
+    // The server side: no --debug-port, no GODOT_DEBUG_PORT, started inside the project.
+    let mut config = Config::try_parse_from(["godot-mcp", "--debug-port", ""]).expect("config");
+    config.resolve_bridge_port(Some(&project.join("addons")), None);
+    let port = config.debug_port;
+    assert_eq!(port, godot_mcp::bridge_port::derived_port(project));
+    assert!(
+        config
+            .bridge_port_origin()
+            .contains("derived from the project path"),
+        "{}",
+        config.bridge_port_origin()
+    );
+
+    let log = project.join("editor.log");
+    let log_file = std::fs::File::create(&log).expect("log file");
+    let _child = Command::new(&console)
+        .args(["--headless", "--editor", "--path"])
+        .arg(project)
+        .env_remove("GODOT_DEBUG_PORT")
+        .stdout(Stdio::from(log_file.try_clone().expect("clone log")))
+        .stderr(Stdio::from(log_file))
+        .kill_on_drop(true)
+        .spawn()
+        .expect("spawn godot editor");
+
+    let bridge = BridgeClient::with_port_origin(port, config.bridge_port_origin());
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        if bridge.send_command("ping", json!({})).await.is_ok() {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "editor bridge did not come up on port {port}; log:\n{}",
+            std::fs::read_to_string(&log).unwrap_or_default()
+        );
+        sleep(Duration::from_millis(500)).await;
+    }
+    let text = std::fs::read_to_string(&log).unwrap_or_default();
+    assert!(
+        text.contains(&format!(
+            "listening on 127.0.0.1:{port} (derived from the project path"
+        )),
+        "{text}"
+    );
+    // The editor is killed, so it cannot remove its token files itself. The legacy one is
+    // only ours when this editor said it took the legacy port.
+    let mut ports = vec![port];
+    if text.contains("Also listening on the legacy port") {
+        ports.push(godot_mcp::config::LEGACY_DEBUG_PORT);
+    }
+    for port in ports {
+        if let Some(path) = token_path(port) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 }
 
 /// A tool manager that talks to `editor` and runs in its project.
