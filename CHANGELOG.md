@@ -10,6 +10,8 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ### Fixed
 
+- The stale-import check of `godot_run_project`, the import and resave checks of the headless tools, the reference search of `godot_delete_file` and the script watch of the code tools now skip what Godot's file system does not scan: hidden files and folders (a name starting with `.`), folders holding a `.gdignore`, and nested projects (a folder with its own `project.godot`). A project holding git worktrees in `.claude/worktrees/` used to have every copy's imports listed as stale and reimported before each run. Thanks to @theromis.
+
 - `godot_validate_script` no longer reports a sound script as failing because the editor's language server has not registered a `class_name` yet. A script written to disk while the editor is open (not through the editor tools) is missing from the editor's class list until the editor rescans, so a script using that class failed with `Could not find type "StreamLane" in the current scope`. When an unknown type or identifier is a `class_name` another script of the project declares, the connected editor now registers that script and the check runs again; if the class is still unknown, the answer says the class list is stale, names the declaring script and says how to refresh it. Thanks to @theromis.
 
 ## [0.11.0] - 2026-10-30
