@@ -162,6 +162,27 @@ func _editor_problem(res_path: String, file_lf: String, pair: Dictionary) -> Str
 ## The editor API has no call that names an editor's resource, so the two lists the script
 ## editor offers (same order) are paired. Newer editors also name the tab (the `_tab_name`
 ## metadata, absent in Godot 4.5.2), and then the name must start with the file name.
+## The scripts open in the script editor with typing that is not saved: their res:// paths, or
+## the tab name of a script that has no file yet.
+func unsaved_scripts() -> PackedStringArray:
+    var unsaved: PackedStringArray = PackedStringArray()
+    var script_editor: ScriptEditor = EditorInterface.get_script_editor()
+    if script_editor == null:
+        return unsaved
+    var scripts: Array = script_editor.get_open_scripts()
+    var editors: Array = script_editor.get_open_script_editors()
+    for index: int in range(editors.size()):
+        var editor: Object = editors[index]
+        if _buffer(editor) == null or not _is_dirty(editor):
+            continue
+        var label_text: String = ""
+        if scripts.size() == editors.size():
+            label_text = (scripts[index] as Script).resource_path
+        if label_text.is_empty() and editor.has_meta("_tab_name"):
+            label_text = str(editor.get_meta("_tab_name"))
+        unsaved.append(label_text if not label_text.is_empty() else "(an unnamed script tab)")
+    return unsaved
+
 func _pair_editor(res_path: String) -> Dictionary:
     var script_editor: ScriptEditor = EditorInterface.get_script_editor()
     if script_editor == null:

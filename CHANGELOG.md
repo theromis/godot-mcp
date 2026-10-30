@@ -8,6 +8,10 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ## [Unreleased]
 
+### Added
+
+- `godot_close_editor` closes a project's editor and answers once its process has exited, so an agent can close the editors it opened. The connected editor is asked to quit without saving anything; unsaved scenes and scripts keep it open and are listed, and `discard: true` closes it anyway. An editor that has another project open is never closed. When no editor is connected, an editor this server launched for the project with `godot_launch_editor` is stopped by its PID, only with `discard: true`. Thanks to @theromis.
+
 ## [0.11.0] - 2026-10-30
 
 A level can be assembled from saved scenes, typed array and dictionary properties are set element by element, and the code tools stop answering from another project's editor. Several calls that used to fail quietly now say what happened.
