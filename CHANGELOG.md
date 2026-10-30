@@ -10,6 +10,8 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ### Fixed
 
+- `godot_validate_script` and the `godot_code_*` tools no longer report diagnostics from another project's language server. With several editors open, the one holding port 6005 answered for every project, so a script just created in your project was a missing preload and its `class_name` an unknown type. A language server that says it has another project open is now refused, and a private headless editor of the right project is used instead; that editor is started again when another script of the project changed since it started, so a new `class_name` is known. `godot_create_script` with a `project_path` naming the editor's project now tells the editor about a new script too. Thanks to @theromis.
+
 - `godot_run_script` no longer reports success for a script Godot did not run. Godot 4.8 exits with code 0 when the script does not extend `SceneTree` or `MainLoop`, does not parse or cannot be opened; the answer is now an error with Godot's message in `load_error` and in `script_errors`, and the summary says the script did not run. A script whose `extends` (followed through base scripts and the project's `class_name`s) is not `SceneTree` or `MainLoop` is refused before Godot starts. Thanks to @theromis.
 
 ## [0.10.0] - 2026-10-29
