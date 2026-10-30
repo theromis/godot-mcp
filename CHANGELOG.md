@@ -8,6 +8,10 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ## [Unreleased]
 
+### Fixed
+
+- The stale-import check of `godot_run_project`, the import and resave checks of the headless tools, the reference search of `godot_delete_file` and the script watch of the code tools now skip what Godot's file system does not scan: hidden files and folders (a name starting with `.`), folders holding a `.gdignore`, and nested projects (a folder with its own `project.godot`). A project holding git worktrees in `.claude/worktrees/` used to have every copy's imports listed as stale and reimported before each run. Thanks to @theromis.
+
 ## [0.11.0] - 2026-10-30
 
 A level can be assembled from saved scenes, typed array and dictionary properties are set element by element, and the code tools stop answering from another project's editor. Several calls that used to fail quietly now say what happened.
