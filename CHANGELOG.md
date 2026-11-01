@@ -8,6 +8,10 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-01
+
+An agent can close the editors it opened, the bridge port follows the project path, and several edits that used to be reported as done although the scene would not keep them are now refused with the reason.
+
 ### Added
 
 - `godot_close_editor` closes a project's editor and answers once its process has exited, so an agent can close the editors it opened. The connected editor is asked to quit without saving anything; unsaved scenes and scripts keep it open and are listed, and `discard: true` closes it anyway. An editor that has another project open is never closed. When no editor is connected, an editor this server launched for the project with `godot_launch_editor` is stopped by its PID, only with `discard: true`. Thanks to @theromis.
@@ -17,6 +21,10 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 - The editor bridge port is derived from the project path when no port is set, so editors of several projects, such as git worktrees of one repository, can run at once, each reached by a server started in its own project directory. The plugin uses the project setting `godot_mcp/bridge_port`, then the editor's `GODOT_DEBUG_PORT`, then FNV-1a 32 of the canonical project path mapped to 10000–29999; the server uses `--debug-port`, then `GODOT_DEBUG_PORT`, then the same formula for the project found from its working directory, and `9333` outside any project. A plugin with no configured port also listens on `9333` while that is free, so configs that set `GODOT_DEBUG_PORT=9333` keep reaching the first editor. Editors started by `godot_launch_editor` get the server's port. The busy-port and unreachable-editor errors name where the port came from. Thanks to @theromis.
 
 ### Fixed
+
+- `godot_set_node_properties` and `godot_add_node` read every value back after setting it and refuse the whole call when Godot kept another value, instead of reporting a change the scene would not save. The case that hid a real bug: an `AudioStreamPlayer` `bus` that the editor's AudioServer does not know (a bus the game creates at run time) reads back as `Master`, so the scene saved `Master` while the tool said it was done. The message names the property and both values and, for a bus, the bus layout to add it to. The check is general: a setter that clamps a value (`Range.value` above `max_value`) or refuses it (`pitch_scale = 0`) is refused the same way, and nothing is changed. `godot_add_node` now returns the values it set in `applied`. Thanks to @theromis.
+
+- `godot_read_script`, `godot_edit_script` and `godot_resave_resources` find an open script tab whose title carries its parent folder, which the script editor shows when two open scripts share a file name (`tests/continuous_shore.gd`). Such a script used to fail with "The script editor did not open …" or report an unknown editor state. Thanks to @theromis.
 
 - `godot_set_node_properties`, `godot_add_node`, `godot_attach_script` and `godot_connect_signal` no longer report a change to a node inside an instanced scene whose children are not editable as done. Godot saves nothing about such a node (no property, child, script or outgoing connection), so the change was lost on the next save. They now refuse it, naming the instance and its scene; `make_editable: true` turns on Editable Children for every instance on the way, in the same undo action, and the answer lists them in `made_editable`. `godot_remove_node` refuses a node an instance brings, which Godot cannot delete even with editable children. `godot_get_scene_tree` marks an instance node with `instance` and `editable_children`. Thanks to @theromis.
 
@@ -332,7 +340,7 @@ part of every release), and note the behaviour changes below.
   property operations, viewport capture), headless CLI fallback for version, script validation
   and launching the editor.
 
-[Unreleased]: https://github.com/zeegzoog/godot-mcp/compare/v0.11.0...master
+[Unreleased]: https://github.com/zeegzoog/godot-mcp/compare/v0.12.0...master
 [0.4.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.1.0...v0.2.0
