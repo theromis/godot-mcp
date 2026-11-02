@@ -1,6 +1,6 @@
 # Rust Stdio Server
 
-**Version:** 1.4.1
+**Version:** 1.4.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-mcp-server.md
@@ -51,6 +51,7 @@ src/
 ├── server.rs      session loop, message classification, task registry, writer, initialize answer (with feedback guidance)
 ├── protocol.rs    JsonRpcResponse/Error, Tool, ToolResult, ToolContent (text, image)
 ├── config.rs      flags + env + .env, Godot binary auto-detection per OS, feedback mode and gh path, the bridge port and its origin
+├── version.rs     the reported version: the manifest version plus the commit the build names (see l2-ci-release-pipeline.md, DS-9)
 ├── bridge_port.rs the port derived from a project path, the same function as the addon's (see l2-bridge-client-rust.md)
 ├── feedback.rs    scrubber, fingerprint, link builder of the agent feedback channel (see l2-agent-feedback-rust.md)
 ├── journal.rs     agent feedback journal and report builder (see l2-agent-feedback-rust.md)
@@ -110,3 +111,4 @@ src/
 | 1.3.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] Plain diagnostics when standard error is not a terminal; an unknown feedback mode selects `draft`. Source: simulation QA of 2026-10-21 (Q11, Q23). Stable → RFC → Stable after Post-Update Review. |
 | 1.4.0 | 2026-11-02 | Agent (magic.spec) | [MODIFIED] MCP-7 and the module map: an unset port is derived from the project path (pull request 75), 9333 only without a project; `bridge_port.rs` added. Found by ventilation. Stable → RFC → Stable after Post-Update Review. |
 | 1.4.1 | 2026-11-02 | Agent (magic.spec) | Minimum toolchain 1.87 after the ruzstd and libc updates. No requirement changed. |
+| 1.4.2 | 2026-11-02 | Agent (magic.run) | [ADDED] `version.rs` in the module map; the initialize answer reports the build's version. No other requirement changed. |

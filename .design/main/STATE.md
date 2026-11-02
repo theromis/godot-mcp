@@ -4,7 +4,7 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-11-02 13:11
+**Updated:** 2026-11-02 13:32
 **Phase:** 10 — Project Adapter
 **Status:** Active
 
@@ -12,7 +12,7 @@
 
 - **Task:** T-11E01 Carry the product commits since 0.12.0
 - **Spec:** l2-release-branches.md; l1-release-lines.md; l2-project-adapter.md §5.5
-- **Next Action:** Plan complete — nothing pending
+- **Next Action:** Run /magic.task main to update the plan
 
 ## Progress
 

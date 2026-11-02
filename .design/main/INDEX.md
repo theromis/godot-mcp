@@ -1,6 +1,6 @@
 # Workspace Specifications Registry
 
-**Version:** 1.9.2
+**Version:** 1.9.3
 **Status:** Active
 
 ## Overview
@@ -14,7 +14,7 @@ Local registry of specifications for this workspace.
 | [l1-mcp-server.md](specifications/l1-mcp-server.md) | What the server guarantees to an MCP client: framing, concurrency, cancellation, error contract and configuration. Open it before changing how requests are read, answered or configured. | Stable | concept | 1.3.0 |
 | [l1-editor-bridge.md](specifications/l1-editor-bridge.md) | Guarantees of the server-to-editor channel: loopback, shared secret, one reply per command, undoable and scene-confined mutations. Open it before changing either side of the bridge. | Stable | concept | 1.1.0 |
 | [l1-tool-catalog.md](specifications/l1-tool-catalog.md) | The tool set and the rules every tool follows: schema validation, live-first fallback, project resolution, write and launch safety. Open it before adding or changing a tool. | Stable | concept | 1.11.0 |
-| [l1-distribution.md](specifications/l1-distribution.md) | What a release contains and the conditions for publishing one. Open it before changing versions, release notes, packaging or ignore rules. | Stable | concept | 1.2.0 |
+| [l1-distribution.md](specifications/l1-distribution.md) | What a release contains and the conditions for publishing one. Open it before changing versions, release notes, packaging or ignore rules. | Stable | concept | 1.3.0 |
 | [l1-quality-assurance.md](specifications/l1-quality-assurance.md) | The checks every change must pass and which engine versions the editor code is proven against. Open it before changing the test strategy or CI gates. | Stable | concept | 1.1.0 |
 | [l1-agent-feedback.md](specifications/l1-agent-feedback.md) | How an agent records what is missing, broken or misleading and gets it to the maintainers as copyable text or an approved issue submission. Open it before changing the feedback tools, their guidance or what a report may contain. | Stable | concept | 1.1.0 |
 | [l1-release-lines.md](specifications/l1-release-lines.md) | One release line per Godot minor version plus a development line: routing changes between lines, release numbering, line lifecycle. Open it before deciding where a change lands, carrying a fix, releasing, or cutting or retiring a line. | Stable | concept | 1.1.0 |
@@ -26,11 +26,11 @@ Local registry of specifications for this workspace.
 | [l1-content-authoring.md](specifications/l1-content-authoring.md) | Tools that change project content without overwriting or corrupting files: projects, scenes, resources, scripts, shaders, signals, settings, import parameters, InputMap actions, file deletion and the voxel model check. Open it before changing an authoring tool. | Stable | concept | 1.5.1 |
 | [l1-project-adapter.md](specifications/l1-project-adapter.md) | How a project registers its own state and commands for the running-game tools through one development-only adapter, and what the tools promise about them. Open it before changing the adapter contract or the tools that read and run it. | Stable | concept | 1.1.0 |
 | [l1-project-export.md](specifications/l1-project-export.md) | How export presets are changed and a project is exported headless, and where an export may write. Open it before changing the export tools. | Stable | concept | 1.0.0 |
-| [l2-rust-stdio-server.md](specifications/l2-rust-stdio-server.md) | How the Rust crate realizes the server core: session loop, configuration, error taxonomy. Open it when editing the entry point, session, protocol types or configuration code. | Stable | implementation | 1.4.1 |
+| [l2-rust-stdio-server.md](specifications/l2-rust-stdio-server.md) | How the Rust crate realizes the server core: session loop, configuration, error taxonomy. Open it when editing the entry point, session, protocol types or configuration code. | Stable | implementation | 1.4.2 |
 | [l2-bridge-client-rust.md](specifications/l2-bridge-client-rust.md) | How the server keeps, multiplexes and recovers its editor connection. Open it when editing the bridge client or its timing. | Stable | implementation | 1.1.0 |
 | [l2-godot-editor-addon.md](specifications/l2-godot-editor-addon.md) | How the GDScript addon implements the bridge, its handlers and export exclusion. Open it when editing anything in the addon. | Stable | implementation | 1.11.1 |
 | [l2-tool-handlers.md](specifications/l2-tool-handlers.md) | How the Rust tool layer enforces the catalog rules, and the steps for adding a tool. Open it when editing tools, path checks or engine invocations. | Stable | implementation | 1.8.1 |
-| [l2-ci-release-pipeline.md](specifications/l2-ci-release-pipeline.md) | Which workflow, script or manifest enforces each release rule. Open it when editing CI, release files or repository hygiene. | Stable | implementation | 1.3.0 |
+| [l2-ci-release-pipeline.md](specifications/l2-ci-release-pipeline.md) | Which workflow, script or manifest enforces each release rule. Open it when editing CI, release files or repository hygiene. | Stable | implementation | 1.4.0 |
 | [l2-test-suite.md](specifications/l2-test-suite.md) | Map of the test files, shared helpers and opt-in editor tests. Open it to decide where a new test goes or how to run the editor tests. | Stable | implementation | 1.6.0 |
 | [l2-agent-feedback-rust.md](specifications/l2-agent-feedback-rust.md) | How the Rust crate realizes the feedback channel: journal, scrubber, report and link, submission through the GitHub client, guidance and settings. Open it when editing the feedback tools or the code they call. | Stable | implementation | 1.1.0 |
 | [l2-release-branches.md](specifications/l2-release-branches.md) | How the release lines map to git branches, version strings, identity files, workflows and the release skill. Open it when cutting, carrying, releasing or editing anything line-specific. | Stable | implementation | 1.1.0 |
