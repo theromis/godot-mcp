@@ -4,7 +4,7 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-11-02 10:15
+**Updated:** 2026-11-02 10:20
 **Phase:** 11 — Reality Sync after Ventilation
 **Status:** Blocked
 
@@ -12,7 +12,7 @@
 
 - **Task:** T-10E01 Carry to the release lines (after validation)
 - **Spec:** l2-ci-release-pipeline.md §4 (DS-8)
-- **Next Action:** Resolve blocker on T-10E01 (main) — see STATE.md ## Blockers, then run /magic.run main
+- **Next Action:** Run /magic.task main to update the plan
 
 ## Progress
 

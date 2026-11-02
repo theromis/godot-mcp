@@ -1,6 +1,6 @@
 # Rust Stdio Server
 
-**Version:** 1.4.0
+**Version:** 1.4.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-mcp-server.md
@@ -22,7 +22,7 @@ Records how the concept's guarantees map onto this crate so a change to the sess
 
 ## 2. Constraints & Assumptions
 
-- Rust edition 2024, minimum toolchain 1.85; async runtime Tokio (multi-threaded).
+- Rust edition 2024, minimum toolchain 1.87; async runtime Tokio (multi-threaded).
 - Command-line parsing with `clap` (flags with `env` fallbacks); `.env` loading with `dotenvy`; diagnostics with `tracing` written to standard error, filter `godot_mcp=info,warn` unless `RUST_LOG` overrides it; colour codes are written only when standard error is a terminal, so a client that stores the log gets plain text. [MODIFIED]
 - Observed conventions: `unwrap()` / `expect()` appear only in tests; mutexes are locked through a helper that recovers from poisoning; no lock is held across an `await` on the editor.
 
@@ -109,3 +109,4 @@ src/
 | 1.2.0 | 2026-10-20 | Agent (magic.spec) | [MODIFIED] A configured engine path is used as given even when the file is missing (was: silently replaced by the platform scan). Reason: with one release line per engine version, running a different installed version is a silent wrong result. |
 | 1.3.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] Plain diagnostics when standard error is not a terminal; an unknown feedback mode selects `draft`. Source: simulation QA of 2026-10-21 (Q11, Q23). Stable → RFC → Stable after Post-Update Review. |
 | 1.4.0 | 2026-11-02 | Agent (magic.spec) | [MODIFIED] MCP-7 and the module map: an unset port is derived from the project path (pull request 75), 9333 only without a project; `bridge_port.rs` added. Found by ventilation. Stable → RFC → Stable after Post-Update Review. |
+| 1.4.1 | 2026-11-02 | Agent (magic.spec) | Minimum toolchain 1.87 after the ruzstd and libc updates. No requirement changed. |
