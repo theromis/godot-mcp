@@ -492,10 +492,20 @@ async fn scene_and_property_tools_behave() {
         find(&unread["tree"], "Before").is_some(),
         "a read reloaded the scene: {unread}"
     );
+    // Reloading a background tab must also make it the edited scene: the reload used
+    // to leave the previous tab active, so the next edits went to the wrong scene.
+    call("open_scene", json!({"scene_path": "res://main.tscn"}))
+        .await
+        .expect("switch to main");
     let reloaded = call("open_scene", json!({"scene_path": "res://stale.tscn"}))
         .await
         .expect("reload stale");
     assert_eq!(reloaded["reloaded"], true, "{reloaded}");
+    assert_eq!(reloaded["active_scene"], "res://stale.tscn", "{reloaded}");
+    let active_tree = call("get_scene_tree", json!({}))
+        .await
+        .expect("active tree");
+    assert_eq!(active_tree["tree"]["name"], "Stale", "{active_tree}");
     let stale_tree = call("get_scene_tree", json!({"scene_path": "res://stale.tscn"}))
         .await
         .expect("stale tree");
@@ -4912,6 +4922,106 @@ async fn validate_shader_compiles_the_file_with_godot() {
             );
         }
     }
+}
+
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ editor executable"]
+async fn import_params_are_set_and_reimported_through_the_editor() {
+    use godot_mcp::cli_runner::CliRunner;
+    use godot_mcp::tools::ToolManager;
+    use std::sync::Arc;
+
+    let icon = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><rect width=\"16\" height=\"16\" fill=\"#3a3\"/></svg>\n";
+    let editor = start_editor_with(None, "", &[("sky.svg", icon), ("far.svg", icon)], "").await;
+    let project = editor.project.clone();
+    let (godot, _) = godot_binaries();
+    let tools = Arc::new(
+        ToolManager::new(BridgeClient::new(editor.port), CliRunner::new(godot))
+            .with_working_dir(project.clone()),
+    );
+    let call = |name: &'static str, args: Value| {
+        let tools = Arc::clone(&tools);
+        async move {
+            let result = tools.call_tool(name, args).await;
+            let text = tool_text(&result);
+            assert!(!result.is_error, "{name}: {text}");
+            serde_json::from_str::<Value>(&text).expect("JSON report")
+        }
+    };
+
+    let read = call("godot_get_import_params", json!({"path": "res://sky.svg"})).await;
+    assert_eq!(read["source"], "editor");
+    assert_eq!(read["params"]["compress/mode"], 0, "{read}");
+
+    let set = call(
+        "godot_set_import_params",
+        json!({"path": "res://sky.svg",
+               "params": {"compress/mode": 2, "compress/high_quality": true, "typo/mode": 1}}),
+    )
+    .await;
+    assert_eq!(set["source"], "editor");
+    assert_eq!(set["reimported"], true, "{set}");
+    assert_eq!(set["ignored_options"], json!(["typo/mode"]));
+    assert_eq!(set["after"]["params"]["compress/mode"], 2);
+    let sidecar = std::fs::read_to_string(project.join("sky.svg.import")).expect("sidecar");
+    assert!(
+        sidecar.contains("\"vram_texture\": true"),
+        "the editor reimported the texture: {sidecar}"
+    );
+    assert!(!sidecar.contains("typo/mode"), "{sidecar}");
+
+    let copied = call(
+        "godot_set_import_params",
+        json!({"path": "res://far.svg", "copy_from": "res://sky.svg"}),
+    )
+    .await;
+    assert_eq!(copied["reimported"], true, "{copied}");
+    assert_eq!(copied["after"]["params"]["compress/high_quality"], true);
+    let far = std::fs::read_to_string(project.join("far.svg.import")).expect("sidecar");
+    assert!(far.contains("\"vram_texture\": true"), "{far}");
+
+    let again = call(
+        "godot_set_import_params",
+        json!({"path": "res://far.svg", "params": {"compress/mode": 2}}),
+    )
+    .await;
+    assert_eq!(again["changed"], json!([]));
+    assert_eq!(again["reimported"], false, "{again}");
+}
+
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ editor executable"]
+async fn an_image_is_imported_as_a_texture_3d_through_the_editor() {
+    use godot_mcp::cli_runner::CliRunner;
+    use godot_mcp::tools::ToolManager;
+    use std::sync::Arc;
+
+    let strip = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"16\"><rect width=\"64\" height=\"16\" fill=\"#3a3\"/></svg>\n";
+    let editor = start_editor_with(None, "", &[("strip.svg", strip)], "").await;
+    let project = editor.project.clone();
+    let (godot, _) = godot_binaries();
+    let tools = Arc::new(
+        ToolManager::new(BridgeClient::new(editor.port), CliRunner::new(godot))
+            .with_working_dir(project.clone()),
+    );
+    let result = tools
+        .call_tool(
+            "godot_set_import_params",
+            json!({"path": "res://strip.svg", "importer": "3d_texture",
+                   "params": {"slices/horizontal": 4}}),
+        )
+        .await;
+    let text = tool_text(&result);
+    assert!(!result.is_error, "{text}");
+    let set: Value = serde_json::from_str(&text).expect("JSON report");
+    assert_eq!(set["source"], "editor");
+    assert_eq!(set["reimported"], true, "{set}");
+    assert_eq!(set["previous_importer"], "texture");
+    assert_eq!(set["type"], "CompressedTexture3D", "{set}");
+    assert_eq!(set["after"]["params"]["slices/horizontal"], 4);
+    let sidecar = std::fs::read_to_string(project.join("strip.svg.import")).expect("sidecar");
+    assert!(sidecar.contains("importer=\"3d_texture\""), "{sidecar}");
+    assert!(sidecar.contains(".ctex3d"), "{sidecar}");
 }
 
 /// An editor whose addon lacks the shader commands, as one older than the server does: the

@@ -24,6 +24,7 @@ mod feedback;
 mod files;
 mod game;
 mod headless;
+mod import_params;
 mod input_map;
 mod main_loop;
 mod model_chain;
@@ -148,6 +149,7 @@ impl ToolManager {
             name if code::handles(name) => code::call(&self, name, args).await,
             name if export::handles(name) => export::call(&self, name, args).await,
             name if addon_update::handles(name) => addon_update::call(&self, args).await,
+            name if import_params::handles(name) => import_params::call(&self, name, args).await,
             feedback::NOTE => self.handle_note_feedback(args).await,
             feedback::DRAFT => self.handle_draft_feedback(args).await,
             feedback::SUBMIT => self.handle_submit_feedback(args).await,
@@ -806,7 +808,8 @@ fn annotations(name: &str) -> Option<ToolAnnotations> {
         | "godot_code_symbols"
         | "godot_code_definition"
         | "godot_code_references"
-        | "godot_list_export_presets" => [true, false, true],
+        | "godot_list_export_presets"
+        | "godot_get_import_params" => [true, false, true],
         "godot_capture_viewport"
         | "godot_resave_resources"
         | "godot_create_project"
@@ -839,6 +842,7 @@ fn annotations(name: &str) -> Option<ToolAnnotations> {
         | "godot_set_project_setting"
         | "godot_edit_input_action"
         | "godot_set_export_preset"
+        | "godot_set_import_params"
         | "godot_delete_file"
         | "godot_update_addon"
         | "godot_game_set" => [false, true, true],
@@ -1068,7 +1072,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
         ),
         tool(
             "godot_open_scene",
-            "Opens a scene file in the Godot Editor by its res:// path. An absolute path inside the project is converted, including both macOS spellings of /var and /private/var. Reloading an already-open scene from disk drops that scene's undo history. The answer lists in load_errors what Godot reported while loading (for example a node renamed because its name clashed with a child of an instanced scene), names the editor dialog that shows them, and says in unsaved whether the load left the scene with unsaved changes.",
+            "Opens a scene file in the Godot Editor by its res:// path. An absolute path inside the project is converted, including both macOS spellings of /var and /private/var. Reloading an already-open scene from disk drops that scene's undo history. The answer lists in load_errors what Godot reported while loading (for example a node renamed because its name clashed with a child of an instanced scene), names the editor dialog that shows them, and says in unsaved whether the load left the scene with unsaved changes. The opened scene becomes the active tab, named in active_scene, so later calls without scene_path act on it.",
             json!({
                 "scene_path": {
                     "type": "string",
@@ -1143,7 +1147,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
         ),
         tool(
             "godot_run_script",
-            "Runs a GDScript that extends SceneTree with the configured Godot binary: godot --headless --path <project> -s <script> [-- user_args]. Captures stdout and stderr (they never touch this server's stdout). script_errors lists each SCRIPT ERROR with its file and line. Returns the exit code. timeout_seconds defaults to 120 and cannot exceed 600. On timeout the process tree is killed and the answer says so, with the last output lines. A SCRIPT ERROR that leaves the main loop idle (the process stays up, as a script error in _init does) stops the run as soon as that idle is seen, and the answer says so, instead of waiting out the timeout. A script that does not extend SceneTree or MainLoop (directly, through a base script, or through a class_name in the global class cache) is refused before Godot starts. When Godot could not load the script anyway (a parse error, a wrong base, a file it could not open; Godot 4.8 exits with code 0 then), the call is an error, load_error holds Godot's message, script_errors lists it and the summary says the script did not run. Paths outside the project are refused. Headless Godot has no editor file system and no renderer, so it saves a scene or resource without any uid:// (its own and each ext_resource's) and with shader_parameter/<name> = null for each uniform the script never set. Afterwards the server writes back into each rewritten .tscn/.tres what the editor would have: the file's uid (a new one for a new file), each ext_resource's uid and no null shader_parameter lines; resource_repairs lists them. When the editor has the same project open, it refreshes every scene, resource, script and shader the script wrote, repaired or not, and reloads the ones it has loaded, so a material using a rewritten shader sees its new uniforms and defaults (editor_refresh). resource_damage lists what a file the server could not write still lacks.",
+            "Runs a GDScript that extends SceneTree with the configured Godot binary: godot --headless --path <project> -s <script> [-- user_args]. Captures stdout and stderr (they never touch this server's stdout). script_errors lists each SCRIPT ERROR with its file and line. Returns the exit code. timeout_seconds defaults to 120 and cannot exceed 600. On timeout the process tree is killed and the answer says so, with the last output lines. A SCRIPT ERROR that leaves the main loop idle (the process stays up, as a script error in _init does) stops the run as soon as that idle is seen, and the answer says so, instead of waiting out the timeout. A script that does not extend SceneTree or MainLoop (directly, through a base script, or through a class_name in the global class cache) is refused before Godot starts. When Godot could not load the script anyway (a parse error, a wrong base, a file it could not open; Godot 4.8 exits with code 0 then), the call is an error, load_error holds Godot's message, script_errors lists it and the summary says the script did not run. Paths outside the project are refused. Headless Godot has no editor file system and no renderer, so it saves a scene or resource without any uid:// (its own and each ext_resource's) and with shader_parameter/<name> = null for each uniform the script never set. Afterwards the server writes back into each rewritten .tscn/.tres what the editor would have: the file's uid (a new one for a new file), each ext_resource's uid and no null shader_parameter lines. A binary .scn/.res (compressed or not) loses its header uid the same way; Godot's ResourceSaver.set_uid writes the old one back (a new one for a file that had none). resource_repairs lists them, and binary_uid_error says why Godot could not write binary uids. When the editor has the same project open, it refreshes every scene, resource, script and shader the script wrote, repaired or not, and reloads the ones it has loaded, so a material using a rewritten shader sees its new uniforms and defaults (editor_refresh). resource_damage lists what a file the server could not write still lacks.",
             json!({
                 "script": {
                     "type": "string",
@@ -1198,6 +1202,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
     tools.extend(game::catalog());
     tools.extend(code::catalog());
     tools.extend(export::catalog());
+    tools.extend(import_params::catalog());
     tools.extend(feedback::catalog(feedback_mode));
     tools
 }

@@ -800,7 +800,14 @@ async fn project_setting_without_an_editor_cannot_add_lines_to_project_godot() {
     assert!(!fps.is_error, "{}", text(&fps));
     let low = set("application/run/low", json!(false)).await;
     assert!(!low.is_error, "{}", text(&low));
-    let added = set("custom/new/ratio", json!(0.5)).await;
+    // A setting the engine does not define keeps the type of the value.
+    let engine = tempfile::tempdir().expect("engine dir");
+    let (unknown, _) = common::setting_godot(engine.path(), "{}");
+    let added = set_with_engine(
+        unknown,
+        json!({"key": "custom/new/ratio", "value": 0.5, "project_path": project.path()}),
+    )
+    .await;
     assert!(!added.is_error, "{}", text(&added));
     let end = std::fs::read_to_string(&project_file).expect("project.godot");
     assert!(
@@ -810,6 +817,211 @@ async fn project_setting_without_an_editor_cannot_add_lines_to_project_godot() {
     assert!(
         end.contains("[custom]") && end.contains("new/ratio=0.5\n"),
         "{end}"
+    );
+}
+
+/// Calls `godot_set_project_setting` with no editor and the given Godot executable.
+async fn set_with_engine(godot: PathBuf, args: Value) -> ToolResult {
+    let cwd = tempfile::tempdir().expect("working dir");
+    manager_in(cwd.path(), godot)
+        .call_tool("godot_set_project_setting", args)
+        .await
+}
+
+const FROG_PROJECT: &str = "config_version=5\n\n[application]\n\nconfig/name=\"Frog\"\nrun/main_scene=\"res://main.tscn\"\n\n[display]\n\nwindow/stretch/mode=\"viewport\"\n";
+
+#[tokio::test]
+async fn project_setting_without_an_editor_stores_the_engine_type() {
+    let project = project_dir();
+    let project_file = project.path().join("project.godot");
+    std::fs::write(&project_file, FROG_PROJECT).expect("project.godot");
+    let engine = tempfile::tempdir().expect("engine dir");
+    let (godot, request) = common::setting_godot(
+        engine.path(),
+        r#"{"type":"Color","text":"Color(0.0627451, 0.16862746, 0.21960784, 1)"}"#,
+    );
+
+    let result = set_with_engine(
+        godot,
+        json!({"key": "application/boot_splash/bg_color", "value": "#102b38",
+               "project_path": project.path()}),
+    )
+    .await;
+
+    assert!(!result.is_error, "{}", text(&result));
+    // The engine is asked about the setting itself: nothing is stored for it yet.
+    let asked: Value =
+        serde_json::from_str(&std::fs::read_to_string(&request).expect("request")).expect("json");
+    assert_eq!(
+        asked,
+        json!({"key": "application/boot_splash/bg_color", "value": "#102b38"})
+    );
+    assert_eq!(
+        std::fs::read_to_string(&project_file).expect("project.godot"),
+        FROG_PROJECT.replace(
+            "run/main_scene=\"res://main.tscn\"\n",
+            "run/main_scene=\"res://main.tscn\"\nboot_splash/bg_color=Color(0.0627451, 0.16862746, 0.21960784, 1)\n",
+        )
+    );
+}
+
+#[tokio::test]
+async fn project_setting_without_an_editor_asks_about_a_stored_structured_value() {
+    let project = project_dir();
+    let project_file = project.path().join("project.godot");
+    let before = "config_version=5\n\n[application]\n\nboot_splash/bg_color=Color(0, 0, 0, 1)\n";
+    std::fs::write(&project_file, before).expect("project.godot");
+    let engine = tempfile::tempdir().expect("engine dir");
+    let (godot, request) = common::setting_godot(
+        engine.path(),
+        r#"{"type":"Color","text":"Color(1, 1, 1, 1)"}"#,
+    );
+
+    let result = set_with_engine(
+        godot,
+        json!({"key": "application/boot_splash/bg_color", "value": "white",
+               "project_path": project.path()}),
+    )
+    .await;
+
+    assert!(!result.is_error, "{}", text(&result));
+    let asked: Value =
+        serde_json::from_str(&std::fs::read_to_string(&request).expect("request")).expect("json");
+    assert_eq!(asked["stored"], "Color(0, 0, 0, 1)", "{asked}");
+    assert_eq!(
+        std::fs::read_to_string(&project_file).expect("project.godot"),
+        "config_version=5\n\n[application]\n\nboot_splash/bg_color=Color(1, 1, 1, 1)\n"
+    );
+}
+
+#[tokio::test]
+async fn project_setting_without_an_editor_refuses_a_value_of_another_type() {
+    let project = project_dir();
+    let project_file = project.path().join("project.godot");
+    std::fs::write(&project_file, FROG_PROJECT).expect("project.godot");
+    let engine = tempfile::tempdir().expect("engine dir");
+    let set = |answer: &str, key: &str, value: Value| {
+        let (godot, _) = common::setting_godot(engine.path(), answer);
+        set_with_engine(
+            godot,
+            json!({"key": key, "value": value, "project_path": project.path()}),
+        )
+    };
+
+    let color = set(
+        r#"{"type":"Color"}"#,
+        "application/boot_splash/bg_color",
+        json!("not a colour"),
+    )
+    .await;
+    assert!(color.is_error, "{}", text(&color));
+    assert!(text(&color).contains("expects a Color"), "{}", text(&color));
+    let width = set(
+        r#"{"type":"int"}"#,
+        "display/window/size/viewport_width",
+        json!("1280"),
+    )
+    .await;
+    assert!(width.is_error, "{}", text(&width));
+    assert!(text(&width).contains("expects a int"), "{}", text(&width));
+    let fraction = set(
+        r#"{"type":"int"}"#,
+        "display/window/size/viewport_width",
+        json!(1280.5),
+    )
+    .await;
+    assert!(fraction.is_error, "{}", text(&fraction));
+    assert_eq!(
+        std::fs::read_to_string(&project_file).expect("project.godot"),
+        FROG_PROJECT,
+        "a refused value changed project.godot"
+    );
+
+    // An int stays an int, also when it comes as 1280.0.
+    let stored = set(
+        r#"{"type":"int"}"#,
+        "display/window/size/viewport_width",
+        json!(1280.0),
+    )
+    .await;
+    assert!(!stored.is_error, "{}", text(&stored));
+    let text_after = std::fs::read_to_string(&project_file).expect("project.godot");
+    assert!(
+        text_after.ends_with("window/stretch/mode=\"viewport\"\nwindow/size/viewport_width=1280\n"),
+        "{text_after}"
+    );
+}
+
+#[tokio::test]
+async fn project_setting_without_an_editor_or_engine_changes_nothing() {
+    let project = project_dir();
+    let project_file = project.path().join("project.godot");
+    std::fs::write(&project_file, FROG_PROJECT).expect("project.godot");
+
+    let result = call(
+        "godot_set_project_setting",
+        json!({"key": "application/boot_splash/bg_color", "value": "#102b38",
+               "project_path": project.path()}),
+    )
+    .await;
+
+    assert!(result.is_error, "{}", text(&result));
+    assert!(text(&result).contains("GODOT_PATH"), "{}", text(&result));
+    assert_eq!(
+        std::fs::read_to_string(&project_file).expect("project.godot"),
+        FROG_PROJECT
+    );
+}
+
+/// The real engine's answers for settings it defines, with the Godot build of the line.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn project_setting_without_an_editor_converts_with_the_real_engine() {
+    let godot = PathBuf::from(std::env::var("GODOT_PATH").expect("set GODOT_PATH"));
+    let project = project_dir();
+    let project_file = project.path().join("project.godot");
+    std::fs::write(&project_file, FROG_PROJECT).expect("project.godot");
+    for (key, value) in [
+        ("application/boot_splash/bg_color", json!("#102b38")),
+        ("display/window/size/viewport_width", json!(1280)),
+        ("display/window/size/viewport_height.mobile", json!(720.0)),
+        ("physics/2d/default_gravity_vector", json!("Vector2(0, 2)")),
+        ("custom/tuning/speed", json!(2.5)),
+    ] {
+        let result = set_with_engine(
+            godot.clone(),
+            json!({"key": key, "value": value, "project_path": project.path()}),
+        )
+        .await;
+        assert!(!result.is_error, "{key}: {}", text(&result));
+    }
+    for (key, value) in [
+        ("application/boot_splash/bg_color", json!("#zzzzzz")),
+        ("application/boot_splash/bg_color", json!(3)),
+        ("display/window/size/viewport_width", json!("wide")),
+        ("physics/2d/default_gravity_vector", json!("Object(Node)")),
+    ] {
+        let result = set_with_engine(
+            godot.clone(),
+            json!({"key": key, "value": value, "project_path": project.path()}),
+        )
+        .await;
+        assert!(result.is_error, "{key} = {value}: {}", text(&result));
+    }
+    let written = std::fs::read_to_string(&project_file).expect("project.godot");
+    for line in [
+        "\nboot_splash/bg_color=Color(0.0627451, 0.16862746, 0.21960784, 1)\n",
+        "\nwindow/size/viewport_width=1280\n",
+        "\nwindow/size/viewport_height.mobile=720\n",
+        "\n2d/default_gravity_vector=Vector2(0, 2)\n",
+        "\n[custom]\n\ntuning/speed=2.5\n",
+    ] {
+        assert!(written.contains(line), "{line:?} missing from:\n{written}");
+    }
+    assert!(
+        written.contains("run/main_scene=\"res://main.tscn\"\nboot_splash/bg_color=")
+            && written.contains("\n\n[display]\n"),
+        "{written}"
     );
 }
 
@@ -4548,6 +4760,345 @@ async fn shader_tools_ask_the_editor_first() {
     let sent: Vec<Value> = bridge.received();
     assert!(sent.iter().any(|command| command["type"] == "create_shader"
         && command["params"]["code"] == "shader_type spatial;\n"));
+}
+
+/// A project with an imported texture, res://sky.png, and its .import sidecar.
+fn project_with_texture() -> tempfile::TempDir {
+    let project = project_dir();
+    std::fs::write(project.path().join("sky.png"), b"png").expect("sky.png");
+    std::fs::write(
+        project.path().join("sky.png.import"),
+        "[remap]\n\nimporter=\"texture\"\ntype=\"CompressedTexture2D\"\n\n[params]\n\ncompress/mode=0\n",
+    )
+    .expect("sky.png.import");
+    project
+}
+
+#[tokio::test]
+async fn import_params_of_a_file_never_imported_are_refused_with_the_resave_tool() {
+    let project = project_dir();
+    std::fs::write(project.path().join("new.png"), b"png").expect("new.png");
+    for (tool, args) in [
+        ("godot_get_import_params", json!({"path": "res://new.png"})),
+        (
+            "godot_set_import_params",
+            json!({"path": "res://new.png", "params": {"compress/mode": 2}}),
+        ),
+    ] {
+        let mut args = args;
+        args["project_path"] = json!(project.path());
+        let result = call(tool, args).await;
+        assert!(result.is_error, "{tool}");
+        let message = text(&result);
+        assert!(message.contains("no .import file yet"), "{message}");
+        assert!(message.contains("godot_resave_resources"), "{message}");
+    }
+    assert!(!project.path().join("new.png.import").exists());
+}
+
+#[tokio::test]
+async fn import_params_need_a_change_and_a_copy_source_with_a_sidecar() {
+    let project = project_with_texture();
+    std::fs::write(project.path().join("other.png"), b"png").expect("other.png");
+    for (args, expected) in [
+        (json!({"path": "res://sky.png"}), "Nothing to change"),
+        (
+            json!({"path": "res://sky.png", "copy_from": "res://other.png"}),
+            "godot_resave_resources",
+        ),
+        (
+            json!({"path": "res://sky.png", "copy_from": "sky.png"}),
+            "itself",
+        ),
+        (
+            json!({"path": "res://sky.png.import", "params": {"compress/mode": 2}}),
+            "Pass res://sky.png",
+        ),
+        (
+            json!({"path": "../sky.png", "params": {"compress/mode": 2}}),
+            "Parent directory",
+        ),
+        (
+            json!({"path": "res://sky.png", "params": {"compress mode": 2}}),
+            "not one an importer uses",
+        ),
+    ] {
+        let mut args = args;
+        args["project_path"] = json!(project.path());
+        let result = call("godot_set_import_params", args.clone()).await;
+        assert!(result.is_error, "{args}");
+        assert!(
+            text(&result).contains(expected),
+            "{args}: {}",
+            text(&result)
+        );
+    }
+}
+
+#[tokio::test]
+async fn import_params_go_through_the_editor_that_has_the_project_and_name_dropped_options() {
+    use common::{MockBridge, Reply};
+    let project = project_with_texture();
+    std::fs::write(project.path().join("far.png"), b"png").expect("far.png");
+    std::fs::write(
+        project.path().join("far.png.import"),
+        "[remap]\n\nimporter=\"texture\"\n",
+    )
+    .expect("far.png.import");
+    let dir = project.path().to_string_lossy().replace('\\', "/");
+    let bridge = MockBridge::start(move |command| match command["type"].as_str() {
+        Some("get_project_info") => Reply::Ok(json!({"project_dir": dir})),
+        Some("import_params") => Reply::Ok(json!({
+            "importer": "texture",
+            "changed": ["compress/mode", "compres/high_quality"],
+            "new_options": ["compres/high_quality"],
+            "copied": 1,
+            "reimported": true,
+            "after": {"importer": "texture", "params": {"compress/mode": 2}}
+        })),
+        _ => Reply::Ok(json!({})),
+    })
+    .await;
+    let manager = Arc::new(ToolManager::new(
+        BridgeClient::new(bridge.port),
+        CliRunner::new(PathBuf::from("unused-godot")),
+    ));
+    let result = manager
+        .call_tool(
+            "godot_set_import_params",
+            json!({"path": "far.png", "copy_from": "res://sky.png",
+                   "params": {"compress/mode": 2, "compres/high_quality": true}}),
+        )
+        .await;
+    assert!(!result.is_error, "{}", text(&result));
+    let report: Value = serde_json::from_str(&text(&result)).expect("JSON report");
+    assert_eq!(report["source"], "editor");
+    assert_eq!(report["path"], "res://far.png");
+    assert_eq!(report["copy_from"], "res://sky.png");
+    assert_eq!(report["new_options"], json!(["compres/high_quality"]));
+    assert_eq!(report["ignored_options"], json!(["compres/high_quality"]));
+    assert!(
+        report["warning"]
+            .as_str()
+            .unwrap_or("")
+            .contains("compres/high_quality"),
+        "{report}"
+    );
+    let received = bridge.received.lock().expect("received").clone();
+    let sent = received
+        .iter()
+        .find(|command| command["type"] == "import_params")
+        .expect("import_params sent");
+    assert_eq!(sent["params"]["path"], "res://far.png");
+    assert_eq!(sent["params"]["copy_from"], "res://sky.png");
+    assert_eq!(sent["params"]["action"], "set");
+    assert_eq!(sent["params"]["params"]["compress/mode"], 2);
+}
+
+/// A stand-in engine for import parameter calls: a `--script` run answers `set` or `get` by the
+/// request in its throw-away project, `--import` succeeds. Every call is logged.
+#[cfg(unix)]
+fn import_params_godot(dir: &Path, set_answer: &str, get_answer: &str) -> (PathBuf, PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let calls = dir.join("calls.txt");
+    let path = dir.join("import_params_godot.sh");
+    std::fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\necho \"$@\" >> '{}'\nwhile [ $# -gt 0 ]; do [ \"$1\" = --path ] && dir=\"$2\"; shift; done\ncase \"$(cat \"$dir/request.json\" 2>/dev/null)\" in\n  *'\"action\":\"get\"'*) echo 'GODOT_MCP_IMPORT={get_answer}' ;;\n  *'\"action\":\"set\"'*) echo 'GODOT_MCP_IMPORT={set_answer}' ;;\n  *) echo imported ;;\nesac\n",
+            calls.display()
+        ),
+    )
+    .expect("write import params godot");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+        .expect("chmod import params godot");
+    (path, calls)
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn without_the_editor_import_params_are_stored_then_imported_headless_and_read_back() {
+    let project = project_with_texture();
+    let engine = tempfile::tempdir().expect("engine dir");
+    let (godot, calls) = import_params_godot(
+        engine.path(),
+        r#"{"importer":"texture","changed":["compress/mode","bogus/option"],"new_options":["bogus/option"],"copied":0}"#,
+        r#"{"importer":"texture","type":"CompressedTexture2D","params":{"compress/mode":2},"types":{"compress/mode":"int"}}"#,
+    );
+    let cwd = tempfile::tempdir().expect("working dir");
+    let result = manager_in(cwd.path(), godot)
+        .call_tool(
+            "godot_set_import_params",
+            json!({"path": "res://sky.png", "params": {"compress/mode": 2, "bogus/option": 1},
+                   "project_path": project.path()}),
+        )
+        .await;
+    assert!(!result.is_error, "{}", text(&result));
+    let report: Value = serde_json::from_str(&text(&result)).expect("JSON report");
+    assert_eq!(report["source"], "headless");
+    assert_eq!(report["reimported"], true);
+    assert_eq!(report["after"]["params"]["compress/mode"], 2);
+    assert_eq!(report["ignored_options"], json!(["bogus/option"]));
+    let calls = std::fs::read_to_string(&calls).expect("calls");
+    let lines: Vec<&str> = calls.lines().collect();
+    assert_eq!(lines.len(), 3, "set, import, read back: {calls}");
+    assert!(lines[0].contains("--script"), "{calls}");
+    assert!(lines[1].ends_with("--import"), "{calls}");
+    assert!(lines[2].contains("--script"), "{calls}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn import_params_that_change_nothing_are_not_imported_again() {
+    let project = project_with_texture();
+    let engine = tempfile::tempdir().expect("engine dir");
+    let (godot, calls) = import_params_godot(
+        engine.path(),
+        r#"{"importer":"texture","changed":[],"new_options":[],"copied":0}"#,
+        r#"{"importer":"texture","params":{"compress/mode":0},"types":{}}"#,
+    );
+    let cwd = tempfile::tempdir().expect("working dir");
+    let result = manager_in(cwd.path(), godot)
+        .call_tool(
+            "godot_set_import_params",
+            json!({"path": "res://sky.png", "params": {"compress/mode": 0},
+                   "project_path": project.path()}),
+        )
+        .await;
+    assert!(!result.is_error, "{}", text(&result));
+    let report: Value = serde_json::from_str(&text(&result)).expect("JSON report");
+    assert_eq!(report["reimported"], false);
+    assert!(
+        report["note"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Nothing changed")
+    );
+    let calls = std::fs::read_to_string(&calls).expect("calls");
+    assert!(!calls.contains("--import"), "{calls}");
+}
+
+#[tokio::test]
+async fn an_importer_is_checked_against_the_ones_godot_offers_for_the_file() {
+    let project = project_with_texture();
+    for (importer, expected) in [
+        ("wav", "3d_texture"),
+        ("svg", "Godot offers"),
+        ("3d texture", "letters, digits and _"),
+    ] {
+        let result = call(
+            "godot_set_import_params",
+            json!({"path": "res://sky.png", "importer": importer,
+                   "project_path": project.path()}),
+        )
+        .await;
+        assert!(result.is_error, "{importer}");
+        assert!(
+            text(&result).contains(expected),
+            "{importer}: {}",
+            text(&result)
+        );
+    }
+    let sidecar = std::fs::read_to_string(project.path().join("sky.png.import")).expect("sidecar");
+    assert!(sidecar.contains("importer=\"texture\""), "{sidecar}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn without_the_editor_a_new_importer_is_stored_imported_headless_and_reported() {
+    let project = project_with_texture();
+    let engine = tempfile::tempdir().expect("engine dir");
+    let (godot, calls) = import_params_godot(
+        engine.path(),
+        r#"{"importer":"3d_texture","previous_importer":"texture","importer_changed":true,"changed":["slices/horizontal"],"new_options":["slices/horizontal"],"copied":0}"#,
+        r#"{"importer":"3d_texture","type":"CompressedTexture3D","params":{"slices/horizontal":33,"slices/vertical":1},"types":{}}"#,
+    );
+    let cwd = tempfile::tempdir().expect("working dir");
+    let result = manager_in(cwd.path(), godot)
+        .call_tool(
+            "godot_set_import_params",
+            json!({"path": "res://sky.png", "importer": "3d_texture",
+                   "params": {"slices/horizontal": 33}, "project_path": project.path()}),
+        )
+        .await;
+    assert!(!result.is_error, "{}", text(&result));
+    let report: Value = serde_json::from_str(&text(&result)).expect("JSON report");
+    assert_eq!(report["importer"], "3d_texture");
+    assert_eq!(report["previous_importer"], "texture");
+    assert_eq!(report["importer_changed"], true);
+    assert_eq!(report["type"], "CompressedTexture3D");
+    assert_eq!(report["reimported"], true);
+    let calls = std::fs::read_to_string(&calls).expect("calls");
+    assert!(calls.contains("--import"), "{calls}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_new_importer_alone_is_a_change_and_one_godot_does_not_take_is_an_error() {
+    let project = project_with_texture();
+    let engine = tempfile::tempdir().expect("engine dir");
+    let (godot, _) = import_params_godot(
+        engine.path(),
+        r#"{"importer":"my_plugin_importer","previous_importer":"texture","importer_changed":true,"changed":[],"new_options":[],"copied":0}"#,
+        r#"{"importer":"texture","type":"CompressedTexture2D","params":{},"types":{}}"#,
+    );
+    let cwd = tempfile::tempdir().expect("working dir");
+    let result = manager_in(cwd.path(), godot)
+        .call_tool(
+            "godot_set_import_params",
+            json!({"path": "res://sky.png", "importer": "my_plugin_importer",
+                   "project_path": project.path()}),
+        )
+        .await;
+    assert!(result.is_error, "{}", text(&result));
+    let message = text(&result);
+    assert!(message.contains("my_plugin_importer"), "{message}");
+    assert!(message.contains("imported it with texture"), "{message}");
+}
+
+#[tokio::test]
+async fn an_importer_change_goes_to_the_editor_that_has_the_project() {
+    use common::{MockBridge, Reply};
+    let project = project_with_texture();
+    let dir = project.path().to_string_lossy().replace('\\', "/");
+    let bridge = MockBridge::start(move |command| match command["type"].as_str() {
+        Some("get_project_info") => Reply::Ok(json!({"project_dir": dir})),
+        Some("import_params") => Reply::Ok(json!({
+            "importer": "3d_texture",
+            "previous_importer": "texture",
+            "importer_changed": true,
+            "changed": ["slices/horizontal"],
+            "new_options": ["slices/horizontal"],
+            "copied": 0,
+            "reimported": true,
+            "after": {"importer": "3d_texture", "type": "CompressedTexture3D",
+                      "params": {"slices/horizontal": 33}}
+        })),
+        _ => Reply::Ok(json!({})),
+    })
+    .await;
+    let manager = Arc::new(ToolManager::new(
+        BridgeClient::new(bridge.port),
+        CliRunner::new(PathBuf::from("unused-godot")),
+    ));
+    let result = manager
+        .call_tool(
+            "godot_set_import_params",
+            json!({"path": "sky.png", "importer": "3d_texture",
+                   "params": {"slices/horizontal": 33}}),
+        )
+        .await;
+    assert!(!result.is_error, "{}", text(&result));
+    let report: Value = serde_json::from_str(&text(&result)).expect("JSON report");
+    assert_eq!(report["source"], "editor");
+    assert_eq!(report["type"], "CompressedTexture3D");
+    assert_eq!(report["previous_importer"], "texture");
+    let received = bridge.received.lock().expect("received").clone();
+    let sent = received
+        .iter()
+        .find(|command| command["type"] == "import_params")
+        .expect("import_params sent");
+    assert_eq!(sent["params"]["importer"], "3d_texture");
 }
 
 /// A project holding the addon of an older server, and a fake editor of it that runs that addon:
