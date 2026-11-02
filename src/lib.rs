@@ -14,3 +14,4 @@ pub mod server;
 pub mod tools;
 pub mod util;
 pub mod validation;
+pub mod version;
