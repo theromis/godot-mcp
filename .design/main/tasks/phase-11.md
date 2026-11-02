@@ -1,7 +1,7 @@
 ---
 phase: 11
 name: "Reality Sync after Ventilation"
-status: Todo
+status: In Progress
 subsystem: "addons/godot_mcp/bridge_server.gd, .agents/skills/repo-steward, tests, README"
 requires: [9]
 provides: []
@@ -15,7 +15,7 @@ duration_minutes: ~
 # Stage 11 Tasks — Reality Sync after Ventilation
 
 **Phase:** 11
-**Status:** Todo
+**Status:** In Progress
 **Strategic Goal:** The two places where a specification synced on 2026-11-02 asks more than the merged code does are closed: `godot_set_project_setting` accepts and refuses the same values with and without the editor (CA-4, CA-11), and the repo steward labels a merged pull request whose planning update is still owed until that update is committed.
 
 ## Atomic Checklist
@@ -25,7 +25,7 @@ duration_minutes: ~
 - [x] [T-11A01] Editor: `set_project_setting` converts the text forms of CA-4
 - [x] [T-11B01] Steward: the `status: planning-owed` label, its run step and report line
 - [x] [T-11T01] Validation: pipeline, editor suites, settings parity and steward tests
-- [ ] [T-11E01] Carry the addon change to the release lines (after validation and the line catch-up)
+- [ ] [T-11E01] Carry the product commits since 0.12.0 to the release lines
 
 ## Detailed Tracking
 
@@ -67,11 +67,11 @@ duration_minutes: ~
 
 - **Changes:** On `master` with this machine's Godot 4.8.beta2 (the build in `.github/godot-version` is 4.8-beta1), one step after another: clippy and fmt clean; `cargo test --all-targets` 449 passed, 0 failed; all 20 addon scripts of the AGENTS.md list pass `--check-only`; `editor_e2e_test` 41 of 43 (the 2 failures are the known environmental ones: `open_scene_returns_what_the_load_errors_dialog_shows` compares the English dialog title with the Russian one of this editor, and `close_editor_quits_the_editor_and_its_process_exits` compares a PID with the `_console.exe` wrapper's); `addon_export_test` 2 of 2; `addon_scripts_have_no_analyzer_warnings` passes. CA-4 inputs and their proof, with the editor in `project_settings_convert_the_same_text_forms_as_the_file_fallback` and without it in `project_setting_without_an_editor_converts_with_the_real_engine` (same inputs, real engine): `"#102b38"` and `"white"` for a Color, a whole number or `1280.0` for an int, `720.0` for the int base of `viewport_height.mobile`, `"Vector2(0, 2)"` for a Vector2, `2.5` for a new custom key; refused in both: `"#zzzzzz"` and `3` for a Color, `"wide"` and `1280.5` for an int, `"Object(Node)"`, `"Vector3(0, 2, 1)"` and `2` for a Vector2. The steward tests are in `steward_test` (21 of 21).
 
-### [T-11E01] Carry the addon change to the release lines (after validation and the line catch-up)
+### [T-11E01] Carry the product commits since 0.12.0 to the release lines
 
 - **Spec:** l2-release-branches.md; l1-release-lines.md
-- **Status:** Blocked
+- **Status:** In Progress
 - **Assignment:** Agent
-- **Verify:** On `godot-v4.7`, `godot-v4.6` and `godot-v4.5`, in that order, the product commit of T-11A01 applied with `cherry-pick -x`; on each, clippy, fmt, `cargo test --all-targets`, the GDScript checks, `editor_e2e_test` and `addon_export_test` (ignored) pass with that line's own Godot build.
+- **Verify:** The product commits of `master` since the 0.12.0 release commit (`git log --oneline 9b45761..master -- . ':(exclude).design'`), in master's order, are applied to `godot-v4.7`, `godot-v4.6` and `godot-v4.5`, in that order, with `cherry-pick -x`: #94, #91, #98, #100, #101, #99, the editor setting conversion of T-11A01, and the dependency update. Not carried: the steward commits (`.agents/`), `CHANGELOG.md` and planning files, and the identity files keep each line's own values (release skill, procedure B). On each line, with that line's own Godot build (4.7.2, 4.6.3, 4.5.2), one after another: `cargo clippy --all-targets --all-features -- -D warnings`, `cargo fmt --all -- --check`, `cargo test --all-targets`, `godot --headless --check-only` for every addon script, `editor_e2e_test`, `addon_export_test`, `export_e2e_test` and `runtime_e2e_test` (ignored, `--test-threads=1`) pass; the failures already known as environmental (the Russian dialog title, the console wrapper's PID) are named in the report.
 - **Handoff:** Pushing the branches needs the maintainer's yes in the conversation.
-- **Notes:** Blocked by the same cause as T-10E01: the lines must first receive the master work since their last carry. Lift the block by setting this task to `Todo` once that catch-up is done. The steward change (T-11B01) lives in `.agents/` and is not carried.
+- **Notes:** The block of the first plan (the lines had to catch up with `master` first) is gone: the lines hold everything up to 0.12.0 and the export tools of #89, so the carry is these eight commits. Risks to check first on 4.5 and 4.6: `addons/godot_mcp/editor/shader_ops.gd` (#91) uses the shader editor, and `import_ops.gd` (#100, #101) uses the editor file system; an API missing from the line's M.N.0 is called through `has_method()` + `call()` (AGENTS.md), and `addon_scripts_have_no_analyzer_warnings` is the first check on each line because an addon that fails to compile hangs the whole editor suite. The Rust 1.87 floor of the dependency update is the same on every line. Pushing the branches, and the release these commits belong to (0.12.1 or 0.13.0, see CHANGELOG), need the maintainer's yes.

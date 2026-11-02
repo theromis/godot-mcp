@@ -38,3 +38,12 @@ Internal journal of finished phases. User-facing release notes are in the root `
 - Specifications: Content Authoring 1.1.0 (CA-7 to CA-10), Godot Editor Addon 1.4.2, Tool Handlers 1.3.2, Tool Catalog 1.4.0.
 - Found by carrying: Godot 4.5.2, 4.6.3 and 4.7.2 give script tabs no `_tab_name` metadata; the pairing check now applies only where it exists. Found by the security review: the edit's temporary file is now created exclusively under an unpredictable name and a script that is a symbolic link is refused.
 - Carried to `godot-v4.7`, `godot-v4.6` and `godot-v4.5` as three commits each, verified with each line's pinned build.
+
+## Phase 10 — 2026-11-02
+
+- A project names one development-only adapter script in `godot_mcp/adapter`; the in-game component loads it with godot-dev-bridge's registration contract (so its adapters work unchanged), keeps what it registers and what it refused, and shows its status in the hello and in `godot_get_run_status`.
+- `godot_game_state` reads the states the adapter registered and `godot_game_command` runs one of its commands by name, in a managed run and in editor Play, held or not (a held game defers what a command schedules to the next tick); answers are bounded and each failure class has its own recovery steps.
+- Failures in the project's own code are reported instead of hidden: the output logger marks script errors of a called handler, and a state that breaks fails alone.
+- Feasibility on a real engine first (Godot 4.8-beta1): the logger sees a handler's script error at once, so no specification amendment was needed.
+- Specifications: Project Adapter and Project Adapter Runtime (new), Runtime Observability 1.3.0, Tool Catalog 1.8.0, Game Runtime Channel 1.6.0.
+- Proved on every release line with its own engine (4.7.2, 4.6.3, 4.5.2): the adapter was carried with 0.12.0 and its end-to-end tests pass on each line (51 of 51 runtime tests).
