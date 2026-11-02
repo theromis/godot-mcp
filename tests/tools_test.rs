@@ -4729,3 +4729,44 @@ async fn the_servers_own_source_tree_is_not_overwritten_by_the_update() {
     assert!(result.is_error);
     assert!(text(&result).contains("source tree"), "{}", text(&result));
 }
+
+#[tokio::test]
+async fn an_update_passes_discard_to_the_editor_it_closes() {
+    use common::{MockBridge, Reply};
+    let project = project_dir();
+    let dir = project.path().to_string_lossy().replace('\\', "/");
+    let bridge = MockBridge::start(move |command| match command["type"].as_str() {
+        Some("get_project_info") => {
+            Reply::Ok(json!({"project_dir": dir, "addon_version": "0.11.1"}))
+        }
+        Some("close_editor") => Reply::Ok(json!({
+            "closing": false, "unsaved_scenes": ["res://level.tscn"], "unsaved_scripts": []
+        })),
+        _ => Reply::Ok(json!({})),
+    })
+    .await;
+    let tools = editor_manager(&bridge);
+    for discard in [false, true] {
+        let result = Arc::clone(&tools)
+            .call_tool(
+                "godot_update_addon",
+                json!({"project_path": project.path(), "restart_editor": true, "discard": discard}),
+            )
+            .await;
+        assert!(result.is_error, "{}", text(&result));
+        let message = text(&result);
+        assert!(message.contains("res://level.tscn"), "{message}");
+        assert!(message.contains("discard: true"), "{message}");
+        let received = bridge.received.lock().expect("received").clone();
+        let close = received
+            .iter()
+            .rev()
+            .find(|command| command["type"] == "close_editor")
+            .expect("close_editor sent");
+        assert_eq!(close["params"]["discard"], discard, "{close}");
+    }
+    assert!(
+        !project.path().join("addons/godot_mcp").exists(),
+        "nothing installed"
+    );
+}

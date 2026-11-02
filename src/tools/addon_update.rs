@@ -22,11 +22,15 @@ pub fn handles(name: &str) -> bool {
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         UPDATE,
-        "Installs or updates the Godot MCP Bridge addon (res://addons/godot_mcp) in a project with the addon of this server's own build, so both have the same version, and keeps the plugin enabled in project.godot. The old addon folder is replaced as a whole (files the new addon no longer has are removed; nothing outside addons/godot_mcp is touched). An editor that has the project open runs the old addon until it loads the plugin again, so while one is connected the files are replaced only with restart_editor: true, which closes it (refused while scenes or scripts are unsaved), installs, and opens it again. The answer gives previous_version, version, the added, updated and removed files and what the editor needs. Nothing is written when the addon is already this version. Use it when a tool says the editor's addon is older than the server.",
+        "Installs or updates the Godot MCP Bridge addon (res://addons/godot_mcp) in a project with the addon of this server's own build, so both have the same version, and keeps the plugin enabled in project.godot. The old addon folder is replaced as a whole (files the new addon no longer has are removed; nothing outside addons/godot_mcp is touched). An editor that has the project open runs the old addon until it loads the plugin again, so while one is connected the files are replaced only with restart_editor: true, which closes it (refused while scenes or scripts are unsaved, unless discard: true), installs, and opens it again. The answer gives previous_version, version, the added, updated and removed files and what the editor needs. Nothing is written when the addon is already this version. Use it when a tool says the editor's addon is older than the server.",
         json!({
             "project_path": {
                 "type": "string",
                 "description": "Project directory containing project.godot. Optional: defaults to the project open in the connected editor, else the project the server was started in."
+            },
+            "discard": {
+                "type": "boolean",
+                "description": "With restart_editor: close the editor even when it has unsaved scenes or scripts, losing those changes, as godot_close_editor's discard does. Default false: the call is refused and lists them."
             },
             "restart_editor": {
                 "type": "boolean",
@@ -40,6 +44,10 @@ pub fn catalog() -> Vec<Tool> {
 pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {
     let restart = args
         .get("restart_editor")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let discard = args
+        .get("discard")
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let project = match tools.resolve_project(&args).await {
@@ -99,7 +107,10 @@ pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {
             );
         }
         let closed = tools
-            .handle_close_editor(json!({"project_path": project.display().to_string()}))
+            .handle_close_editor(json!({
+                "project_path": project.display().to_string(),
+                "discard": discard,
+            }))
             .await;
         if closed.is_error {
             return prefixed(
