@@ -5149,8 +5149,9 @@ async fn a_command_the_editors_addon_lacks_names_both_versions_and_the_update() 
     );
     assert!(message.contains("get_scene_tree"), "{message}");
     assert!(message.contains("godot_update_addon"), "{message}");
+    // The hint names the project as the editor reports it, with forward slashes on every OS.
     assert!(
-        message.contains(&project.path().display().to_string()),
+        message.contains(&project.path().to_string_lossy().replace('\\', "/")),
         "the project to update: {message}"
     );
     assert!(!message.contains("retry in a moment"), "{message}");
