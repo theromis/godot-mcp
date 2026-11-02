@@ -1,6 +1,6 @@
 # Godot Editor Addon
 
-**Version:** 1.11.0
+**Version:** 1.11.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-editor-bridge.md
@@ -81,7 +81,7 @@ addons/godot_mcp/
 - `add_node`: native classes must derive from `Node` and be instantiable; global script classes are looked up in the project's class list; non-Node script instances are freed.
 - `get_node_properties`: only properties with editor usage; values in Godot text form, truncated at 2000 characters. A property that holds no object (an unset `material`) is read as `null`, not as a freed object. [MODIFIED]
 - `list_signals`: for each signal, `connections` is a list of `{target, method}` for the connections whose target is a node of the edited scene (`target` is the scene-relative path); connections the editor made to its own panels are left out. [MODIFIED]
-- `create_scene`, `create_resource`: create the missing folders of the path first (`make_dir_recursive_absolute`); a failure to create one is reported with the folder; refuse an existing file; the scene is packed and opened, the resource saved with `ResourceSaver` and registered with the file system. `attach_script`, `connect_signal`: one undo action each; the script must exist in the project, the target must have the method, a connection that exists is refused. `set_project_setting`: the key is a plain `section/path` without an empty, `.` or `..` segment, only strings, numbers and booleans, the type of an existing setting is kept, the old value is restored if saving fails.
+- `create_scene`, `create_resource`: create the missing folders of the path first (`make_dir_recursive_absolute`); a failure to create one is reported with the folder; refuse an existing file; the scene is packed and opened, the resource saved with `ResourceSaver` and registered with the file system. `attach_script`, `connect_signal`: one undo action each; the script must exist in the project, the target must have the method, a connection that exists is refused. `set_project_setting`: the key is a plain `section/path` without an empty, `.` or `..` segment, the value a string, number or boolean; the setting's type is the stored one, else the engine's (`_defined_setting_key`; a feature override such as `name.mobile` has the type of `name`), and a value of that type is kept: a whole number becomes an `int`, an HTML color or color name a `Color`, a name a `StringName` or `NodePath`, and for any other type the `project.godot` text, accepted only when it starts with the type's name and parses to it (`_setting_from_text`, never an Object), the same rules as the server's file fallback (CA-4, CA-11); the old value is restored if saving fails. [MODIFIED]
 - `script_tab` (`script_path`, `reload`): reports whether the script has an open tab and whether it holds unsaved changes or cannot be matched to the file; with `reload`, an unchanged tab that shows an older text gets the file's text. The server asks it before it overwrites a script, and refuses the overwrite when typing could be lost. [ADDED]
 - `get_input_map`, `edit_input_action`: events are built from `type` `key` (key name, `physical` by default, modifiers), `mouse_button`, `joypad_button` or `joypad_motion`; the change of one action is one `EditorUndoRedoManager` action and `ProjectSettings.save()` writes it (CA-16). [ADDED]
 - `game_send`, `game_status`: the relay of `editor/game_relay.gd` to a game started by Play; `game_send` refuses when the relay is not active. [ADDED]
@@ -133,7 +133,6 @@ Each lives in its own file under `editor/`, loaded by path with no `class_name`;
 - Known limitation: the owner-only permission on the token file is set through `FileAccess.set_unix_permissions` and has not been verified on a multi-user Linux host.
 - Known limitation: the bridge processes commands on the editor's main thread; a synchronous re-import blocks other commands until it finishes.
 - When `undo_redo` is not injected (only possible outside the plugin) mutations apply directly; the plugin always injects it.
-- Open gap (CA-4, CA-11): `set_project_setting` keeps the type of an existing setting by refusing any value of another type (`_coerce_setting`), while the server's file fallback converts an HTML color or color name to a color and the `project.godot` text to the setting's type (pull request 98). Until the editor path converts the same text forms, one value is accepted without the editor and refused with it. [ADDED]
 
 ## 7. Drawbacks & Alternatives
 
@@ -175,3 +174,4 @@ Each lives in its own file under `editor/`, loaded by path with no `class_name`;
 | 1.9.0 | 2026-10-29 | Agent (magic.spec) | [ADDED] the `close_editor` command: the unsaved check, the `discard` option, the process id in the answer and the quit after the reply. |
 | 1.10.0 | 2026-10-31 | Agent (magic.spec) | [ADDED] BR-12: edits Godot would not save (inside an instance without editable children) are refused, or `make_editable` turns Editable Children on in the same action; removing a node an instance brings is refused. |
 | 1.11.0 | 2026-11-02 | Agent (magic.spec) | Reality sync after ventilation. [ADDED] BR-13 (derived port and legacy listener, pull request 75), §5.4 (shader, import and file commands, pull requests 91, 100, 101, 60), the handler notes of `script_tab`, the InputMap commands (58), the relay and `open_scene` (94), four files and their references, the open gap of the settings command against CA-4. [MODIFIED] BR-2 (token for the legacy port), BR-7 (read-back refusal, pull request 88), BR-11 (more commands confine paths), `resave_resources` reloads loaded resources (87). Stable → RFC → Stable after Post-Update Review. |
+| 1.11.1 | 2026-11-02 | Agent (magic.run) | [MODIFIED] The `set_project_setting` note describes the conversion as built and the open gap against CA-4 is closed: the editor path converts the text forms the file fallback converts. Source: phase 11. No other requirement changed. |

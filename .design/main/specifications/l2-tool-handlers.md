@@ -1,6 +1,6 @@
 # Tool Handlers (Rust)
 
-**Version:** 1.8.0
+**Version:** 1.8.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-tool-catalog.md
@@ -121,7 +121,7 @@ Refusals are `ToolResult` errors with at least one fix (the TL-7 rule): the coun
 - A missing folder of a new file is created before the write (`create_dir_all`) and a failure names the file.
 - A settings key is checked by `is_setting_key`, the rule of CA-3: letters, digits and `_ / . -`, a section first, no empty, `.` or `..` segment.
 - The settings fallback answers `{source, project_dir, settings, truncated}`, with `settings` a map from key to the value's text without Godot's quoting (`hello`, not `"hello"`), as the editor path does.
-- [ADDED] Setting types (CA-4). A setting stored in `project.godot` as a plain string, number or boolean keeps that type. For one not stored yet, or stored as another type, `CliRunner::setting_type` asks the engine in a throw-away project for the setting's type and text; the value is then converted (an HTML color or color name for a `Color`, the `project.godot` text such as `Vector2i(1152, 648)` for other types, never an Object, a whole number for an `int`) or refused with nothing written; an engine that cannot run refuses the call with a way out. A new entry goes after the last entry of its section, keeping the blank line before the next section header. The editor path does not convert yet (open gap in [l2-godot-editor-addon.md](l2-godot-editor-addon.md) §6).
+- [ADDED] Setting types (CA-4). A setting stored in `project.godot` as a plain string, number or boolean keeps that type. For one not stored yet, or stored as another type, `CliRunner::setting_type` asks the engine in a throw-away project for the setting's type and text; the value is then converted (an HTML color or color name for a `Color`, the `project.godot` text such as `Vector2i(1152, 648)` for other types, never an Object, a whole number for an `int`) or refused with nothing written; an engine that cannot run refuses the call with a way out. A new entry goes after the last entry of its section, keeping the blank line before the next section header. The editor path applies the same rules ([l2-godot-editor-addon.md](l2-godot-editor-addon.md) §5.2).
 
 ### 5.6 Project Creation [ADDED]
 
@@ -220,3 +220,4 @@ The answer is `{ok, export, import, missing_exports, missing_imports, stale_impo
 | 1.6.0 | 2026-10-26 | Agent (magic.spec) | [MODIFIED] The file map and Canonical References: the handlers of the tool manager live in `run.rs`, `headless.rs` and `project.rs`; [ADDED] §5.6 (project creation) and §5.7 (the voxel model check) as merged. Stable → RFC → Stable after Post-Update Review. The running-game tools are in `tools/game.rs` and `tools/game/`. |
 | 1.7.0 | 2026-10-29 | Agent (magic.spec) | [MODIFIED] TL-1: unknown argument keys are refused with the accepted names instead of ignored, and every schema says `additionalProperties: false`. Source: a `content` key passed to `godot_create_script` was dropped and the default template reported as created. Stable → RFC → Stable after Post-Update Review. |
 | 1.8.0 | 2026-11-02 | Agent (magic.spec) | Reality sync after ventilation: modules merged without a specification. [ADDED] §5.8 shader tools (pull request 91), §5.9 import parameters (100, 101), §5.10 InputMap and deletion (58, 60), §5.11 one-off scripts and their repairs (31, 87, 99), §5.12 export tools (89), the TL-12, TL-13, CA-14 to CA-17 and EX rows, the fixed-script rule, the setting-type step of §5.5 (98), the file map and references. [MODIFIED] Engine time limits; TL-4 names the export output. Stable → RFC → Stable after Post-Update Review. |
+| 1.8.1 | 2026-11-02 | Agent (magic.run) | The setting-type step no longer lists the editor path as an open gap: it converts the same forms. Source: phase 11. No requirement changed. |

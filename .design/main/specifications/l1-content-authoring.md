@@ -1,6 +1,6 @@
 # Content Authoring
 
-**Version:** 1.5.0
+**Version:** 1.5.1
 **Status:** Stable
 **Layer:** concept
 
@@ -92,3 +92,4 @@ Without these tools an agent can add nodes to an open scene and write a script f
 | 1.3.0 | 2026-10-26 | Agent (magic.spec) | [ADDED] `godot_create_project` (CA-12) and `godot_check_voxel_model` (CA-13) with their constraints and the preview-name decision, as merged. Stable → RFC → Stable after Post-Update Review. |
 | 1.4.0 | 2026-10-29 | Agent (magic.spec) | [MODIFIED] `godot_create_script` creates a script from the caller's `content` as well as from the template (see the tool catalog). Stable → RFC → Stable after Post-Update Review. |
 | 1.5.0 | 2026-11-02 | Agent (magic.spec) | Reality sync after ventilation. [ADDED] CA-14 (shaders, pull request 91), CA-15 (import parameters and "Import As", pull requests 100 and 101), CA-16 (InputMap actions, pull request 58), CA-17 (file deletion, pull request 60), with their constraints and references. [MODIFIED] CA-4: a setting the engine defines but `project.godot` does not store yet takes the engine's type, and text forms convert (pull request 98 did this in the file fallback only, so the editor path must follow for CA-11 to hold); CA-1 names the explicit overwrite and the in-place changes; CA-6 adds the shader extensions. Stable → RFC → Stable after Post-Update Review. |
+| 1.5.1 | 2026-11-02 | Agent (magic.run) | The editor path now holds CA-4 and CA-11 for settings as the file fallback does (phase 11); the 1.5.0 remark that it had to follow is satisfied. No requirement changed. |
