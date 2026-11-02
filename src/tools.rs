@@ -15,6 +15,7 @@ use std::sync::{Arc, OnceLock};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
+mod addon_update;
 mod authoring;
 mod code;
 mod editor;
@@ -146,6 +147,7 @@ impl ToolManager {
             name if game::handles(name) => game::call(&self, name, args).await,
             name if code::handles(name) => code::call(&self, name, args).await,
             name if export::handles(name) => export::call(&self, name, args).await,
+            name if addon_update::handles(name) => addon_update::call(&self, args).await,
             feedback::NOTE => self.handle_note_feedback(args).await,
             feedback::DRAFT => self.handle_draft_feedback(args).await,
             feedback::SUBMIT => self.handle_submit_feedback(args).await,
@@ -154,6 +156,7 @@ impl ToolManager {
                 &["This is a server bug; report it with the tool name"],
             ),
         };
+        let result = addon_update::explain_unknown_command(&self, name, result).await;
         self.observe(name, &result, EvidenceKind::Error);
         result
     }
@@ -837,6 +840,7 @@ fn annotations(name: &str) -> Option<ToolAnnotations> {
         | "godot_edit_input_action"
         | "godot_set_export_preset"
         | "godot_delete_file"
+        | "godot_update_addon"
         | "godot_game_set" => [false, true, true],
         "godot_run_script"
         | "godot_edit_script"
@@ -1190,6 +1194,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
     tools.extend(files::catalog());
     tools.extend(scripts::catalog());
     tools.extend(shaders::catalog());
+    tools.extend(addon_update::catalog());
     tools.extend(game::catalog());
     tools.extend(code::catalog());
     tools.extend(export::catalog());
