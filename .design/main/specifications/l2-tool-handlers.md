@@ -1,6 +1,6 @@
 # Tool Handlers (Rust)
 
-**Version:** 1.9.0
+**Version:** 1.10.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-tool-catalog.md
@@ -162,6 +162,7 @@ The answer is `{ok, export, import, missing_exports, missing_imports, stale_impo
 3. **Run.** `CliRunner::run_script`: `--headless --path <project> -s <script>`, `user_args` after `--`, a timeout of 120 s by default (at most 600) after which the process tree is killed and the last lines are quoted. After a `SCRIPT ERROR`, a stretch of silence means the main loop is idle and the run is stopped (`stopped_idle`). `script_load_failure` turns a script Godot could not load into `load_error`.
 4. **Repair.** `resource_audit.rs` compares the files with the snapshot: a rewritten text file gets its `uid=` and the `[ext_resource]` uids written back and its `shader_parameter/<name> = null` lines removed; a binary file that lost its header uid gets it back through `CliRunner::set_binary_uids` (a fixed script outside the project calling `ResourceSaver.set_uid`, the pairs in a JSON file), and the headers are read again to see which took. `resource_repairs` lists what was repaired, `resource_damage` what was not, with a fix.
 5. **Refresh.** When an editor has the project open, the written files go to `resave_resources`, which also reloads what the editor holds; its answer is `editor_refresh`, a failure `editor_refresh_error`.
+6. **Keep it short.** [ADDED] `RepairReport` bounds the answer: `resource_repairs` holds the first 20 repairs with the count of restored `[ext_resource]` uids instead of the uids, `resource_repairs_total` counts them all, every list of `editor_refresh` stops at 20 with `<list>_total` beside a cut one, and the summary and the `resource_damage` warning name at most three files and count the rest. `exit_code`, the output, `script_errors`, `load_error` and `resource_damage` itself are never cut.
 
 `imports.rs` serves `godot_run_project` instead: the stale-import notice lists sources whose import cache is older than the file, since a process run does not reimport.
 
@@ -236,3 +237,4 @@ The answer is `{ok, export, import, missing_exports, missing_imports, stale_impo
 | 1.8.0 | 2026-11-02 | Agent (magic.spec) | Reality sync after ventilation: modules merged without a specification. [ADDED] §5.8 shader tools (pull request 91), §5.9 import parameters (100, 101), §5.10 InputMap and deletion (58, 60), §5.11 one-off scripts and their repairs (31, 87, 99), §5.12 export tools (89), the TL-12, TL-13, CA-14 to CA-17 and EX rows, the fixed-script rule, the setting-type step of §5.5 (98), the file map and references. [MODIFIED] Engine time limits; TL-4 names the export output. Stable → RFC → Stable after Post-Update Review. |
 | 1.8.1 | 2026-11-02 | Agent (magic.run) | The setting-type step no longer lists the editor path as an open gap: it converts the same forms. Source: phase 11. No requirement changed. |
 | 1.9.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] §5.13 (the addon embedded by `build.rs`, the update tool and the explanation of an unknown editor command) and its Canonical References; TL-14 in the compliance table. Source: pull request 102. Stable → RFC → Stable after Post-Update Review. |
+| 1.10.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] §5.11 step 6: the bounds of the repair report (twenty listed repairs and `resource_repairs_total`, cut `editor_refresh` lists with totals, at most three named files in a summary). Source: pull request 103. Stable → RFC → Stable after Post-Update Review. |
