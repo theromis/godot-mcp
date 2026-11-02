@@ -1,6 +1,6 @@
 # Live Editor Bridge
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Stable
 **Layer:** concept
 
@@ -60,7 +60,7 @@ The editor is a live, stateful environment shared with a human. Anything an AI a
 | --- | --- | --- |
 | `ping` | no | Liveness check |
 | `get_version` | no | Engine version components |
-| `get_project_info` | no | Name, main scene, features, absolute project directory |
+| `get_project_info` | no | Name, main scene, features, absolute project directory, and the addon version the editor loaded (an addon replaced on disk shows only after the plugin loads again) [MODIFIED] |
 | `get_open_scenes` | no | Open scene tabs and the active one |
 | `get_scene_tree` | no | Active scene, or another open tab by `scene_path` |
 | `get_node_properties` | no | Editor-visible properties as type + Godot text value (long values truncated) |
@@ -137,3 +137,4 @@ graph LR
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-16 | Agent (magic.analyze first-time) | Reverse-engineered from the code at 94e4540; rationale from the 2026-10-14 simulation QA report (LAN/browser exposure, buffer limits, scene escape, silent property no-ops, undo fidelity, 4.5 API guard). |
 | 1.1.0 | 2026-11-02 | Agent (magic.spec) | Reality sync after ventilation. [MODIFIED] Port selection: without a configured port both sides derive it from the project path, the legacy port only outside a project (pull request 75; the specification still said `9333`); BR-7 refuses a value the property does not keep (pull request 88); `open_scene` activates a reloaded tab (pull request 94); `resave_resources` reloads loaded resources (pull request 87); BR-5 says which commands are undo actions and which file operations are not. [ADDED] BR-12, which the implementation specification already carried (pull request 86); BR-13 (one port per project); the command set completed with the authoring, script, shader, input, file, import, relay and close commands. Stable → RFC → Stable after Post-Update Review. |
+| 1.2.0 | 2026-11-02 | Agent (magic.spec) | [MODIFIED] `get_project_info` also answers the addon version the editor loaded, so the server can tell an addon replaced on disk from the one that runs (the update tool is in the tool catalog, TL-14). Source: pull request 102. Stable → RFC → Stable after Post-Update Review. |

@@ -1,6 +1,6 @@
 # Tool Handlers (Rust)
 
-**Version:** 1.8.1
+**Version:** 1.9.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-tool-catalog.md
@@ -51,6 +51,7 @@ Maps each safety rule of the catalog to the function that enforces it, so a new 
 | TL-9 Editor stays in sync | After `godot_create_script` writes into the editor's own project (taken from the editor or named by a `project_path` the bridge reports as its `project_dir`), it sends `resave_resources` for the new `res://` path (best effort). |
 | TL-12 Closing an editor | [ADDED] `tools/editor.rs`: an editor connected to the named project gets `close_editor`; its answer carries the editor's PID, which the tool waits on (`timeout_seconds`, 1 to 120, default 30). Without a bridge, `LaunchedEditors` keeps the editors `godot_launch_editor` started with their directories; only such an editor of the named project is stopped, with `discard`: SIGTERM on Unix so the engine can shut down, a kill when forced or on Windows; a process already reaped is never signalled, since its id may belong to another process. An exited launched editor is reaped so it never lingers as a zombie; an editor that reports another project is never asked to quit. |
 | TL-13 Headless scripts keep references | [ADDED] §5.11. |
+| TL-14 Older addon named, addon update | [ADDED] §5.13. |
 | CA-14 to CA-17 | [ADDED] §5.8 to §5.10. |
 | EX-1 to EX-7 | [ADDED] §5.12. |
 | CA-12 Project creation | §5.6: validation before any write, `create_new` for `project.godot`, an escaped name. |
@@ -171,6 +172,17 @@ The answer is `{ok, export, import, missing_exports, missing_imports, stale_impo
 - **Presets.** `godot_list_export_presets` and `godot_set_export_preset` call `CliRunner::export_presets`: a fixed script edits `export_presets.cfg` with `ConfigFile` in a throw-away project, the request in `res://request.json`. Limits: names 128 characters, fields 4096, at most 128 options; an option value is a string, number or boolean and keeps its stored type. A new preset needs `platform` (the built-in names, or one an export plugin adds); an existing one must match its stored platform. `set` refuses while `editor_has_project` (EX-2). The answer lists `new_options`.
 - **Export.** `godot_export_project`: `output_file` resolves the output (the preset's `export_path` by default) inside the project and refuses a folder, a path under `.godot/`, an extension of `SOURCE_EXTENSIONS` (`gd`, `tscn`, `scn`, `tres`, `res`, `godot`, `cfg`, `import`, `uid`, `gdshader`, `cs`) and, in pack mode, anything but `.pck` or `.zip`; the folder is created and Godot gets the absolute path, which never starts with `-`. `import_project_within` runs first unless `import` is false or the editor has the project open; then `CliRunner::export_project` runs `--export-pack`, `--export-release` or `--export-debug` with the preset name. The answer quotes up to 40 `ERROR`/`WARNING` lines and the last 12 KiB of each stream; a missing template, no file written or a timeout is an error with that log.
 
+### 5.13 Addon Update [ADDED]
+
+`build.rs` lists every file below `addons/godot_mcp` (names starting with `.` are skipped), embeds each with `include_bytes!` in a generated table and watches the folder, so a build carries the addon of its own sources. `addon.rs` holds that table (`FILES`) and `SERVER_VERSION`, the manifest version, which the addon's `plugin.cfg` carries too. `tools/addon_update.rs` realizes TL-14.
+
+1. **Resolve.** `godot_update_addon` resolves the project (TL-3) and refuses the server's own source tree (`same_directory` with the manifest directory of the build).
+2. **Compare.** `addon::plan` compares the files on disk with the table by content, because a `-dev` version number stays the same while the addon changes; a symbolic link in place of the folder is refused. The version the connected editor runs comes from `get_project_info` (`addon_version`); an editor of another project is ignored.
+3. **Editor.** With an editor of that project connected: files and loaded version both equal to this build's make the call a no-op; otherwise it is refused, with the two ways out, unless `restart_editor` is true. Then the `close_editor` handler runs (`discard` passed through; its refusal ends the call with the editor still open and the addon untouched), the install follows, and the editor is launched again; a failed launch is reported as such after a finished update.
+4. **Install.** `addon::install` writes the files into the hidden `addons/.godot_mcp.new` (Godot does not scan it), renames the old folder to `.godot_mcp.old` and the new one into place; a failed second rename puts the old folder back. A file the new addon lacks goes with the old folder.
+5. **Enable.** `addon::enable_in` adds the manifest to `[editor_plugins] enabled` and keeps other plugins; a `project.godot` whose `enabled=` line has another shape is left unchanged.
+6. **Explain.** `ToolManager::call_tool` passes every result through `explain_unknown_command`: an error holding `Unknown command type: X` becomes one that names the editor's addon version, the server's and the update call with the editor's project path. `godot_read_shader` and `godot_edit_shader` (§5.8) answer such an error from the shader file instead, with the same note and the fields `addon_version` and `server_version`.
+
 ## 7. Drawbacks & Alternatives
 
 - **A full JSON-Schema validator crate**: more complete, but the catalog uses a small subset; the hand-written checker gives clearer messages and no extra dependency.
@@ -194,6 +206,8 @@ The answer is `{ok, export, import, missing_exports, missing_imports, stale_impo
 | `[INPUT]` | `src/tools/input_map.rs` | InputMap tools (§5.10) |
 | `[FILES]` | `src/tools/files.rs` | File deletion (§5.10) |
 | `[EDITOR]` | `src/tools/editor.rs` | Closing an editor (TL-12) |
+| `[ADDON]` | `src/addon.rs`, `build.rs` | The embedded addon, its comparison and installation (§5.13) |
+| `[ADDON-UPDATE]` | `src/tools/addon_update.rs` | The update tool and the older-addon explanations (TL-14) |
 | `[MAIN-LOOP]` | `src/tools/main_loop.rs` | Main-loop check of a one-off script (§5.11) |
 | `[AUDIT]` | `src/godot/resource_audit.rs` | What a headless save dropped, and its repair (§5.11) |
 | `[BINARY]` | `src/godot/binary_resource.rs` | The header uid of a binary scene or resource |
@@ -221,3 +235,4 @@ The answer is `{ok, export, import, missing_exports, missing_imports, stale_impo
 | 1.7.0 | 2026-10-29 | Agent (magic.spec) | [MODIFIED] TL-1: unknown argument keys are refused with the accepted names instead of ignored, and every schema says `additionalProperties: false`. Source: a `content` key passed to `godot_create_script` was dropped and the default template reported as created. Stable → RFC → Stable after Post-Update Review. |
 | 1.8.0 | 2026-11-02 | Agent (magic.spec) | Reality sync after ventilation: modules merged without a specification. [ADDED] §5.8 shader tools (pull request 91), §5.9 import parameters (100, 101), §5.10 InputMap and deletion (58, 60), §5.11 one-off scripts and their repairs (31, 87, 99), §5.12 export tools (89), the TL-12, TL-13, CA-14 to CA-17 and EX rows, the fixed-script rule, the setting-type step of §5.5 (98), the file map and references. [MODIFIED] Engine time limits; TL-4 names the export output. Stable → RFC → Stable after Post-Update Review. |
 | 1.8.1 | 2026-11-02 | Agent (magic.run) | The setting-type step no longer lists the editor path as an open gap: it converts the same forms. Source: phase 11. No requirement changed. |
+| 1.9.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] §5.13 (the addon embedded by `build.rs`, the update tool and the explanation of an unknown editor command) and its Canonical References; TL-14 in the compliance table. Source: pull request 102. Stable → RFC → Stable after Post-Update Review. |

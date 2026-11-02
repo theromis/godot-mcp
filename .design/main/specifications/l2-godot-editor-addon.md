@@ -1,6 +1,6 @@
 # Godot Editor Addon
 
-**Version:** 1.11.1
+**Version:** 1.12.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-editor-bridge.md
@@ -77,6 +77,7 @@ addons/godot_mcp/
 
 - `capture_viewport`: refuses headless editors; switches the main screen to 2D or 3D (`auto` picks 3D for a `Node3D` root), waits two frames, forces a draw (an idle editor in low-processor mode would otherwise never redraw), rejects images under 16 px, downscales to `max_dimension` (default 1568) with Lanczos, returns base64 PNG with width, height and view.
 - `resave_resources`: refuses while an import is running (`is_import_running`: guarded call before 4.7, direct call from 4.7); with no paths starts a background `scan()`; otherwise re-imports importable files synchronously and calls `update_file` for others; reports reimported, refreshed, missing and invalid paths. [MODIFIED] A resource the editor has loaded is reloaded in place, and a loaded script without a tab gets its new source, listed in `reloaded_resources`, so a material sees a rewritten shader's new uniforms.
+- `get_project_info`: also answers `addon_version`, the `version` of `res://addons/godot_mcp/plugin.cfg` read once when the bridge starts. The file on disk can change under a running editor, so the server compares this value, not the file, with its own version (TL-14). [ADDED]
 - `open_scene`: after reloading an open background tab from disk it switches to that tab and names it in `active_scene`; when the editor did not switch, the command fails with the fix. [ADDED]
 - `add_node`: native classes must derive from `Node` and be instantiable; global script classes are looked up in the project's class list; non-Node script instances are freed.
 - `get_node_properties`: only properties with editor usage; values in Godot text form, truncated at 2000 characters. A property that holds no object (an unset `material`) is read as `null`, not as a freed object. [MODIFIED]
@@ -175,3 +176,4 @@ Each lives in its own file under `editor/`, loaded by path with no `class_name`;
 | 1.10.0 | 2026-10-31 | Agent (magic.spec) | [ADDED] BR-12: edits Godot would not save (inside an instance without editable children) are refused, or `make_editable` turns Editable Children on in the same action; removing a node an instance brings is refused. |
 | 1.11.0 | 2026-11-02 | Agent (magic.spec) | Reality sync after ventilation. [ADDED] BR-13 (derived port and legacy listener, pull request 75), §5.4 (shader, import and file commands, pull requests 91, 100, 101, 60), the handler notes of `script_tab`, the InputMap commands (58), the relay and `open_scene` (94), four files and their references, the open gap of the settings command against CA-4. [MODIFIED] BR-2 (token for the legacy port), BR-7 (read-back refusal, pull request 88), BR-11 (more commands confine paths), `resave_resources` reloads loaded resources (87). Stable → RFC → Stable after Post-Update Review. |
 | 1.11.1 | 2026-11-02 | Agent (magic.run) | [MODIFIED] The `set_project_setting` note describes the conversion as built and the open gap against CA-4 is closed: the editor path converts the text forms the file fallback converts. Source: phase 11. No other requirement changed. |
+| 1.12.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] `addon_version` in the `get_project_info` handler note: the `version` of `plugin.cfg` read when the bridge starts, the version the editor runs (TL-14). Source: pull request 102. Stable → RFC → Stable after Post-Update Review. |
