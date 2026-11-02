@@ -130,7 +130,7 @@ The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unrelease
 - [ ] Editor path of project settings converts the text forms (CA-4, CA-11) — **Content Authoring** / **Godot Editor Addon**
 - [ ] Planning debt label of the repo steward — **Repo Steward Procedures** 1.1.0, **Repo Steward Skill** 1.2.0
 - [x] Validation of the editor conversion and the steward label
-- [ ] The product commits since 0.12.0 carried to `godot-v4.7`, `godot-v4.6`, `godot-v4.5`; pushing gated on approval
+- [x] The product commits since 0.12.0 carried to `godot-v4.7`, `godot-v4.6`, `godot-v4.5`; pushing gated on approval
 
 ## Backlog
 

@@ -47,3 +47,10 @@ Internal journal of finished phases. User-facing release notes are in the root `
 - Feasibility on a real engine first (Godot 4.8-beta1): the logger sees a handler's script error at once, so no specification amendment was needed.
 - Specifications: Project Adapter and Project Adapter Runtime (new), Runtime Observability 1.3.0, Tool Catalog 1.8.0, Game Runtime Channel 1.6.0.
 - Proved on every release line with its own engine (4.7.2, 4.6.3, 4.5.2): the adapter was carried with 0.12.0 and its end-to-end tests pass on each line (51 of 51 runtime tests).
+
+## Phase 11 — 2026-11-02
+
+- `godot_set_project_setting` with the editor accepts the same values as without it: an HTML color or a color name for a Color, the `project.godot` text for other types (never an Object), a feature override takes the type of its base setting; one test table now holds both paths.
+- The repo steward labels a merged pull request `status: planning-owed` until the planning update for it is committed, and a later run with the planning ecosystem settles the labelled ones first.
+- The specifications were first brought in line with the code merged since Phase 10 (the derived bridge port, the export, shader, import, InputMap and deletion tools, one-off scripts and their repairs, branch cleanup); a new concept covers export.
+- Carried the product commits since 0.12.0 to the 4.7, 4.6 and 4.5 lines. Found by carrying: the shader tab has `get_base_editor` only from Godot 4.8, a new text shader gets no `.uid` from the file system update on older editors, and a reloaded scene's tab is switched to a frame later on 4.5 and 4.6; all three are fixed in one commit on `master` and carried with the rest.
