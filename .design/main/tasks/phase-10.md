@@ -1,7 +1,7 @@
 ---
 phase: 10
 name: "Project Adapter"
-status: Todo
+status: Blocked
 subsystem: "addons/godot_mcp/runtime, src/tools/game, src/godot, tests, README"
 requires: [6, 7]
 provides: []
@@ -15,7 +15,7 @@ duration_minutes: ~
 # Stage 10 Tasks — Project Adapter
 
 **Phase:** 10
-**Status:** Todo
+**Status:** Blocked
 **Strategic Goal:** A project names one development-only adapter script in `godot_mcp/adapter`; the in-game component loads it with godot-dev-bridge's registration contract, and an agent reads the project's states with `godot_game_state` and runs its commands with `godot_game_command`, in a managed run and in editor Play, held or not, with failures in the project's code reported instead of hidden. An adapter written for godot-dev-bridge works unchanged.
 
 ## Atomic Checklist

@@ -1,6 +1,6 @@
 # CI & Release Pipeline
 
-**Version:** 1.2.1
+**Version:** 1.3.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-distribution.md
@@ -23,6 +23,8 @@ Release mechanics are spread over several files (two workflows, a shell script, 
 
 - Runners: `ubuntu-24.04` (pinned), `windows-latest`, `macos-latest`; GitHub's own actions by major version (`actions/checkout@v7`, `upload-artifact@v7`, `download-artifact@v8`); every other action (`dtolnay/rust-toolchain`, `Swatinem/rust-cache`, `softprops/action-gh-release`) pinned to a full commit SHA with its version in a comment, which `tests/steward_test.rs` checks for every workflow. `.github/dependabot.yml` proposes weekly updates of those pins and of the Rust dependencies. The toolchain action is given `toolchain: stable` because, pinned by SHA, it no longer learns the toolchain from its ref.
 - [MODIFIED] CI installs, for the editor job, the Godot build named in `.github/godot-version` from the official builds repository; each line names its own build ([l2-release-branches.md](l2-release-branches.md) §5.7).
+- [MODIFIED] The editor job syntax-checks every addon script with `--check-only`, the new operation files (`editor/import_ops.gd`, `editor/shader_ops.gd`) included; the list in `ci.yml` and the one in `AGENTS.md` and `CONTRIBUTING.md` name the same scripts.
+- [ADDED] Branch hygiene: `branch-cleanup.yml` runs `.github/scripts/prune-branches.sh` when a pull request from this repository is merged (for its head branch) and every Monday (for every branch), and by hand, where a dry run is the default. A branch is deleted only when a pull request from it was merged and it still points at the last commit that request merged. Never deleted: the default branch, the release lines (`godot-v*`), protected branches, a branch with an open pull request, one whose request was closed unmerged, one with no request, one with commits after its merge; branches of forks are not in this repository. The job has `contents: write` and `pull-requests: read` only.
 - Release profile: `lto = true`, `codegen-units = 1`, `strip = true`.
 - The changelog follows Keep a Changelog headings (`## [X.Y.Z] - YYYY-MM-DD`, `## [Unreleased]`) with compare links at the bottom.
 - Assumption (forecast): the specification-driven workflow's automatic changelog writer is switched off for this project, because the changelog doubles as the published release text. Runner-up: keep it on and hand-clean every release. Override: `finalization.autoChangelog` in the workspace configuration.
@@ -49,6 +51,8 @@ Release mechanics are spread over several files (two workflows, a shell script, 
 ├── godot-version               exact Godot build of this line, read by the editor job
 ├── workflows/ci.yml            fmt, clippy, tests (3 OS), editor job on the line's Godot build
 ├── workflows/release.yml       plan → per-line verify, addon, build → one GitHub Release
+├── workflows/branch-cleanup.yml  deletes finished branches after a merge and weekly [ADDED]
+├── scripts/prune-branches.sh   which branches are finished, and the deletion (dry run available) [ADDED]
 ├── scripts/release-notes.sh    print the changelog section for a tag; fail if missing/empty
 ├── scripts/release-set.sh      checks a release tag and prints its version and lines
 └── lines                       supported Godot lines, one per line (master)
@@ -76,6 +80,8 @@ addons/godot_mcp/plugin.cfg      addon version
 | `[NOTES]` | `.github/scripts/release-notes.sh` | Changelog section extraction |
 | `[LINE]` | `.github/godot-version` | Godot build the line's editor job installs |
 | `[SET]` | `.github/scripts/release-set.sh` | Release checks |
+| `[CLEANUP]` | `.github/workflows/branch-cleanup.yml` | Branch cleanup triggers and permissions |
+| `[PRUNE]` | `.github/scripts/prune-branches.sh` | Which branches are finished; the protected ones |
 | `[LINES]` | `.github/lines` | Supported lines |
 | `[SKILL]` | `.agents/skills/release/SKILL.md` | Agent release procedure |
 | `[CHANGELOG]` | `CHANGELOG.md` | Release notes |
@@ -94,3 +100,4 @@ addons/godot_mcp/plugin.cfg      addon version
 | 1.1.0 | 2026-10-20 | Agent (magic.spec) | [MODIFIED] Line-aware: editor job reads `.github/godot-version`; DS-1, DS-3, DS-5, DS-7 rows per line; files and references updated. Stable → RFC → Stable after Post-Update Review. |
 | 1.2.0 | 2026-10-20 | Agent (magic.spec) | [MODIFIED] DS-1, DS-3, DS-5, DS-7 and the files for one release holding every supported line; CI no longer checks the changelog (the release workflow does). |
 | 1.2.1 | 2026-10-20 | Agent (magic.run) | [MODIFIED] Third-party actions pinned to commit SHAs, checked by a test; Dependabot for actions and Cargo. |
+| 1.3.0 | 2026-11-02 | Agent (magic.spec) | Reality sync after ventilation. [ADDED] Branch hygiene: the cleanup workflow and its script, which branches they never delete, and their permissions. [MODIFIED] The editor job checks every addon script, the shader and import operation files included. Stable → RFC → Stable after Post-Update Review. |

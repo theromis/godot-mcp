@@ -1,6 +1,6 @@
 # Project Context
 
-**Generated:** 2026-10-29
+**Generated:** 2026-11-02
 
 ## Active Technologies
 
@@ -59,6 +59,7 @@
 ├── project.godot
 ├── src/
 │   ├── bridge.rs
+│   ├── bridge_port.rs
 │   ├── cli_runner.rs
 │   ├── config.rs
 │   ├── error.rs
@@ -78,10 +79,12 @@
 │   └── validation.rs
 └── tests/
     ├── addon_export_test.rs
+    ├── bridge-port-vectors.json
     ├── bridge_client_test.rs
     ├── common/
     ├── detach_test.rs
     ├── editor_e2e_test.rs
+    ├── export_e2e_test.rs
     ├── feedback_test.rs
     ├── model_chain_e2e_test.rs
     ├── runtime_e2e_test.rs
