@@ -1,6 +1,6 @@
 # Game Runtime Channel
 
-**Version:** 1.7.1
+**Version:** 1.8.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-runtime-observability.md
@@ -32,7 +32,7 @@ Godot already has a debugger protocol that every editor-launched game speaks. Sp
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| RO-1 Observation does not change the game | Read operations (`game.tree`, `game.get`, `game.signals`, `game.snapshot`, `game.screenshot`, log reads) mutate nothing; `game.observe` connects to signals for a few frames and disconnects again. `game.set`, `game.call`, input and the time scale are separate calls. |
+| RO-1 Observation does not change the game | Read operations (`game.tree`, `game.get`, `game.signals`, `game.snapshot`, `game.screenshot`, `game.probe`, log reads) mutate nothing; `game.observe` connects to signals for a few frames and disconnects again. `game.set`, `game.call`, input and the time scale are separate calls. |
 | RO-2 Bounded output | `Run` keeps at most `MAX_LOGS` (2000) entries, oldest first dropped; errors are kept with their stack triples; reads page by sequence number (`since`) and `level`. |
 | RO-3 Hints and reasons | `ready_editor_session` and `select` fail with how to start a game; a closed session reports `the game disconnected` or `the game exited before the runtime said hello`. `Run::record_end` stores `ended_by` (`game` or `server`), `ended_at` (seconds since the Unix epoch) and `exit_code` once, the first writer winning: the watcher for a game that quit by itself, `kill` for a stop (a process ended by a signal has -1). `summary()` reports the three, `GameHub::stop_all` stops every live run and returns their summaries. [MODIFIED] |
 | RO-4 The component never ships | `ensure_runtime` uses the project's own addon when it has every runtime file; otherwise it writes a private copy under `.godot/godot_mcp/run-<id>/` (not scanned by the editor, ignored by version control) and never touches the project's `addons` folder; copies older than a day (a crashed run's) are swept. `inject_override` writes `res://override.cfg` with a marker line and `restore_override` puts the user's file back and removes the copy and the folders it emptied, on exit, on drop and, after a crash, on the next run. The runtime does nothing unless `EngineDebugger.is_active()`. `export_plugin.gd` excludes the whole addon folder from exports. |
@@ -62,7 +62,7 @@ addons/godot_mcp/
 ├── editor/game_relay.gd       EditorDebuggerPlugin relaying mcp:* messages
 └── runtime/
     ├── mcp_runtime.gd         autoload: registers the "mcp" capture, sends hello, dispatches requests
-    └── ops/rt_*.gd            rt_result (result helpers), rt_live (live tree and properties), rt_input (input and gestures), rt_view (pictures), rt_record (frame series saved as PNG files for godot_game_record), rt_output (output), rt_hold, rt_registry, rt_project
+    └── ops/rt_*.gd            rt_result (result helpers), rt_live (live tree and properties), rt_input (input and gestures), rt_view (pictures), rt_record (frame series saved as PNG files for godot_game_record), rt_output (output), rt_hold, rt_registry, rt_project, rt_probe (raycasts for godot_game_probe)
 ```
 
 ### 5.2 Managed Process Run
@@ -83,7 +83,8 @@ addons/godot_mcp/
 | `game.tree`, `game.get`, `game.set`, `game.signals`, `game.observe`, `game.snapshot` | `godot_game_tree`, `godot_game_get`, `godot_game_set`, `godot_game_signals`, `godot_game_observe`, `godot_game_snapshot` |
 | `input.run`, `input.release_all`, `input.wait` | `godot_game_input`, `godot_game_input_release`, `godot_game_wait` |
 | `game.physics`, `game.pause`, `game.body` | `godot_game_physics`; `godot_game_scenario` (pause and CharacterBody reads) |
-| `game.screenshot` | `godot_game_screenshot` |
+| `game.screenshot` | `godot_game_screenshot` (with `aim`: a temporary camera in a temporary viewport sharing the game's world) [MODIFIED] |
+| `game.probe` | `godot_game_probe` [ADDED] |
 | `game.record` | `godot_game_record` |
 | `project.state`, `project.command` | `godot_game_state`, `godot_game_command`; see [l2-project-adapter.md](l2-project-adapter.md) [ADDED] |
 | output and errors | `godot_run_output` |
@@ -96,6 +97,8 @@ Gestures (`click`, `click_node`, `swipe`, `path`, `circle`) go through `Input.pa
 A property path of `game.get` and `game.set` is a node property followed by resource properties separated by `:`. `:` steps only through a `Resource`, so that form never walks to another node. `/` on `game.set` is the same walk as a read: an Object property or a Dictionary key, get only, and a property whose own name contains `/` (a shader uniform) stays one name. A missing leaf is an error that names the segment, a new Dictionary key is not created, and the written value is read back — a value that did not stick is an error, not success with null. [MODIFIED] A call locates, converts and type-checks every value before it writes the first, and a refused value or a write the engine does not keep puts back what the call already changed. `Basis`, `Transform3D` and `Transform2D` also read the vector-axes form GDScript constructs. A text written to a property declared as an Object is the `res://` path of a saved resource, loaded in the game and assigned when its class is one the property takes (the hint's classes, else the declared class name); a missing file, a path with `..`, another class or text that is not a `res://` path is refused before any write, and `null` clears the property. A `/` step stays inside the object it starts from: a Node along the way is an error that names the `path` parameter. Writing still refuses `script`, a segment that starts with `_` and an empty segment. [MODIFIED] `game.record` grabs up to 240 images of the root viewport and writes the PNG files after the last grab, so the game keeps its frame rate and `msec` is the capture instant; the server confines `directory` to the system temporary directory, refuses one that already holds frames or a recording, and calls `ffmpeg` (fixed arguments, null stdin) only for `gif` or `mp4`. `godot_run_project` places `user_args` after `--` for a managed run and refuses them for editor Play.
 
 A scene stamp carries the long explanation of `script_sha256` once per answer, not once per stamped log line, and a baseline comparison without `max_dimension` is captured at the baseline's own size, so a baseline saved at 256 pixels can be compared without repeating the option. [MODIFIED]
+
+`game.probe` casts `PhysicsRayQueryParameters3D` rays through the direct space state of the main window's 3D world (or the world of the node `world` names) and moves no node; a grid answers a table of heights instead of one object per ray. An aimed `game.screenshot` copies the current `Camera3D` into a `SubViewport` that shares the game's `World3D`, so the game's own current camera is never switched; the viewport and camera are added under the runtime node, drawn once (a held game draws them with `RenderingServer.force_draw`, so no tick passes) and freed before the answer is sent. Only the 3D world is in that picture. [ADDED]
 
 A click on a node uses the node's transform with its canvas, so a scrolling camera or a CanvasLayer does not misplace it. The time scale set by a step or a wait is restored when the game exits.
 
@@ -139,3 +142,4 @@ A click on a node uses the node's transform with its canvas, so a scrolling came
 | 1.6.0 | 2026-10-29 | Agent (magic.spec) | [ADDED] The runtime methods `project.state` and `project.command` in the operations table, realized in [l2-project-adapter.md](l2-project-adapter.md). Stable → RFC → Stable after Post-Update Review. |
 | 1.7.0 | 2026-10-29 | Agent (magic.spec) | [MODIFIED] `game.set`: every value checked before the first write, the vector-axes forms, and the `res://` path of a saved resource for an Object property. Source: pull requests 69 and 74. Stable → RFC → Stable after Post-Update Review. |
 | 1.7.1 | 2026-11-02 | Agent (magic.spec) | The file map names each runtime operation file, including `rt_record.gd` and `rt_result.gd`, which ventilation found unnamed. No requirement changed. |
+| 1.8.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] `game.probe` (raycasts that move no node, served while held) and the file `rt_probe.gd`; [MODIFIED] `game.screenshot` takes `aim`, drawn from a temporary camera in a viewport that shares the game's world. Stable → RFC → Stable after Post-Update Review. |
