@@ -1,6 +1,6 @@
 # Tool Catalog
 
-**Version:** 1.14.0
+**Version:** 1.15.0
 **Status:** Stable
 **Layer:** concept
 
@@ -103,7 +103,8 @@ Agents call tools without seeing the implementation; a tool's contract has to be
 | `godot_game_state` | game | no | Values of the state the project's adapter registered, the adapter's status and its commands with their help [ADDED] |
 | `godot_game_command` | game | what the project's command does | Runs one command the project's adapter registered, by name, with a dictionary of arguments [ADDED] |
 | `godot_game_scenario` | game | managed process run only | One held play-through: Input Map actions and pointers, a known number of physics ticks per step, body and property snapshots, logs; one scenario per run; releases all input when it ends [ADDED] |
-| `godot_game_screenshot` | game (windowed) | session memory of the run | PNG of the game, an optional frame sheet, pixel diff against the previous capture, named baselines with a region and a tolerance [ADDED] |
+| `godot_game_probe` | game | none | Raycasts in the running game's 3D physics world, moving no node: rays between two points or straight down, or a grid of down rays answered as ground heights (at most 1024 rays or 4096 points), with mask, exclude and areas; served while held [ADDED] |
+| `godot_game_screenshot` | game (windowed) | session memory of the run | PNG of the game, an optional frame sheet, pixel diff against the previous capture, named baselines with a region and a tolerance [ADDED]; `aim`: one capture from a temporary copy of the game camera centred on a world point or placed with a look-at, leaving the game's cameras unmoved [MODIFIED] |
 | `godot_game_record` | game (windowed) | PNG files below the system temporary directory | Up to 240 frames of the game window written after the last grab; optional gif or mp4 through `ffmpeg`; refused while held [ADDED] |
 | `godot_debug_breakpoints`, `godot_debug_control`, `godot_debug_state` | managed run | running game only | Breakpoints, pause, resume and step, stack and variables [ADDED] |
 | `godot_code_diagnostics`, `godot_code_symbols`, `godot_code_complete`, `godot_code_definition`, `godot_code_references` | engine | no | GDScript queries from Godot's language server [ADDED] |
@@ -163,3 +164,4 @@ graph TD
 | 1.12.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] `godot_update_addon` in the catalog and TL-14 (an addon older than the server is named with both versions and the update call; the update installs the server's own addon, refuses the server's source tree and an editor that stays open unless `restart_editor`). Source: pull request 102. Stable → RFC → Stable after Post-Update Review. |
 | 1.13.0 | 2026-11-02 | Agent (magic.spec) | [MODIFIED] TL-13: the answer of a one-off script counts the repairs and lists the first twenty instead of every one. Source: pull request 103. Stable → RFC → Stable after Post-Update Review. |
 | 1.14.0 | 2026-11-02 | Agent (magic.spec) | [REMOVED] `godot_check_voxel_model` from the catalog, and the sentence of TL-6 about a helper program that a tool waits for. Stable → RFC → Stable after Post-Update Review. |
+| 1.15.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] `godot_game_probe` in the catalog (raycasts and ground-height grids that move no node); [MODIFIED] the `godot_game_screenshot` row: `aim`. Stable → RFC → Stable after Post-Update Review. |

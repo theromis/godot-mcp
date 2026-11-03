@@ -91,6 +91,7 @@ A release covers every line in `.github/lines`. Work on the branches or on one w
    godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_result.gd
    godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_view.gd
    godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_record.gd
+   godot --headless --check-only --path . --script addons/godot_mcp/runtime/ops/rt_probe.gd
    GODOT_PATH=/path/to/godot cargo test --test editor_e2e_test -- --ignored
    GODOT_PATH=/path/to/godot cargo test --test addon_export_test -- --ignored
    GODOT_PATH=/path/to/godot cargo test --test runtime_e2e_test -- --ignored
