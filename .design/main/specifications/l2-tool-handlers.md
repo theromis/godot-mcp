@@ -1,6 +1,6 @@
 # Tool Handlers (Rust)
 
-**Version:** 1.11.0
+**Version:** 1.12.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-tool-catalog.md
@@ -229,3 +229,4 @@ The number of the removed voxel model check is kept so that the references to th
 | 1.9.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] §5.13 (the addon embedded by `build.rs`, the update tool and the explanation of an unknown editor command) and its Canonical References; TL-14 in the compliance table. Source: pull request 102. Stable → RFC → Stable after Post-Update Review. |
 | 1.10.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] §5.11 step 6: the bounds of the repair report (twenty listed repairs and `resource_repairs_total`, cut `editor_refresh` lists with totals, at most three named files in a summary). Source: pull request 103. Stable → RFC → Stable after Post-Update Review. |
 | 1.11.0 | 2026-11-02 | Agent (magic.spec) | [REMOVED] §5.7 (the voxel model check) with its compliance rows, file map entry and Canonical Reference; the section number stays as a stub. Stable → RFC → Stable after Post-Update Review. |
+| 1.12.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] §5.11 step 2: `godot_run_script` checks the imports before the script starts, reimporting through the editor or answering `import_warning` and `stale_imports`. Source: pull request 106. Stable → RFC → Stable after Post-Update Review. |
