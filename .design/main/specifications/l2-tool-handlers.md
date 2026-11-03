@@ -1,6 +1,6 @@
 # Tool Handlers (Rust)
 
-**Version:** 1.12.0
+**Version:** 1.13.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-tool-catalog.md
@@ -155,7 +155,7 @@ The number of the removed voxel model check is kept so that the references to th
 6. **Refresh.** When an editor has the project open, the written files go to `resave_resources`, which also reloads what the editor holds; its answer is `editor_refresh`, a failure `editor_refresh_error`.
 7. **Keep it short.** [ADDED] `RepairReport` bounds the answer: `resource_repairs` holds the first 20 repairs with the count of restored `[ext_resource]` uids instead of the uids, `resource_repairs_total` counts them all, every list of `editor_refresh` stops at 20 with `<list>_total` beside a cut one, and the summary and the `resource_damage` warning name at most three files and count the rest. `exit_code`, the output, `script_errors`, `load_error` and `resource_damage` itself are never cut.
 
-`imports.rs` serves `godot_run_project` too: the stale-import notice lists sources whose import cache is older than the file, since a process run does not reimport.
+`imports.rs` serves `godot_run_project` too: the stale-import notice lists sources whose import cache is older than the file and whose bytes differ from the `source_md5` Godot recorded in `.godot/imported/<name>-<hash>.md5` (a source rewritten with the same bytes is not reimported by Godot, so it is not stale; a missing cache always is), since a process run does not reimport.
 
 ### 5.12 Export Tools [ADDED]
 
@@ -230,3 +230,4 @@ The number of the removed voxel model check is kept so that the references to th
 | 1.10.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] §5.11 step 6: the bounds of the repair report (twenty listed repairs and `resource_repairs_total`, cut `editor_refresh` lists with totals, at most three named files in a summary). Source: pull request 103. Stable → RFC → Stable after Post-Update Review. |
 | 1.11.0 | 2026-11-02 | Agent (magic.spec) | [REMOVED] §5.7 (the voxel model check) with its compliance rows, file map entry and Canonical Reference; the section number stays as a stub. Stable → RFC → Stable after Post-Update Review. |
 | 1.12.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] §5.11 step 2: `godot_run_script` checks the imports before the script starts, reimporting through the editor or answering `import_warning` and `stale_imports`. Source: pull request 106. Stable → RFC → Stable after Post-Update Review. |
+| 1.13.0 | 2026-11-03 | Agent (magic.spec) | [MODIFIED] §5.11: the stale-import check compares the recorded `source_md5` before it calls a cache stale. Source: pull request 108. Stable → RFC → Stable after Post-Update Review. |
