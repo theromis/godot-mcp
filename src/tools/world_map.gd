@@ -19,6 +19,8 @@ const SURVEY_FRAMES: int = 1
 const TILE_FRAMES: int = 3
 ## Frames the overlay is rendered before it is read back.
 const OVERLAY_FRAMES: int = 2
+## Extra rounds of OVERLAY_FRAMES when the overlay comes back empty.
+const OVERLAY_RETRIES: int = 10
 ## The largest side of a tile viewport, in pixels.
 const MAX_TILE_PX: int = 2048
 ## Scenes instanced at once when the tile size is chosen automatically.
@@ -60,6 +62,8 @@ var tiles: Array[Rect2] = []
 var tile_index: int = 0
 var max_loaded_seen: int = 0
 var overlay_viewport: SubViewport = null
+var overlay_retries: int = 0
+var last_drawn: int = -1
 
 
 func _initialize() -> void:
@@ -76,12 +80,17 @@ func _initialize() -> void:
 	view = str(request.get("view", "geometry"))
 
 
-func _process(_delta: float) -> bool:
+func _process(delta: float) -> bool:
 	if phase == Phase.DONE:
 		return true
 	if viewport == null:
 		_make_viewport()
 	if wait_frames > 0:
+		# macOS stops drawing a covered or minimized window, and its viewports with it: when no
+		# frame was drawn since the last tick, draw one, so a readback never gets an empty texture.
+		if Engine.get_frames_drawn() == last_drawn:
+			RenderingServer.force_draw(false, delta)
+		last_drawn = Engine.get_frames_drawn()
 		wait_frames -= 1
 		return false
 	match phase:
@@ -502,6 +511,8 @@ func _tile_step() -> void:
 	if image == null or image.is_empty():
 		_fail("the viewport gave no image; a headless Godot does not render")
 		return
+	# Opaque whatever alpha the renderer left in the target (Compatibility may leave 0).
+	image.convert(Image.FORMAT_RGB8)
 	image.convert(Image.FORMAT_RGBA8)
 	var tile: Rect2 = tiles[tile_index]
 	var at: Vector2i = Vector2i(roundi((tile.position.x - rect.position.x) * ppm), roundi((tile.position.y - rect.position.y) * ppm))
@@ -710,13 +721,33 @@ func _overlay_step() -> void:
 	if image == null or image.is_empty():
 		_fail("the overlay viewport gave no image; a headless Godot does not render")
 		return
+	if _blank(image):
+		if overlay_retries < OVERLAY_RETRIES:
+			overlay_retries += 1
+			wait_frames = OVERLAY_FRAMES
+			return
+		warnings.append("the labels could not be drawn (the overlay rendered nothing); the map is returned without them")
+		_finish(map)
+		return
 	_finish(image)
+
+
+## Whether the image is what an undrawn viewport gives: every sampled pixel fully transparent.
+func _blank(image: Image) -> bool:
+	var step: Vector2i = Vector2i(maxi(int(image.get_width() / 16.0), 1), maxi(int(image.get_height() / 16.0), 1))
+	for y: int in range(0, image.get_height(), step.y):
+		for x: int in range(0, image.get_width(), step.x):
+			if image.get_pixel(x, y).a > 0.0:
+				return false
+	return true
 
 
 # --- answer -------------------------------------------------------------------------------------
 
 
 func _finish(image: Image) -> void:
+	# The map is opaque: an RGB PNG, so no viewer shows a stray alpha as an empty picture.
+	image.convert(Image.FORMAT_RGB8)
 	var saved: Error = image.save_png(str(request.get("output", "")))
 	if saved != OK:
 		_fail("the PNG could not be saved: " + error_string(saved))

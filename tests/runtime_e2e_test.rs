@@ -6559,7 +6559,9 @@ fn world_map_project() -> tempfile::TempDir {
     std::fs::create_dir_all(root.join("props")).unwrap();
     std::fs::write(
         root.join("project.godot"),
-        "config_version=5\n\n[application]\n\nconfig/name=\"WorldMapProbe\"\nconfig/features=PackedStringArray(\"4.5\")\n",
+        // Compatibility, as the project the blank-PNG report came from: it leaves alpha 0 in a
+        // viewport's target.
+        "config_version=5\n\n[application]\n\nconfig/name=\"WorldMapProbe\"\nconfig/features=PackedStringArray(\"4.5\")\n\n[rendering]\n\nrenderer/rendering_method=\"gl_compatibility\"\n",
     )
     .unwrap();
     std::fs::write(
@@ -6625,6 +6627,39 @@ fn world_map_project_files(root: &Path) -> Vec<String> {
     }
     found.sort();
     found
+}
+
+/// Compares a saved map PNG with an inline preview in a headless Godot: the PNG's colour type
+/// (2 is RGB, so opaque), the mean difference per channel once the PNG is scaled to the preview's
+/// size, and the PNG's spread of brightness, which a blank picture lacks.
+fn compare_map_with_preview(png: &Path, preview: &[u8]) -> Value {
+    let dir = tempfile::tempdir().expect("scratch");
+    let preview_file = dir.path().join("preview.jpg");
+    std::fs::write(&preview_file, preview).expect("preview");
+    let script = dir.path().join("compare.gd");
+    std::fs::write(
+        &script,
+        "extends SceneTree\n\nfunc _initialize() -> void:\n\tvar args: PackedStringArray = OS.get_cmdline_user_args()\n\tvar map: Image = Image.load_from_file(args[0])\n\tvar preview: Image = Image.load_from_file(args[1])\n\tmap.convert(Image.FORMAT_RGBA8)\n\tpreview.convert(Image.FORMAT_RGBA8)\n\tvar min_alpha: float = 1.0\n\tfor y: int in range(0, map.get_height(), 7):\n\t\tfor x: int in range(0, map.get_width(), 7):\n\t\t\tmin_alpha = minf(min_alpha, map.get_pixel(x, y).a)\n\tmap.resize(preview.get_width(), preview.get_height(), Image.INTERPOLATE_CUBIC)\n\tvar diff: float = 0.0\n\tvar low: float = 1.0\n\tvar high: float = 0.0\n\tvar count: int = 0\n\tfor y: int in preview.get_height():\n\t\tfor x: int in preview.get_width():\n\t\t\tvar a: Color = map.get_pixel(x, y)\n\t\t\tvar b: Color = preview.get_pixel(x, y)\n\t\t\tdiff += (absf(a.r - b.r) + absf(a.g - b.g) + absf(a.b - b.b)) / 3.0\n\t\t\tlow = minf(low, a.get_luminance())\n\t\t\thigh = maxf(high, a.get_luminance())\n\t\t\tcount += 1\n\tprint(\"WORLD_MAP_COMPARE=\", JSON.stringify({\"min_alpha\": min_alpha, \"mean_diff\": diff / count, \"spread\": high - low}))\n\tquit()\n",
+    )
+    .expect("script");
+    let output = std::process::Command::new(godot_path())
+        .arg("--headless")
+        .arg("-s")
+        .arg(&script)
+        .arg("--")
+        .arg(png)
+        .arg(&preview_file)
+        .output()
+        .expect("run Godot");
+    let text = String::from_utf8_lossy(&output.stdout);
+    let line = text
+        .lines()
+        .find_map(|line| line.strip_prefix("WORLD_MAP_COMPARE="))
+        .unwrap_or_else(|| panic!("no comparison: {text}"));
+    let mut answer: Value = serde_json::from_str(line).expect("comparison JSON");
+    let bytes = std::fs::read(png).expect("png");
+    answer["colour_type"] = json!(bytes.get(25).copied());
+    answer
 }
 
 /// The inline image of a tool answer, decoded from base64, with its media type.
@@ -6693,6 +6728,26 @@ async fn world_map_draws_zones_and_names_the_ones_without_ground() {
     )
     .expect("the written JSON parses");
     assert_eq!(written["scenes"].as_array().map(Vec::len), Some(5));
+    // The same map inline: the saved PNG must be opaque and show what the preview shows.
+    let inline = call(
+        &tools,
+        "godot_world_map",
+        json!({"dir": "res://zones", "glob": "zone_*.tscn", "pixels_per_metre": 8}),
+    )
+    .await;
+    assert!(!inline.is_error, "{}", text_of(&inline));
+    let (preview, _) = world_map_image(&inline);
+    let compared = compare_map_with_preview(&project.path().join(".maps/zones.png"), &preview);
+    assert_eq!(compared["colour_type"], 2, "an RGB PNG: {compared}");
+    assert_eq!(compared["min_alpha"], 1.0, "{compared}");
+    assert!(
+        json_number(&compared["spread"]) > 0.2,
+        "the map is not one colour: {compared}"
+    );
+    assert!(
+        json_number(&compared["mean_diff"]) < 0.06,
+        "the PNG matches the preview: {compared}"
+    );
     if let Ok(out) = std::env::var("WORLD_MAP_PNG_OUT") {
         std::fs::write(out, &png).expect("save the map");
     }
