@@ -140,6 +140,7 @@ pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {
             &[
                 "Check that the scenes are imported (godot_resave_resources) and load in the editor",
                 "Pass rect and pixels_per_metre explicitly when the scenes' bounds are not what you expect",
+                "When Godot drew nothing, wake the display and unlock the session (macOS draws no window while the display sleeps), then retry",
             ],
         );
     }

@@ -6927,3 +6927,80 @@ async fn world_map_draws_zones_and_names_the_ones_without_ground() {
         "the map wrote into the project"
     );
 }
+
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn world_map_refuses_a_map_godot_did_not_draw() {
+    if !windowed_game_can_open() {
+        eprintln!("skipped: the world map renders in a window and needs a display server");
+        return;
+    }
+    let project = world_map_project();
+    // The script runs directly so its test hook can make tiles read back black, as a window
+    // does that cannot draw (the display asleep): the tool itself never sets the hook.
+    let request = |undrawn: &str| {
+        json!({
+            "scenes": [
+                "res://zones/zone_0_0.tscn",
+                "res://zones/zone_0_1.tscn",
+                "res://zones/zone_1_0.tscn",
+                "res://zones/zone_1_1.tscn"
+            ],
+            "rect": [-10, -10, 30, 30],
+            "pixels_per_metre": 4,
+            "tile_metres": 20,
+            "view": "geometry",
+            "labels": true,
+            "default_side": 2048,
+            "test_undrawn": undrawn
+        })
+    };
+    let runner = CliRunner::new(godot_path());
+    let script = include_str!("../src/tools/world_map.gd");
+
+    let none = runner
+        .world_map(project.path(), script, request("all"), 120)
+        .await
+        .expect("run");
+    let answer: Value =
+        serde_json::from_str(none.answer.as_deref().expect("an answer")).expect("JSON");
+    let error = answer["error"].as_str().unwrap_or_default();
+    assert!(
+        error.contains("drew none of the 4 tiles"),
+        "a black map is refused, not returned: {answer}"
+    );
+    assert!(none.image.is_none(), "no picture is saved for it");
+
+    let partial = runner
+        .world_map(project.path(), script, request("first"), 120)
+        .await
+        .expect("run");
+    let answer: Value =
+        serde_json::from_str(partial.answer.as_deref().expect("an answer")).expect("JSON");
+    assert!(answer.get("error").is_none(), "{answer}");
+    for key in ["warnings", "problems"] {
+        assert!(
+            answer[key]
+                .to_string()
+                .contains("tiles 1 of 4 were not drawn"),
+            "{key}: {answer}"
+        );
+    }
+
+    let drawn = runner
+        .world_map(project.path(), script, request(""), 120)
+        .await
+        .expect("run");
+    let answer: Value =
+        serde_json::from_str(drawn.answer.as_deref().expect("an answer")).expect("JSON");
+    assert!(answer.get("error").is_none(), "{answer}");
+    assert_eq!(
+        answer["problems"].as_array().map(Vec::len),
+        Some(2),
+        "{answer}"
+    );
+    assert!(
+        !answer["warnings"].to_string().contains("not drawn"),
+        "{answer}"
+    );
+}

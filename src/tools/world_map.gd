@@ -67,6 +67,9 @@ var tile_index: int = 0
 var max_loaded_seen: int = 0
 var overlay_viewport: SubViewport = null
 var overlay_retries: int = 0
+## Tiles (numbered from 1) that still read back black after their retries.
+var undrawn_tiles: Array[int] = []
+var drawing_problems: Array[String] = []
 var tile_retries: int = 0
 var last_tile_data: PackedByteArray = PackedByteArray()
 var last_tile_had_scenes: bool = false
@@ -529,6 +532,17 @@ func _tile_step() -> void:
 		return
 	# Opaque whatever alpha the renderer left in the target (Compatibility may leave 0).
 	image.convert(Image.FORMAT_RGB8)
+	_simulate_undrawn(image)
+	# A black readback is a target nothing was drawn into (the background is never black): the
+	# window could not draw, as when the display sleeps. Draw again, then give up on the tile.
+	var undrawn: bool = _undrawn(image)
+	if undrawn and tile_retries < TILE_RETRIES:
+		tile_retries += 1
+		RenderingServer.force_draw(false, 0.0)
+		wait_frames = TILE_FRAMES
+		return
+	if undrawn:
+		undrawn_tiles.append(tile_index + 1)
 	# A readback identical to the last tile's, with scenes in either, is a texture that was not
 	# drawn again after the camera moved: draw and wait once more before taking it.
 	var data: PackedByteArray = image.get_data()
@@ -538,7 +552,7 @@ func _tile_step() -> void:
 		RenderingServer.force_draw(false, 0.0)
 		wait_frames = TILE_FRAMES
 		return
-	if tile_retries >= TILE_RETRIES and data == last_tile_data:
+	if tile_retries >= TILE_RETRIES and data == last_tile_data and not undrawn:
 		warnings.append("tile %d drew the same picture as the tile before it after %d retries; that part of the map may be wrong" % [tile_index + 1, TILE_RETRIES])
 	last_tile_data = data
 	last_tile_had_scenes = has_scenes
@@ -695,6 +709,10 @@ func _height_map_mesh(shape: HeightMapShape3D) -> ArrayMesh:
 
 
 func _start_overlay() -> void:
+	var problem: String = _check_drawn()
+	if not problem.is_empty():
+		_fail(problem)
+		return
 	for node: Node in stage.get_children():
 		node.free()
 	viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
@@ -751,7 +769,8 @@ func _overlay_step() -> void:
 	if image == null or image.is_empty():
 		_fail("the overlay viewport gave no image; a headless Godot does not render")
 		return
-	if _blank(image):
+	image.convert(Image.FORMAT_RGB8)
+	if _undrawn(image):
 		if overlay_retries < OVERLAY_RETRIES:
 			overlay_retries += 1
 			wait_frames = OVERLAY_FRAMES
@@ -762,14 +781,51 @@ func _overlay_step() -> void:
 	_finish(image)
 
 
-## Whether the image is what an undrawn viewport gives: every sampled pixel fully transparent.
-func _blank(image: Image) -> bool:
-	var step: Vector2i = Vector2i(maxi(int(image.get_width() / 16.0), 1), maxi(int(image.get_height() / 16.0), 1))
+## Whether the image is what a viewport nothing was drawn into gives: every sampled pixel black.
+func _undrawn(image: Image) -> bool:
+	return _uniform(image) and image.get_pixel(0, 0).get_luminance() <= 0.0
+
+
+## Whether every sampled pixel of the image has the same colour.
+func _uniform(image: Image) -> bool:
+	var first: Color = image.get_pixel(0, 0)
+	var step: Vector2i = Vector2i(maxi(int(image.get_width() / 32.0), 1), maxi(int(image.get_height() / 32.0), 1))
 	for y: int in range(0, image.get_height(), step.y):
 		for x: int in range(0, image.get_width(), step.x):
-			if image.get_pixel(x, y).a > 0.0:
+			if not image.get_pixel(x, y).is_equal_approx(first):
 				return false
 	return true
+
+
+## Test hook: test_undrawn "all" in the request makes every tile read back black, "first" only the
+## first one, as a window that cannot draw does. The server never sets it; only the end-to-end
+## tests, which run this script directly, do.
+func _simulate_undrawn(image: Image) -> void:
+	var mode: String = str(request.get("test_undrawn", ""))
+	if mode == "all" or (mode == "first" and tile_index == 0):
+		image.fill(Color.BLACK)
+
+
+## Refuses a map Godot did not draw, and names the tiles it did not draw.
+func _check_drawn() -> String:
+	if not undrawn_tiles.is_empty() and undrawn_tiles.size() == tiles.size():
+		return "Godot drew none of the %d tiles: every one read back black after %d retries. The window could not draw, as when the display is asleep or the session is locked" % [tiles.size(), TILE_RETRIES]
+	if not undrawn_tiles.is_empty():
+		var listed: PackedStringArray = PackedStringArray()
+		for number: int in undrawn_tiles:
+			listed.append(str(number))
+		var line: String = "tiles %s of %d were not drawn (black after %d retries); those parts of the map are missing" % [", ".join(listed), tiles.size(), TILE_RETRIES]
+		warnings.append(line)
+		drawing_problems.append(line)
+	var expected: bool = false
+	for i: int in reports.size():
+		var drawn_key: String = "has_collision" if view == "collision" else "has_geometry"
+		if bool(reports[i].get(drawn_key, false)) and _flat(render_bounds[i]).intersects(rect, true):
+			expected = true
+			break
+	if expected and _uniform(map):
+		return "the map came out one colour although scenes with %s lie in its rect; Godot drew nothing of them" % ("collision" if view == "collision" else "visible geometry")
+	return ""
 
 
 # --- answer -------------------------------------------------------------------------------------
@@ -797,7 +853,7 @@ func _finish(image: Image) -> void:
 	var no_collision: int = 0
 	var no_geometry: int = 0
 	var failed: int = 0
-	var problems: Array[String] = []
+	var problems: Array[String] = drawing_problems.duplicate()
 	for report: Dictionary in reports:
 		report.erase("_known")
 		if report.has("error"):
