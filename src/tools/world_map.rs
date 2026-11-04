@@ -24,6 +24,8 @@ const MAX_SIDE: f64 = 4096.0;
 const DEFAULT_SIDE: f64 = 2048.0;
 const DEFAULT_TIMEOUT: u64 = 300;
 const MAX_TIMEOUT: u64 = 3600;
+/// Characters of reply text; clients cut longer tool output, which breaks the JSON.
+const REPLY_LIMIT: usize = 60_000;
 const SCENE_EXTENSIONS: &[&str] = &["tscn", "scn"];
 
 pub fn handles(name: &str) -> bool {
@@ -33,7 +35,7 @@ pub fn handles(name: &str) -> bool {
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         NAME,
-        "Draws a map of a world split into many scene files (streamed zones, tiles of a level), without running the game, and summarises every scene, so a scene with no ground or no geometry shows at once. The scenes come from dir and glob (file names in that directory, recursive optional) and/or a list of scenes; each is instanced at the transform saved in its file. A temporary Godot process (a small window, since a headless Godot does not render; audio muted) loads the scenes one at a time to measure them, then renders the map top-down with an orthographic camera in tiles, instancing only the scenes that touch the tile, so memory stays bounded by one tile's scenes; the scenes' WorldEnvironment nodes are dropped, their cameras and 2D layers are turned off, nothing of theirs processes (their _ready still runs), and the light is a neutral sun without shadows. view \"collision\" draws the collision shapes as solid stand-ins instead of the visible geometry, which shows holes in the ground. labels draws each scene's bounds and file name faintly over the map, in red with \"(no collision)\" or \"(no geometry)\" where one is missing. Returns the PNG (top is -Z; a pixel (px, py) is the world point x = rect[0] + px / pixels_per_metre, z = rect[1] + py / pixels_per_metre) and JSON: image (size, rect, pixels_per_metre, tiles, the most scenes loaded at once), totals (scenes, no_collision, no_geometry, failed), problems (one line per scene with something missing or failing to load) and per scene its root (name, type, saved position and rotation), top_level child names, bounds (world AABB of its visible geometry, or null), collision_bounds (world AABB of its enabled collision shapes, or null), mesh_instances, multimesh_instances, collision_objects, collision_shapes, collision_layers, instanced_scenes (nested scene instances), has_geometry, has_collision and load_ms. Scenes must be imported: stale imports are named in a warning. Needs GODOT_PATH and a display. The engine may update caches under the project's .godot folder, as any run does.",
+        "Draws a map of a world split into many scene files (streamed zones, tiles of a level), without running the game, and summarises every scene, so a scene with no ground or no geometry shows at once. The scenes come from dir and glob (file names in that directory, recursive optional) and/or a list of scenes; each is instanced at the transform saved in its file. A temporary Godot process (a small window, since a headless Godot does not render; audio muted) loads the scenes one at a time to measure them, then renders the map top-down with an orthographic camera in tiles, instancing only the scenes that touch the tile, so memory stays bounded by one tile's scenes; the scenes' WorldEnvironment nodes are dropped, their cameras and 2D layers are turned off, nothing of theirs processes (their _ready still runs), and the light is a neutral sun without shadows. view \"collision\" draws the collision shapes as solid stand-ins instead of the visible geometry, which shows holes in the ground. labels draws each scene's bounds and file name faintly over the map, in red with \"(no collision)\" or \"(no geometry)\" where one is missing. Returns JSON first and then, without output_path, a JPEG preview of the map at most 1024 pixels on a side (the map itself is at most 4096; with output_path the full PNG and JSON are written into the project and the reply names them instead). The map's top is -Z; a pixel (px, py) is the world point x = rect[0] + px / pixels_per_metre, z = rect[1] + py / pixels_per_metre. The JSON holds, in this order, totals (scenes, no_collision, no_geometry, failed), problems (one line per scene with something missing or failing to load), image (size, rect, pixels_per_metre, tiles, the most scenes loaded at once, preview size), files (with output_path), warnings, and with detail per scene its root (name, type, saved position and rotation), top_level child names, bounds (world AABB of its visible geometry, or null), collision_bounds (world AABB of its enabled collision shapes, or null), mesh_instances, multimesh_instances, collision_objects, collision_shapes, collision_layers, instanced_scenes (nested scene instances), has_geometry, has_collision and load_ms. Scenes must be imported: stale imports are named in a warning. Needs GODOT_PATH and a display. The engine may update caches under the project's .godot folder, as any run does.",
         json!({
             "dir": {"type": "string", "description": "res:// directory to take scenes from, such as res://scenes/regions/old_pond."},
             "glob": {"type": "string", "description": "File name pattern in dir, with * and ?, such as zone_*.tscn. Default *.tscn. Matches names only, not directories."},
@@ -52,6 +54,8 @@ pub fn catalog() -> Vec<Tool> {
             "view": {"type": "string", "enum": ["geometry", "collision"], "description": "geometry (default) draws what the scenes show; collision draws their collision shapes instead."},
             "labels": {"type": "boolean", "description": "Draw each scene's bounds and file name over the map. Default true."},
             "tile_metres": {"type": "number", "minimum": 1, "maximum": 100000, "description": "Side of a render tile in metres. Default: chosen so a tile holds at most 9 scenes and at most 1024 pixels."},
+            "detail": {"type": "string", "enum": ["summary", "problems", "scenes"], "description": "What the reply lists per scene: summary (default) gives none, only image, totals, problems and warnings; problems adds the entries of the scenes in problems; scenes adds every scene. The reply is kept under about 60000 characters: scenes that do not fit are left out and counted in scenes_left_out, and output_path's JSON always has all of them."},
+            "output_path": {"type": "string", "description": "A .png file inside the project (res:// or relative to it), such as res://.maps/old_pond.png, where the full-size map is written, with the full answer, every scene included, beside it as the same name with .json. Parent folders are created and earlier files of those two names replaced. With it the reply carries the paths instead of an inline picture. A folder holding a .gdignore file (or starting with a dot) keeps the editor from importing the map."},
             "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": MAX_TIMEOUT, "description": "Default 300."},
             "project_path": {"type": "string"}
         }),
@@ -72,6 +76,18 @@ pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {
                 &[
                     "Check the arguments against the godot_world_map inputSchema and retry",
                     "List the directory with godot_list_files to see which scenes it holds",
+                ],
+            );
+        }
+    };
+    let reply = match reply_options(&project.dir, &args) {
+        Ok(reply) => reply,
+        Err(problem) => {
+            return ToolResult::error(
+                format!("Invalid world map request: {problem}"),
+                &[
+                    "Pass output_path as a .png file inside the project, such as res://.maps/world.png",
+                    "Pass detail as summary, problems or scenes",
                 ],
             );
         }
@@ -133,20 +149,218 @@ pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {
             &["Retry; if it repeats, run the project once to check that it renders"],
         );
     };
-    if let Some(map) = answer.as_object_mut() {
-        add_run_warnings(map, &run, imports.as_ref());
+    let Some(map) = answer.as_object_mut() else {
+        return ToolResult::error(
+            "The world map answered with something other than a JSON object",
+            &["Retry; if it repeats, report it with godot_note_feedback"],
+        );
+    };
+    add_run_warnings(map, &run, imports.as_ref());
+    let mut files = None;
+    if let Some(output) = &reply.output {
+        match write_outputs(&project.dir, output, &png, map) {
+            Ok(written) => files = Some(written),
+            Err(problem) => {
+                return ToolResult::error(
+                    format!("The map was drawn but could not be written: {problem}"),
+                    &[
+                        "Check that output_path names a writable place inside the project",
+                        "Run again without output_path to get the preview inline",
+                    ],
+                );
+            }
+        }
+    }
+    let text = compact_answer(map, reply.detail, files, REPLY_LIMIT);
+    let mut content = vec![ToolContent::Text { text }];
+    if reply.output.is_none() {
+        if let Some(preview) = outcome
+            .preview
+            .filter(|bytes| bytes.starts_with(&[0xff, 0xd8]))
+        {
+            content.push(ToolContent::Image {
+                data: base64_encode(&preview),
+                mime_type: "image/jpeg".into(),
+            });
+        }
     }
     ToolResult {
-        content: vec![
-            ToolContent::Text {
-                text: serde_json::to_string_pretty(&answer).unwrap_or_default(),
-            },
-            ToolContent::Image {
-                data: base64_encode(&png),
-                mime_type: "image/png".into(),
-            },
-        ],
+        content,
         is_error: false,
+    }
+}
+
+/// How much of the per-scene summary the reply lists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Detail {
+    Summary,
+    Problems,
+    Scenes,
+}
+
+/// What the caller wants back: the detail of the reply, and where to write the full map.
+#[derive(Debug)]
+pub(crate) struct ReplyOptions {
+    pub detail: Detail,
+    /// The PNG's path; the JSON goes beside it with the extension .json.
+    pub output: Option<PathBuf>,
+}
+
+pub(crate) fn reply_options(project: &Path, args: &Value) -> Result<ReplyOptions, String> {
+    let detail = match args.get("detail") {
+        None => Detail::Summary,
+        Some(value) => match value.as_str() {
+            Some("summary") => Detail::Summary,
+            Some("problems") => Detail::Problems,
+            Some("scenes") => Detail::Scenes,
+            _ => return Err("detail must be \"summary\", \"problems\" or \"scenes\"".into()),
+        },
+    };
+    let output = match args.get("output_path") {
+        None => None,
+        Some(value) => {
+            let requested = value
+                .as_str()
+                .ok_or("output_path must be a res:// path of a .png file")?;
+            let file = resolve_in_project(project, requested)
+                .map_err(|problem| format!("output_path: {problem}"))?;
+            let is_png = file
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("png"));
+            if !is_png {
+                return Err(format!("output_path must end in .png: {requested}"));
+            }
+            if file.is_dir() {
+                return Err(format!("output_path is a directory: {requested}"));
+            }
+            Some(file)
+        }
+    };
+    Ok(ReplyOptions { detail, output })
+}
+
+/// Writes the PNG and the full answer beside it, and returns their paths for the reply.
+fn write_outputs(
+    project: &Path,
+    png_file: &Path,
+    png: &[u8],
+    answer: &Map<String, Value>,
+) -> Result<Value, String> {
+    let json_file = png_file.with_extension("json");
+    if let Some(parent) = png_file.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("cannot create {}: {error}", parent.display()))?;
+    }
+    std::fs::write(png_file, png)
+        .map_err(|error| format!("cannot write {}: {error}", png_file.display()))?;
+    let full = ordered_json(answer, &[]);
+    std::fs::write(&json_file, full)
+        .map_err(|error| format!("cannot write {}: {error}", json_file.display()))?;
+    Ok(json!({
+        "png": res_display(project, png_file),
+        "json": res_display(project, &json_file),
+        "png_absolute": png_file.display().to_string(),
+        "json_absolute": json_file.display().to_string(),
+    }))
+}
+
+/// Keys in the order an agent reads them: the verdict first, the bulk last.
+const KEY_ORDER: &[&str] = &[
+    "totals",
+    "problems",
+    "image",
+    "files",
+    "warnings",
+    "renderer",
+    "scenes_left_out",
+    "scenes",
+];
+
+/// The answer as pretty JSON, each scene on one line, with the keys of KEY_ORDER first, in that
+/// order, then the rest; keys listed in skip are left out.
+fn ordered_json(answer: &Map<String, Value>, skip: &[&str]) -> String {
+    let mut keys: Vec<&str> = KEY_ORDER
+        .iter()
+        .copied()
+        .filter(|key| answer.contains_key(*key))
+        .collect();
+    keys.extend(
+        answer
+            .keys()
+            .map(String::as_str)
+            .filter(|key| !KEY_ORDER.contains(key)),
+    );
+    let parts: Vec<String> = keys
+        .into_iter()
+        .filter(|key| !skip.contains(key))
+        .map(|key| {
+            let value = match &answer[key] {
+                // One scene a line: an agent scans them, and pretty vectors would triple the size.
+                Value::Array(scenes) if key == "scenes" && !scenes.is_empty() => {
+                    let lines: Vec<String> =
+                        scenes.iter().map(|scene| format!("    {scene}")).collect();
+                    format!("[\n{}\n  ]", lines.join(",\n"))
+                }
+                value => serde_json::to_string_pretty(value)
+                    .unwrap_or_default()
+                    .replace('\n', "\n  "),
+            };
+            format!("  {}: {value}", json!(key))
+        })
+        .collect();
+    format!("{{\n{}\n}}", parts.join(",\n"))
+}
+
+/// The reply: totals, problems, image, files and warnings, with the scenes the detail asks for,
+/// as many as fit in limit characters. Whole scenes are left out, never part of one, so the
+/// reply always parses.
+pub(crate) fn compact_answer(
+    answer: &Map<String, Value>,
+    detail: Detail,
+    files: Option<Value>,
+    limit: usize,
+) -> String {
+    let mut reply = answer.clone();
+    if let Some(files) = files {
+        reply.insert("files".into(), files);
+    }
+    let scenes: Vec<Value> = match reply.remove("scenes") {
+        Some(Value::Array(scenes)) => scenes,
+        _ => Vec::new(),
+    };
+    let mut chosen: Vec<Value> = match detail {
+        Detail::Summary => Vec::new(),
+        Detail::Problems => scenes
+            .iter()
+            .filter(|scene| {
+                scene.get("error").is_some()
+                    || scene["has_collision"] != Value::Bool(true)
+                    || scene["has_geometry"] != Value::Bool(true)
+            })
+            .cloned()
+            .collect(),
+        Detail::Scenes => scenes.clone(),
+    };
+    if detail == Detail::Summary {
+        return ordered_json(&reply, &[]);
+    }
+    let wanted = chosen.len();
+    loop {
+        let mut attempt = reply.clone();
+        if chosen.len() < wanted {
+            attempt.insert("scenes_left_out".into(), json!(wanted - chosen.len()));
+        }
+        attempt.insert("scenes".into(), Value::Array(chosen.clone()));
+        let text = ordered_json(&attempt, &[]);
+        if text.len() <= limit || chosen.is_empty() {
+            return text;
+        }
+        // Drop a share of the scenes at a time, in proportion to how far over the limit it is.
+        let over = text.len() - limit;
+        let per_scene = text.len() / chosen.len().max(1);
+        let drop = (over / per_scene.max(1)).max(1).min(chosen.len());
+        chosen.truncate(chosen.len() - drop);
     }
 }
 
@@ -541,6 +755,111 @@ mod tests {
         let problem =
             map_request(dir.path(), &json!({"dir": "res://zones"})).expect_err("too many");
         assert!(problem.contains("more than 256"), "{problem}");
+    }
+
+    fn answer_with(scenes: usize) -> Map<String, Value> {
+        let scenes: Vec<Value> = (0..scenes)
+            .map(|index| {
+                json!({
+                    "scene": format!("res://zones/zone_{index}.tscn"),
+                    "has_collision": index % 3 != 0,
+                    "has_geometry": true,
+                    "top_level": ["Ground", "Collision", "Debris", "Pads", "Reeds", "LakeDressing"],
+                })
+            })
+            .collect();
+        json!({
+            "scenes": scenes,
+            "image": {"width": 2048, "height": 1396},
+            "warnings": [],
+            "totals": {"scenes": scenes.len(), "no_collision": 1},
+            "problems": ["res://zones/zone_0.tscn: no collision (visible geometry only)"],
+            "renderer": "forward_plus",
+        })
+        .as_object()
+        .cloned()
+        .expect("object")
+    }
+
+    #[test]
+    fn the_reply_starts_with_the_verdict_and_lists_scenes_only_on_request() {
+        let answer = answer_with(6);
+        let summary = compact_answer(&answer, Detail::Summary, None, 60_000);
+        let parsed: Value = serde_json::from_str(&summary).expect("parses");
+        assert!(parsed.get("scenes").is_none(), "{summary}");
+        let order: Vec<usize> = ["\"totals\"", "\"problems\"", "\"image\"", "\"warnings\""]
+            .iter()
+            .map(|key| summary.find(key).expect(key))
+            .collect();
+        assert!(order.windows(2).all(|pair| pair[0] < pair[1]), "{summary}");
+
+        let problems = compact_answer(&answer, Detail::Problems, None, 60_000);
+        let parsed: Value = serde_json::from_str(&problems).expect("parses");
+        let names: Vec<&str> = parsed["scenes"]
+            .as_array()
+            .expect("scenes")
+            .iter()
+            .filter_map(|scene| scene["scene"].as_str())
+            .collect();
+        assert_eq!(
+            names,
+            ["res://zones/zone_0.tscn", "res://zones/zone_3.tscn"]
+        );
+
+        let files = json!({"png": "res://.maps/w.png", "json": "res://.maps/w.json"});
+        let all = compact_answer(&answer, Detail::Scenes, Some(files), 60_000);
+        let parsed: Value = serde_json::from_str(&all).expect("parses");
+        assert_eq!(parsed["scenes"].as_array().map(Vec::len), Some(6));
+        assert_eq!(parsed["files"]["json"], "res://.maps/w.json");
+        assert!(parsed.get("scenes_left_out").is_none(), "{all}");
+    }
+
+    #[test]
+    fn a_long_reply_leaves_out_whole_scenes_and_still_parses() {
+        let answer = answer_with(400);
+        let full = compact_answer(&answer, Detail::Scenes, None, usize::MAX);
+        assert!(
+            full.len() > 60_000,
+            "the fixture must overflow: {}",
+            full.len()
+        );
+        let cut = compact_answer(&answer, Detail::Scenes, None, 60_000);
+        assert!(cut.len() <= 60_000, "{}", cut.len());
+        let parsed: Value = serde_json::from_str(&cut).expect("parses");
+        let kept = parsed["scenes"].as_array().map_or(0, Vec::len);
+        assert!(kept > 100, "most of what fits is kept: {kept}");
+        assert_eq!(parsed["scenes_left_out"], json!(400 - kept));
+        assert_eq!(parsed["totals"]["scenes"], 400);
+    }
+
+    #[test]
+    fn output_path_is_a_png_inside_the_project() {
+        let dir = project();
+        let options = reply_options(
+            dir.path(),
+            &json!({"output_path": "res://.maps/world.png", "detail": "problems"}),
+        )
+        .expect("options");
+        assert_eq!(options.detail, Detail::Problems);
+        assert_eq!(
+            options.output,
+            Some(dir.path().join(".maps").join("world.png"))
+        );
+        assert_eq!(
+            reply_options(dir.path(), &json!({}))
+                .expect("defaults")
+                .detail,
+            Detail::Summary
+        );
+        for (args, expected) in [
+            (json!({"output_path": "res://../world.png"}), "output_path:"),
+            (json!({"output_path": "/tmp/world.png"}), "output_path:"),
+            (json!({"output_path": "res://world.json"}), "end in .png"),
+            (json!({"detail": "all"}), "detail must be"),
+        ] {
+            let problem = reply_options(dir.path(), &args).expect_err(&args.to_string());
+            assert!(problem.contains(expected), "{args}: {problem}");
+        }
     }
 
     #[test]

@@ -6627,20 +6627,19 @@ fn world_map_project_files(root: &Path) -> Vec<String> {
     found
 }
 
-/// The PNG of a tool answer, decoded from base64.
-fn world_map_png(result: &ToolResult) -> Vec<u8> {
+/// The inline image of a tool answer, decoded from base64, with its media type.
+fn world_map_image(result: &ToolResult) -> (Vec<u8>, String) {
     let data = result
         .content
         .iter()
         .find_map(|item| match item {
-            godot_mcp::protocol::ToolContent::Image { data, mime_type }
-                if mime_type == "image/png" =>
-            {
-                Some(data.as_str())
+            godot_mcp::protocol::ToolContent::Image { data, mime_type } => {
+                Some((data.as_str(), mime_type.clone()))
             }
             _ => None,
         })
-        .expect("a PNG in the answer");
+        .expect("an image in the answer");
+    let (data, mime_type) = data;
     let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut bytes = Vec::new();
     for chunk in data.trim_end_matches('=').as_bytes().chunks(4) {
@@ -6651,7 +6650,7 @@ fn world_map_png(result: &ToolResult) -> Vec<u8> {
         bits <<= 6 * (4 - chunk.len() as u32);
         bytes.extend_from_slice(&bits.to_be_bytes()[1..chunk.len()]);
     }
-    bytes
+    (bytes, mime_type)
 }
 
 #[tokio::test]
@@ -6667,11 +6666,33 @@ async fn world_map_draws_zones_and_names_the_ones_without_ground() {
     let map = call(
         &tools,
         "godot_world_map",
-        json!({"dir": "res://zones", "glob": "zone_*.tscn", "pixels_per_metre": 8}),
+        json!({
+            "dir": "res://zones",
+            "glob": "zone_*.tscn",
+            "pixels_per_metre": 8,
+            "detail": "scenes",
+            "output_path": "res://.maps/zones.png"
+        }),
     )
     .await;
     assert!(!map.is_error, "{}", text_of(&map));
-    let png = world_map_png(&map);
+    assert!(
+        map.content
+            .iter()
+            .all(|item| matches!(item, godot_mcp::protocol::ToolContent::Text { .. })),
+        "with output_path the reply carries paths, not a picture"
+    );
+    let reply = text_of(&map);
+    assert!(
+        reply.trim_start().starts_with("{\n  \"totals\""),
+        "totals come first: {reply}"
+    );
+    let png = std::fs::read(project.path().join(".maps/zones.png")).expect("the map PNG");
+    let written: Value = serde_json::from_str(
+        &std::fs::read_to_string(project.path().join(".maps/zones.json")).expect("the map JSON"),
+    )
+    .expect("the written JSON parses");
+    assert_eq!(written["scenes"].as_array().map(Vec::len), Some(5));
     if let Ok(out) = std::env::var("WORLD_MAP_PNG_OUT") {
         std::fs::write(out, &png).expect("save the map");
     }
@@ -6681,6 +6702,8 @@ async fn world_map_draws_zones_and_names_the_ones_without_ground() {
     assert_eq!(answer["image"]["width"], 336, "{answer}");
     assert_eq!(answer["image"]["rect"], json!([-11.0, -11.0, 31.0, 31.0]));
     assert_eq!(answer["image"]["up"], "-Z");
+    assert_eq!(answer["image"]["preview"], json!([336, 336]));
+    assert_eq!(answer["files"]["png"], "res://.maps/zones.png", "{answer}");
     assert_eq!(
         answer["totals"],
         json!({"scenes": 5, "no_collision": 2, "no_geometry": 1, "failed": 1}),
@@ -6744,12 +6767,18 @@ async fn world_map_draws_zones_and_names_the_ones_without_ground() {
     )
     .await;
     assert!(!collision.is_error, "{}", text_of(&collision));
-    let png = world_map_png(&collision);
+    let (preview, mime_type) = world_map_image(&collision);
+    assert_eq!(mime_type, "image/jpeg");
+    assert!(preview.starts_with(&[0xff, 0xd8]), "a JPEG preview");
     if let Ok(out) = std::env::var("WORLD_MAP_COLLISION_PNG_OUT") {
-        std::fs::write(out, &png).expect("save the map");
+        std::fs::write(out, &preview).expect("save the preview");
     }
-    assert_eq!(png_size(&png), Some((160, 160)));
     let answer = json_of(&collision);
+    assert!(
+        answer.get("scenes").is_none(),
+        "the default reply lists no scenes: {answer}"
+    );
+    assert_eq!(answer["image"]["preview"], json!([160, 160]));
     assert_eq!(answer["image"]["view"], "collision", "{answer}");
     assert_eq!(answer["image"]["tiles"], 16, "{answer}");
     assert!(

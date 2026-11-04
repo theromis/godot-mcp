@@ -25,6 +25,8 @@ const MAX_TILE_PX: int = 2048
 const MAX_LOADED: int = 9
 const MAX_SIDE: int = 4096
 const MAX_TOP_LEVEL: int = 40
+## The longer side of the inline preview, in pixels.
+const PREVIEW_SIDE: int = 1024
 const BACKGROUND: Color = Color(0.11, 0.13, 0.17)
 const COLLISION_COLOR: Color = Color(0.86, 0.62, 0.32)
 
@@ -719,6 +721,18 @@ func _finish(image: Image) -> void:
 	if saved != OK:
 		_fail("the PNG could not be saved: " + error_string(saved))
 		return
+	# A small JPEG the server can return inline: a full map of a large world does not fit a reply.
+	var preview: Image = image.duplicate() as Image
+	var longest: int = maxi(preview.get_width(), preview.get_height())
+	if longest > PREVIEW_SIDE:
+		var factor: float = float(PREVIEW_SIDE) / float(longest)
+		preview.resize(maxi(roundi(preview.get_width() * factor), 1), maxi(roundi(preview.get_height() * factor), 1), Image.INTERPOLATE_CUBIC)
+	preview.convert(Image.FORMAT_RGB8)
+	var preview_size: Vector2i = preview.get_size()
+	if not str(request.get("preview", "")).is_empty():
+		var preview_saved: Error = preview.save_jpg(str(request["preview"]), 0.85)
+		if preview_saved != OK:
+			warnings.append("the preview JPEG could not be saved: " + error_string(preview_saved))
 	var no_collision: int = 0
 	var no_geometry: int = 0
 	var failed: int = 0
@@ -753,6 +767,7 @@ func _finish(image: Image) -> void:
 			"tiles": tiles.size(),
 			"tile_metres": snappedf(tile_metres, 0.001),
 			"max_scenes_per_tile": max_loaded_seen,
+			"preview": [preview_size.x, preview_size.y],
 		},
 		"totals": {"scenes": reports.size(), "no_collision": no_collision, "no_geometry": no_geometry, "failed": failed},
 		"problems": problems,

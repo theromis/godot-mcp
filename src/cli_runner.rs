@@ -48,6 +48,8 @@ pub struct WorldMapRun {
     pub run: ScriptRun,
     pub answer: Option<String>,
     pub image: Option<Vec<u8>>,
+    /// The map as a JPEG at most 1024 pixels on a side, small enough to return inline.
+    pub preview: Option<Vec<u8>>,
 }
 
 /// What `godot --headless --path <project> --import` printed.
@@ -868,7 +870,8 @@ impl CliRunner {
     /// Runs the world map script on the project in a small window, so the rendering server draws
     /// (a headless Godot has no renderer), with the audio muted: `godot --path <project>
     /// --resolution 64x64 --audio-driver Dummy -s <script> -- <request>`. The request JSON, the
-    /// script, the PNG (`output` in the request) and the answer JSON (`answer`) live in a scratch
+    /// script, the PNG (`output` in the request), its JPEG preview (`preview`) and the answer JSON
+    /// (`answer`) live in a scratch
     /// directory outside the project, removed afterwards. The answer is a file rather than a
     /// stdout line because a summary of a few hundred scenes outgrows the captured output.
     pub async fn world_map(
@@ -881,6 +884,8 @@ impl CliRunner {
         let dir = create_scratch_dir("world-map")?;
         let image = dir.join("map.png");
         let answer = dir.join("answer.json");
+        let preview = dir.join("preview.jpg");
+        request["preview"] = serde_json::json!(preview.to_string_lossy());
         request["output"] = serde_json::json!(image.to_string_lossy());
         request["answer"] = serde_json::json!(answer.to_string_lossy());
         let outcome = async {
@@ -901,6 +906,7 @@ impl CliRunner {
                 run,
                 answer: std::fs::read_to_string(&answer).ok(),
                 image: std::fs::read(&image).ok(),
+                preview: std::fs::read(&preview).ok(),
             })
         }
         .await;
