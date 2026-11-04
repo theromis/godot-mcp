@@ -8,6 +8,14 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ## [Unreleased]
 
+### Changed
+
+- The version the server reports, in the `initialize` answer and in feedback reports, now names the commit it was built from as build metadata (`0.13.0-dev+godot.4.8.g6295b51ab`). The version in `Cargo.toml` and `plugin.cfg` still changes only in a release commit, so two builds between releases used to report the same number. A build without git (a source archive) reports the manifest version alone. The addon's version has no commit.
+
+## [0.13.0] - 2026-11-04
+
+The server can update a project's addon (`godot_update_addon`) and tells an editor whose addon is older than the server how to; it can export a project without the editor, change a file's import parameters and importer, and create, read and edit text shaders. The answer of a long script stays readable, a script no longer starts on stale imports, and the voxel model check is removed.
+
 ### Added
 
 - `godot_update_addon` installs or updates `addons/godot_mcp` in a project with the addon built into this server, so the plugin and the server have the same version, keeps the plugin enabled in `project.godot`, and with `restart_editor: true` closes and reopens a connected editor around the update. A command the editor's addon does not have (an addon older than the server) is no longer a bare "Unknown command type": the error names the addon's version, the server's and the update call, and `godot_read_shader` and `godot_edit_shader` read and edit the shader file instead, saying so. The addon reports the version it loaded in `get_project_info`. Thanks to @theromis.
@@ -15,10 +23,6 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 - `godot_get_import_params` and `godot_set_import_params` read and change a file's import parameters, the `[params]` of its `.import` sidecar, the way the Import dock does, and reimport it, so a texture can get VRAM compression (`compress/mode: 2`) or copy every parameter of a sibling (`copy_from`) without a hand-written script. With the editor the edit goes through its file system and the dock and loaded resource follow; without it Godot's `ConfigFile` edits the file and `godot --headless --import` reimports. An option keeps its type, `new_options` and `ignored_options` name options that were not stored before and the ones the importer dropped, and a file with no `.import` yet is refused with `godot_resave_resources` as the way out. Thanks to @theromis.
 - `godot_set_import_params` takes `importer` to switch the importer a file uses, as the Import dock's "Import As" does, so a PNG strip of 33 slices becomes a `Texture3D` (`importer: "3d_texture"`, `params: {"slices/horizontal": 33, "slices/vertical": 1}`) for `Environment.adjustment_color_correction`. The new importer starts from its own defaults; the name is checked against Godot's built-in importers for the file type, and an importer the reimport did not use (Godot falls back to the file type's default one) is an error. The answer gives `importer`, `previous_importer` and the imported `type`; with the editor, a loaded copy of the old type is replaced in its resource cache. Thanks to @theromis.
 - `godot_create_shader`, `godot_read_shader` and `godot_edit_shader` create, read and edit text shaders (`.gdshader`, `.gdshaderinc`) the way the script tools do for `.gd` files: create from given code without replacing a file unless `overwrite: true`, read the text with a `version` label, and replace one exact fragment. With the editor connected they go through the shader editor and the shader it holds, so an open tab, the editor's copy and the materials using it stay in step, an edit is one undo step, and unsaved typing is never overwritten; without it they work on the file. A new shader gets a `.uid` file, and an existing one keeps its uid. `godot_validate_shader` compiles a saved shader headless with Godot's shader compiler and lists the errors with file and line, including errors inside includes. Thanks to @theromis.
-
-### Changed
-
-- The version the server reports, in the `initialize` answer and in feedback reports, now names the commit it was built from as build metadata (`0.13.0-dev+godot.4.8.g6295b51ab`). The version in `Cargo.toml` and `plugin.cfg` still changes only in a release commit, so two builds between releases used to report the same number. A build without git (a source archive) reports the manifest version alone. The addon's version has no commit.
 
 ### Fixed
 
@@ -368,7 +372,7 @@ part of every release), and note the behaviour changes below.
   property operations, viewport capture), headless CLI fallback for version, script validation
   and launching the editor.
 
-[Unreleased]: https://github.com/zeegzoog/godot-mcp/compare/v0.12.0...master
+[Unreleased]: https://github.com/zeegzoog/godot-mcp/compare/v0.13.0...master
 [0.4.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/zeegzoog/godot-mcp/compare/v0.1.0...v0.2.0
