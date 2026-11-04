@@ -1,0 +1,8 @@
+/.github/    @teratron
+/.agents/    @teratron
+/.claude/    @teratron
+/.cargo/     @teratron
+build.rs     @teratron
+/SECURITY.md @teratron
+/LICENSE     @teratron
+/.env.example

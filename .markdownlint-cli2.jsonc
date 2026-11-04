@@ -2,6 +2,7 @@
   // https://github.com/DavidAnson/markdownlint-cli2#markdownlint-cli2jsonc
   "ignores": [
     "LICENSE",
+    "CODEOWNERS",
     "scratch/**",
     "target/**",
     "node_modules/**",
