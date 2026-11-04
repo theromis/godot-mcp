@@ -6569,28 +6569,28 @@ fn world_map_project() -> tempfile::TempDir {
         "[gd_scene load_steps=2 format=3]\n\n[sub_resource type=\"SphereMesh\" id=\"1\"]\n\n[node name=\"Rock\" type=\"MeshInstance3D\"]\nmesh = SubResource(\"1\")\n",
     )
     .unwrap();
-    let ground = |name: &str, x: i32, z: i32, rock: bool| {
+    let ground = |name: &str, x: i32, z: i32, rock: bool, color: &str| {
         let (steps, external, nested) = if rock {
             (
-                4,
+                5,
                 "[ext_resource type=\"PackedScene\" path=\"res://props/rock.tscn\" id=\"rock\"]\n\n",
                 "\n[node name=\"Rock\" parent=\".\" instance=ExtResource(\"rock\")]\ntransform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 1, 2)\n",
             )
         } else {
-            (3, "", "")
+            (4, "", "")
         };
         format!(
-            "[gd_scene load_steps={steps} format=3]\n\n{external}[sub_resource type=\"BoxShape3D\" id=\"1\"]\nsize = Vector3(20, 1, 20)\n\n[sub_resource type=\"BoxMesh\" id=\"2\"]\nsize = Vector3(20, 1, 20)\n\n[node name=\"{name}\" type=\"Node3D\"]\ntransform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, {x}, 0, {z})\n\n[node name=\"Ground\" type=\"StaticBody3D\" parent=\".\"]\n\n[node name=\"Shape\" type=\"CollisionShape3D\" parent=\"Ground\"]\nshape = SubResource(\"1\")\n\n[node name=\"Mesh\" type=\"MeshInstance3D\" parent=\"Ground\"]\nmesh = SubResource(\"2\")\n{nested}"
+            "[gd_scene load_steps={steps} format=3]\n\n{external}[sub_resource type=\"BoxShape3D\" id=\"1\"]\nsize = Vector3(20, 1, 20)\n\n[sub_resource type=\"StandardMaterial3D\" id=\"3\"]\nalbedo_color = Color({color}, 1)\n\n[sub_resource type=\"BoxMesh\" id=\"2\"]\nmaterial = SubResource(\"3\")\nsize = Vector3(20, 1, 20)\n\n[node name=\"{name}\" type=\"Node3D\"]\ntransform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, {x}, 0, {z})\n\n[node name=\"Ground\" type=\"StaticBody3D\" parent=\".\"]\n\n[node name=\"Shape\" type=\"CollisionShape3D\" parent=\"Ground\"]\nshape = SubResource(\"1\")\n\n[node name=\"Mesh\" type=\"MeshInstance3D\" parent=\"Ground\"]\nmesh = SubResource(\"2\")\n{nested}"
         )
     };
     std::fs::write(
         root.join("zones/zone_0_0.tscn"),
-        ground("Zone00", 0, 0, true),
+        ground("Zone00", 0, 0, true, "0.8, 0.15, 0.1"),
     )
     .unwrap();
     std::fs::write(
         root.join("zones/zone_1_0.tscn"),
-        ground("Zone10", 20, 0, false),
+        ground("Zone10", 20, 0, false, "0.1, 0.25, 0.85"),
     )
     .unwrap();
     std::fs::write(
@@ -6607,15 +6607,18 @@ fn world_map_project() -> tempfile::TempDir {
     dir
 }
 
-/// Every file under `root` except the engine's `.godot` cache and import sidecars Godot writes
-/// on first load, as sorted relative paths.
+/// Every file under `root` except the engine's `.godot` cache and the `.maps` folder the
+/// test asks the map to be written to, as sorted relative paths.
 fn world_map_project_files(root: &Path) -> Vec<String> {
     let mut found = Vec::new();
     let mut pending = vec![root.to_path_buf()];
     while let Some(dir) = pending.pop() {
         for entry in std::fs::read_dir(&dir).expect("dir").flatten() {
             let path = entry.path();
-            if path.file_name().is_some_and(|name| name == ".godot") {
+            if path
+                .file_name()
+                .is_some_and(|name| name == ".godot" || name == ".maps")
+            {
                 continue;
             }
             if path.is_dir() {
@@ -6660,6 +6663,33 @@ fn compare_map_with_preview(png: &Path, preview: &[u8]) -> Value {
     let bytes = std::fs::read(png).expect("png");
     answer["colour_type"] = json!(bytes.get(25).copied());
     answer
+}
+
+/// The mean colour of each tile of a PNG cut into side x side equal squares, read in a headless
+/// Godot, row by row from the top left.
+fn tile_means(png: &Path, side: u32) -> Vec<[f64; 3]> {
+    let dir = tempfile::tempdir().expect("scratch");
+    let script = dir.path().join("tiles.gd");
+    std::fs::write(
+        &script,
+        "extends SceneTree\n\nfunc _initialize() -> void:\n\tvar args: PackedStringArray = OS.get_cmdline_user_args()\n\tvar map: Image = Image.load_from_file(args[0])\n\tvar side: int = int(args[1])\n\tvar size: Vector2i = map.get_size() / side\n\tvar means: Array = []\n\tfor row: int in side:\n\t\tfor column: int in side:\n\t\t\tvar sum: Color = Color(0, 0, 0, 0)\n\t\t\tfor y: int in size.y:\n\t\t\t\tfor x: int in size.x:\n\t\t\t\t\tsum += map.get_pixel(column * size.x + x, row * size.y + y)\n\t\t\tvar count: float = float(size.x * size.y)\n\t\t\tmeans.append([sum.r / count, sum.g / count, sum.b / count])\n\tprint(\"WORLD_MAP_TILES=\", JSON.stringify(means))\n\tquit()\n",
+    )
+    .expect("script");
+    let output = std::process::Command::new(godot_path())
+        .arg("--headless")
+        .arg("-s")
+        .arg(&script)
+        .arg("--")
+        .arg(png)
+        .arg(side.to_string())
+        .output()
+        .expect("run Godot");
+    let text = String::from_utf8_lossy(&output.stdout);
+    let line = text
+        .lines()
+        .find_map(|line| line.strip_prefix("WORLD_MAP_TILES="))
+        .unwrap_or_else(|| panic!("no tile means: {text}"));
+    serde_json::from_str(line).expect("tile means JSON")
 }
 
 /// The inline image of a tool answer, decoded from base64, with its media type.
@@ -6841,6 +6871,42 @@ async fn world_map_draws_zones_and_names_the_ones_without_ground() {
         "{answer}"
     );
     assert_eq!(answer["totals"]["no_collision"], 1, "{answer}");
+
+    // One tile per zone, each zone a different colour (red ground, blue ground, the lake's white
+    // plane, the empty background): every tile must show its own area, not a neighbour's.
+    let tiled = call(
+        &tools,
+        "godot_world_map",
+        json!({
+            "dir": "res://zones",
+            "glob": "zone_?_?.tscn",
+            "rect": [-10, -10, 30, 30],
+            "pixels_per_metre": 4,
+            "tile_metres": 20,
+            "labels": false,
+            "output_path": "res://.maps/tiles.png"
+        }),
+    )
+    .await;
+    assert!(!tiled.is_error, "{}", text_of(&tiled));
+    assert_eq!(json_of(&tiled)["image"]["tiles"], 4, "{}", text_of(&tiled));
+    let means = tile_means(&project.path().join(".maps/tiles.png"), 2);
+    assert_eq!(means.len(), 4, "{means:?}");
+    for first in 0..means.len() {
+        for second in first + 1..means.len() {
+            let distance: f64 = (0..3)
+                .map(|channel| (means[first][channel] - means[second][channel]).abs())
+                .sum();
+            assert!(
+                distance > 0.15,
+                "tiles {first} and {second} look alike: {means:?}"
+            );
+        }
+    }
+    assert!(
+        means[0][0] > means[0][2] && means[1][2] > means[1][0],
+        "the red zone is top left, the blue one top right: {means:?}"
+    );
 
     let nothing = call(
         &tools,

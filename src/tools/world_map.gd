@@ -21,6 +21,10 @@ const TILE_FRAMES: int = 3
 const OVERLAY_FRAMES: int = 2
 ## Extra rounds of OVERLAY_FRAMES when the overlay comes back empty.
 const OVERLAY_RETRIES: int = 10
+## Pixels drawn around each tile and cut away.
+const TILE_MARGIN_PX: int = 32
+## Extra rounds of TILE_FRAMES when a tile reads back the same as the one before it.
+const TILE_RETRIES: int = 5
 ## The largest side of a tile viewport, in pixels.
 const MAX_TILE_PX: int = 2048
 ## Scenes instanced at once when the tile size is chosen automatically.
@@ -63,6 +67,11 @@ var tile_index: int = 0
 var max_loaded_seen: int = 0
 var overlay_viewport: SubViewport = null
 var overlay_retries: int = 0
+var tile_retries: int = 0
+var last_tile_data: PackedByteArray = PackedByteArray()
+var last_tile_had_scenes: bool = false
+var camera_low: float = 0.0
+var camera_high: float = 0.0
 var last_drawn: int = -1
 
 
@@ -80,7 +89,7 @@ func _initialize() -> void:
 	view = str(request.get("view", "geometry"))
 
 
-func _process(delta: float) -> bool:
+func _process(_delta: float) -> bool:
 	if phase == Phase.DONE:
 		return true
 	if viewport == null:
@@ -89,7 +98,7 @@ func _process(delta: float) -> bool:
 		# macOS stops drawing a covered or minimized window, and its viewports with it: when no
 		# frame was drawn since the last tick, draw one, so a readback never gets an empty texture.
 		if Engine.get_frames_drawn() == last_drawn:
-			RenderingServer.force_draw(false, delta)
+			RenderingServer.force_draw(false, 0.0)
 		last_drawn = Engine.get_frames_drawn()
 		wait_frames -= 1
 		return false
@@ -461,16 +470,29 @@ func _scenes_in(tile: Rect2) -> Array[int]:
 func _start_tiles() -> void:
 	phase = Phase.TILES
 	tile_index = 0
-	viewport.size = Vector2i(tile_px, tile_px)
+	# Each tile is drawn with a margin that is cut away, so screen-space effects (refraction,
+	# depth fades) near its edge see the neighbouring ground instead of nothing.
+	viewport.size = Vector2i(tile_px + 2 * TILE_MARGIN_PX, tile_px + 2 * TILE_MARGIN_PX)
 	_add_lighting()
 	camera = Camera3D.new()
 	camera.name = "MapCamera"
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.keep_aspect = Camera3D.KEEP_HEIGHT
-	camera.size = tile_metres
+	camera.size = float(viewport.size.y) / ppm
 	# Looking down -Y with the top of the picture towards -Z.
 	camera.basis = Basis.from_euler(Vector3(-PI * 0.5, 0.0, 0.0))
 	stage.add_child(camera)
+	var placed: bool = false
+	for i: int in reports.size():
+		if reports[i].has("error"):
+			continue
+		camera_low = render_bounds[i].position.y if not placed else minf(camera_low, render_bounds[i].position.y)
+		camera_high = render_bounds[i].end.y if not placed else maxf(camera_high, render_bounds[i].end.y)
+		placed = true
+	camera.near = 0.05
+	camera.far = maxf(camera_high - camera_low, 1.0) + 10.0
+	# Shaders that animate with TIME stand still, so neighbouring tiles agree.
+	Engine.time_scale = 0.0
 	camera.make_current()
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_load_tile()
@@ -479,13 +501,10 @@ func _start_tiles() -> void:
 func _load_tile() -> void:
 	while tile_index < tiles.size():
 		var tile: Rect2 = tiles[tile_index]
-		var inside: Array[int] = _scenes_in(tile)
+		var inside: Array[int] = _scenes_in(tile.grow(TILE_MARGIN_PX / ppm))
 		# An empty tile is rendered too, so its background matches the tone-mapped one of the rest.
 		max_loaded_seen = maxi(max_loaded_seen, inside.size())
 		print("GODOT_MCP_WORLD_MAP_PROGRESS tile %d/%d" % [tile_index + 1, tiles.size()])
-		var low: float = 0.0
-		var high: float = 0.0
-		var placed: bool = false
 		for i: int in inside:
 			var holder: Node3D = _instance(i)
 			if holder == null:
@@ -493,13 +512,10 @@ func _load_tile() -> void:
 			if view == "collision":
 				_show_collision(holder)
 			loaded.append(holder)
-			low = render_bounds[i].position.y if not placed else minf(low, render_bounds[i].position.y)
-			high = render_bounds[i].end.y if not placed else maxf(high, render_bounds[i].end.y)
-			placed = true
+		# The same height, near and far for every tile: a shader that reads depth (shallow water,
+		# say) would otherwise change from tile to tile and leave seams.
 		var center: Vector2 = tile.get_center()
-		camera.position = Vector3(center.x, high + 5.0, center.y)
-		camera.near = 0.05
-		camera.far = maxf(high - low, 1.0) + 10.0
+		camera.position = Vector3(center.x, camera_high + 5.0, center.y)
 		camera.make_current()
 		wait_frames = TILE_FRAMES
 		return
@@ -513,10 +529,24 @@ func _tile_step() -> void:
 		return
 	# Opaque whatever alpha the renderer left in the target (Compatibility may leave 0).
 	image.convert(Image.FORMAT_RGB8)
+	# A readback identical to the last tile's, with scenes in either, is a texture that was not
+	# drawn again after the camera moved: draw and wait once more before taking it.
+	var data: PackedByteArray = image.get_data()
+	var has_scenes: bool = not loaded.is_empty()
+	if (has_scenes or last_tile_had_scenes) and data == last_tile_data and tile_retries < TILE_RETRIES:
+		tile_retries += 1
+		RenderingServer.force_draw(false, 0.0)
+		wait_frames = TILE_FRAMES
+		return
+	if tile_retries >= TILE_RETRIES and data == last_tile_data:
+		warnings.append("tile %d drew the same picture as the tile before it after %d retries; that part of the map may be wrong" % [tile_index + 1, TILE_RETRIES])
+	last_tile_data = data
+	last_tile_had_scenes = has_scenes
+	tile_retries = 0
 	image.convert(Image.FORMAT_RGBA8)
 	var tile: Rect2 = tiles[tile_index]
 	var at: Vector2i = Vector2i(roundi((tile.position.x - rect.position.x) * ppm), roundi((tile.position.y - rect.position.y) * ppm))
-	map.blit_rect(image, Rect2i(Vector2i.ZERO, image.get_size()), at)
+	map.blit_rect(image, Rect2i(TILE_MARGIN_PX, TILE_MARGIN_PX, tile_px, tile_px), at)
 	for holder: Node in loaded:
 		holder.free()
 	loaded.clear()
