@@ -1,7 +1,7 @@
 //! Tools that run the Godot binary without the editor: script validation, one-off scripts,
 //! resource resaving and the headless import.
 
-use super::exit_leaks::strip_exit_leaks;
+use super::exit_leaks::{EXIT_LEAK_HINT, collapse_exit_leaks};
 use super::main_loop::main_loop_problem;
 use super::run::StaleImports;
 use super::{ToolManager, bridge_error_result, code, missing_argument, str_arg, user_args_of};
@@ -231,10 +231,10 @@ fn script_run_result(
         .exit_code
         .map(|code| code.to_string())
         .unwrap_or_else(|| "none".into());
-    // Godot's shutdown reports say nothing about what the script did and bury what does.
+    // Godot repeats its shutdown leak reports hundreds of times, burying the errors that matter.
     let mut exit_leaks = BTreeMap::new();
-    let stdout = strip_exit_leaks(&report.stdout, &mut exit_leaks);
-    let stderr = strip_exit_leaks(&report.stderr, &mut exit_leaks);
+    let stdout = collapse_exit_leaks(&report.stdout, &mut exit_leaks);
+    let stderr = collapse_exit_leaks(&report.stderr, &mut exit_leaks);
     let load_error = script_load_failure(&report.stderr, script_res)
         .or_else(|| script_load_failure(&report.stdout, script_res));
     let mut script_errors = report.script_errors.clone();
@@ -300,6 +300,7 @@ fn script_run_result(
         "stdout": stdout,
         "stderr": stderr,
         "exit_leaks": (!exit_leaks.is_empty()).then_some(&exit_leaks),
+        "hint": (!exit_leaks.is_empty()).then_some(EXIT_LEAK_HINT),
         "script_errors": script_errors.iter().map(|error| json!({
             "message": error.message,
             "file": error.file,

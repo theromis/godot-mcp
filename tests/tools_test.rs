@@ -5476,12 +5476,13 @@ async fn an_update_passes_discard_to_the_editor_it_closes() {
     );
 }
 
-/// godot_run_script drops the reports Godot prints while it shuts down (leaked instance
-/// dependencies, RID allocations, ObjectDB instances...) from stdout and stderr, counts them in
-/// exit_leaks, and leaves every other line where it was.
+/// godot_run_script keeps the leak reports Godot prints while it shuts down (leaked instance
+/// dependencies, RID allocations, ObjectDB instances...) but shows a repeated one once with its
+/// count, counts them by kind in exit_leaks, says in hint what causes them, and leaves every
+/// other line where it was.
 #[cfg(unix)]
 #[tokio::test]
-async fn run_script_counts_exit_time_leaks_instead_of_returning_them() {
+async fn run_script_collapses_repeated_exit_time_leaks_and_says_what_causes_them() {
     use std::os::unix::fs::PermissionsExt;
     let project = project_dir();
     std::fs::write(
@@ -5531,15 +5532,35 @@ async fn run_script_counts_exit_time_leaks_instead_of_returning_them() {
         }),
         "{answer}"
     );
-    assert_eq!(answer["stdout"], "placed 100 zones\n", "{answer}");
+    assert_eq!(
+        answer["stdout"],
+        "placed 100 zones\nERROR: 7 RID allocations of type 'N13RendererDummy9DummyMeshE' were leaked at exit.",
+        "{answer}"
+    );
     assert_eq!(
         answer["stderr"],
-        "ERROR: Failed to load resource res://zones/missing.tscn.\n   at: _load (core/io/resource_loader.cpp:283)\n",
+        concat!(
+            "ERROR: Failed to load resource res://zones/missing.tscn.\n",
+            "   at: _load (core/io/resource_loader.cpp:283)\n",
+            "WARNING: Leaked instance dependency: Bug - did not call instance_notify_deleted when freeing. ×150\n",
+            "     at: ~DependencyTracker (servers/rendering/renderer_rd/storage_rd/utilities.h:79)\n",
+            "WARNING: 5 ObjectDB instances were leaked at exit (run with `--verbose` for details).\n",
+            "   at: cleanup (core/object/object.cpp:2609)\n",
+            "ERROR: 3 resources still in use at exit (run with --verbose for details).\n",
+            "   at: clear (core/io/resource.cpp:599)\n",
+            "ERROR: Pages in use exist at exit in PagedAllocator: N7Skeleton\n",
+            "   at: ~PagedAllocator (./core/templates/paged_allocator.h:170)",
+        ),
+        "{answer}"
+    );
+    let hint = answer["hint"].as_str().unwrap_or_default();
+    assert!(
+        hint.contains("free()") && hint.contains("quit()") && hint.contains("--verbose"),
         "{answer}"
     );
 }
 
-/// A run with no exit-time reports answers exit_leaks null.
+/// A run with no exit-time reports answers exit_leaks and hint null.
 #[cfg(unix)]
 #[tokio::test]
 async fn run_script_without_exit_time_leaks_answers_exit_leaks_null() {
@@ -5555,6 +5576,7 @@ async fn run_script_without_exit_time_leaks_answers_exit_leaks_null() {
     assert!(!result.is_error, "{}", text(&result));
     let answer: Value = serde_json::from_str(&text(&result)).expect("json answer");
     assert!(answer["exit_leaks"].is_null(), "{answer}");
+    assert!(answer["hint"].is_null(), "{answer}");
     assert!(
         answer["stdout"]
             .as_str()

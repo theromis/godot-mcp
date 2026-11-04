@@ -4795,8 +4795,8 @@ fn project_dir_with_scripts() -> tempfile::TempDir {
     dir
 }
 
-/// godot_run_script with real Godot: the leak reports it prints at exit are counted in
-/// exit_leaks and left out of stdout and stderr, and the script's own error stays.
+/// godot_run_script with real Godot: the leak reports it prints at exit stay in the output,
+/// are counted in exit_leaks with a hint on freeing nodes, and the script's own error stays.
 #[tokio::test]
 #[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
 async fn run_script_counts_the_leaks_godot_reports_at_exit() {
@@ -4825,11 +4825,14 @@ async fn run_script_counts_the_leaks_godot_reports_at_exit() {
         answer["exit_leaks"]["objectdb_instances"].as_u64() >= Some(1),
         "{answer}"
     );
-    for stream in ["stdout", "stderr"] {
-        let output = answer[stream].as_str().unwrap_or_default();
-        assert!(!output.contains("leaked at exit"), "{stream}: {output}");
-        assert!(!output.contains("object.cpp"), "{stream}: {output}");
-    }
+    assert!(
+        answer["hint"]
+            .as_str()
+            .is_some_and(|hint| hint.contains("free()")),
+        "{answer}"
+    );
+    let output = format!("{}{}", answer["stdout"], answer["stderr"]);
+    assert!(output.contains("leaked at exit"), "{output}");
     assert!(
         answer["stderr"]
             .as_str()
