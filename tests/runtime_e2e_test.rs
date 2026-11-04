@@ -6549,3 +6549,231 @@ async fn an_aimed_screenshot_looks_at_a_point_and_leaves_the_game_camera_alone()
     let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
     assert!(!stopped.is_error, "{}", text_of(&stopped));
 }
+
+/// A 2 x 2 grid of 20 m zones: two with ground (a box body and its mesh, one with a nested rock
+/// scene), one with lake dressing only, one with nothing to draw, and a file that does not load.
+fn world_map_project() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("project");
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("zones")).unwrap();
+    std::fs::create_dir_all(root.join("props")).unwrap();
+    std::fs::write(
+        root.join("project.godot"),
+        "config_version=5\n\n[application]\n\nconfig/name=\"WorldMapProbe\"\nconfig/features=PackedStringArray(\"4.5\")\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("props/rock.tscn"),
+        "[gd_scene load_steps=2 format=3]\n\n[sub_resource type=\"SphereMesh\" id=\"1\"]\n\n[node name=\"Rock\" type=\"MeshInstance3D\"]\nmesh = SubResource(\"1\")\n",
+    )
+    .unwrap();
+    let ground = |name: &str, x: i32, z: i32, rock: bool| {
+        let (steps, external, nested) = if rock {
+            (
+                4,
+                "[ext_resource type=\"PackedScene\" path=\"res://props/rock.tscn\" id=\"rock\"]\n\n",
+                "\n[node name=\"Rock\" parent=\".\" instance=ExtResource(\"rock\")]\ntransform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 1, 2)\n",
+            )
+        } else {
+            (3, "", "")
+        };
+        format!(
+            "[gd_scene load_steps={steps} format=3]\n\n{external}[sub_resource type=\"BoxShape3D\" id=\"1\"]\nsize = Vector3(20, 1, 20)\n\n[sub_resource type=\"BoxMesh\" id=\"2\"]\nsize = Vector3(20, 1, 20)\n\n[node name=\"{name}\" type=\"Node3D\"]\ntransform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, {x}, 0, {z})\n\n[node name=\"Ground\" type=\"StaticBody3D\" parent=\".\"]\n\n[node name=\"Shape\" type=\"CollisionShape3D\" parent=\"Ground\"]\nshape = SubResource(\"1\")\n\n[node name=\"Mesh\" type=\"MeshInstance3D\" parent=\"Ground\"]\nmesh = SubResource(\"2\")\n{nested}"
+        )
+    };
+    std::fs::write(
+        root.join("zones/zone_0_0.tscn"),
+        ground("Zone00", 0, 0, true),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("zones/zone_1_0.tscn"),
+        ground("Zone10", 20, 0, false),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("zones/zone_0_1.tscn"),
+        "[gd_scene load_steps=2 format=3]\n\n[sub_resource type=\"PlaneMesh\" id=\"1\"]\nsize = Vector2(20, 20)\n\n[node name=\"Zone01\" type=\"Node3D\"]\ntransform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 20)\n\n[node name=\"Water\" type=\"MeshInstance3D\" parent=\".\"]\nmesh = SubResource(\"1\")\n\n[node name=\"Reeds\" type=\"Node3D\" parent=\".\"]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("zones/zone_1_1.tscn"),
+        "[gd_scene format=3]\n\n[node name=\"Zone11\" type=\"Node3D\"]\ntransform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, 20)\n\n[node name=\"Marker\" type=\"Node3D\" parent=\".\"]\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("zones/zone_9_9.tscn"), "not a scene\n").unwrap();
+    dir
+}
+
+/// Every file under `root` except the engine's `.godot` cache and import sidecars Godot writes
+/// on first load, as sorted relative paths.
+fn world_map_project_files(root: &Path) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        for entry in std::fs::read_dir(&dir).expect("dir").flatten() {
+            let path = entry.path();
+            if path.file_name().is_some_and(|name| name == ".godot") {
+                continue;
+            }
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                found.push(path.strip_prefix(root).unwrap().display().to_string());
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+/// The PNG of a tool answer, decoded from base64.
+fn world_map_png(result: &ToolResult) -> Vec<u8> {
+    let data = result
+        .content
+        .iter()
+        .find_map(|item| match item {
+            godot_mcp::protocol::ToolContent::Image { data, mime_type }
+                if mime_type == "image/png" =>
+            {
+                Some(data.as_str())
+            }
+            _ => None,
+        })
+        .expect("a PNG in the answer");
+    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut bytes = Vec::new();
+    for chunk in data.trim_end_matches('=').as_bytes().chunks(4) {
+        let mut bits = 0u32;
+        for &symbol in chunk {
+            bits = (bits << 6) | alphabet.iter().position(|&c| c == symbol).expect("base64") as u32;
+        }
+        bits <<= 6 * (4 - chunk.len() as u32);
+        bytes.extend_from_slice(&bits.to_be_bytes()[1..chunk.len()]);
+    }
+    bytes
+}
+
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn world_map_draws_zones_and_names_the_ones_without_ground() {
+    if !windowed_game_can_open() {
+        eprintln!("skipped: the world map renders in a window and needs a display server");
+        return;
+    }
+    let project = world_map_project();
+    let tools = manager(project.path());
+    // The first run imports the scenes' sidecars; compare the project after it.
+    let map = call(
+        &tools,
+        "godot_world_map",
+        json!({"dir": "res://zones", "glob": "zone_*.tscn", "pixels_per_metre": 8}),
+    )
+    .await;
+    assert!(!map.is_error, "{}", text_of(&map));
+    let png = world_map_png(&map);
+    if let Ok(out) = std::env::var("WORLD_MAP_PNG_OUT") {
+        std::fs::write(out, &png).expect("save the map");
+    }
+    let answer = json_of(&map);
+    // Geometry spans x and z from -10 to 30, plus a 1 m margin on each side, at 8 px/m.
+    assert_eq!(png_size(&png), Some((336, 336)), "{answer}");
+    assert_eq!(answer["image"]["width"], 336, "{answer}");
+    assert_eq!(answer["image"]["rect"], json!([-11.0, -11.0, 31.0, 31.0]));
+    assert_eq!(answer["image"]["up"], "-Z");
+    assert_eq!(
+        answer["totals"],
+        json!({"scenes": 5, "no_collision": 2, "no_geometry": 1, "failed": 1}),
+        "{answer}"
+    );
+    let scenes = answer["scenes"].as_array().expect("scenes");
+    let scene = |name: &str| {
+        scenes
+            .iter()
+            .find(|scene| scene["scene"] == format!("res://zones/{name}.tscn"))
+            .unwrap_or_else(|| panic!("{name}: {answer}"))
+    };
+    let first = scene("zone_0_0");
+    assert_eq!(first["root"]["name"], "Zone00", "{first}");
+    assert_eq!(first["top_level"], json!(["Ground", "Rock"]), "{first}");
+    assert_eq!(first["mesh_instances"], 2, "{first}");
+    assert_eq!(first["collision_objects"], 1, "{first}");
+    assert_eq!(first["collision_shapes"], 1, "{first}");
+    assert_eq!(first["collision_layers"], json!([1]), "{first}");
+    assert_eq!(first["instanced_scenes"], 1, "{first}");
+    assert_eq!(first["has_collision"], true, "{first}");
+    assert_eq!(
+        first["collision_bounds"]["min"],
+        json!([-10.0, -0.5, -10.0]),
+        "{first}"
+    );
+    let second = scene("zone_1_0");
+    assert_eq!(second["root"]["position"], json!([20.0, 0.0, 0.0]));
+    assert_eq!(second["bounds"]["min"][0], 10.0, "{second}");
+    let lake = scene("zone_0_1");
+    assert_eq!(lake["has_geometry"], true, "{lake}");
+    assert_eq!(lake["has_collision"], false, "{lake}");
+    assert_eq!(lake["collision_bounds"], Value::Null, "{lake}");
+    let empty = scene("zone_1_1");
+    assert_eq!(empty["has_geometry"], false, "{empty}");
+    assert_eq!(empty["bounds"], Value::Null, "{empty}");
+    assert!(scene("zone_9_9")["error"].as_str().is_some(), "{answer}");
+    let problems = answer["problems"].to_string();
+    for expected in [
+        "zone_0_1.tscn: no collision (visible geometry only)",
+        "zone_1_1.tscn: no collision and no visible geometry",
+        "zone_9_9.tscn:",
+    ] {
+        assert!(problems.contains(expected), "{expected}: {problems}");
+    }
+    assert!(!problems.contains("zone_0_0"), "{problems}");
+    let before = world_map_project_files(project.path());
+
+    // Small tiles: the map is the same size, built from 16 tiles of at most four zones each.
+    let collision = call(
+        &tools,
+        "godot_world_map",
+        json!({
+            "scenes": ["res://zones/zone_0_0.tscn", "res://zones/zone_1_0.tscn", "res://zones/zone_0_1.tscn"],
+            "rect": [-10, -10, 30, 30],
+            "pixels_per_metre": 4,
+            "tile_metres": 10,
+            "view": "collision",
+            "labels": false
+        }),
+    )
+    .await;
+    assert!(!collision.is_error, "{}", text_of(&collision));
+    let png = world_map_png(&collision);
+    if let Ok(out) = std::env::var("WORLD_MAP_COLLISION_PNG_OUT") {
+        std::fs::write(out, &png).expect("save the map");
+    }
+    assert_eq!(png_size(&png), Some((160, 160)));
+    let answer = json_of(&collision);
+    assert_eq!(answer["image"]["view"], "collision", "{answer}");
+    assert_eq!(answer["image"]["tiles"], 16, "{answer}");
+    assert!(
+        json_number(&answer["image"]["max_scenes_per_tile"]) <= 3.0,
+        "{answer}"
+    );
+    assert_eq!(answer["totals"]["no_collision"], 1, "{answer}");
+
+    let nothing = call(
+        &tools,
+        "godot_world_map",
+        json!({"scenes": ["res://zones/zone_1_1.tscn"]}),
+    )
+    .await;
+    assert!(nothing.is_error, "{}", text_of(&nothing));
+    assert!(
+        text_of(&nothing).contains("pass rect"),
+        "{}",
+        text_of(&nothing)
+    );
+
+    assert_eq!(
+        world_map_project_files(project.path()),
+        before,
+        "the map wrote into the project"
+    );
+}

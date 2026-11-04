@@ -1,6 +1,6 @@
 # Tool Catalog
 
-**Version:** 1.15.0
+**Version:** 1.16.0
 **Status:** Stable
 **Layer:** concept
 
@@ -73,6 +73,7 @@ Agents call tools without seeing the implementation; a tool's contract has to be
 | `godot_get_node_properties` | editor | no | `{type, value}` per editor-visible property |
 | `godot_set_node_properties` | editor | scene (undoable) | All-or-nothing, read-back |
 | `godot_capture_viewport` | editor (windowed) | editor state | PNG of the 2D/3D viewport with dimensions |
+| `godot_world_map` | engine (windowed) | no (engine caches under `.godot/` only) | Top-down orthographic map of many scene files at their saved transforms, rendered in tiles in a temporary process so memory is bounded by one tile's scenes, and a summary per scene (bounds, counts, has_collision, has_geometry) with the scenes lacking either listed [ADDED] |
 | `godot_create_script` | host | disk | `.gd` from the caller's `content`, validated after writing, or from a fixed template; no overwrite by default [MODIFIED] |
 | `godot_validate_script` | host | no | Headless syntax check |
 | `godot_run_script` | engine | what the script does; uid and parameter repairs (TL-13) | A caller's `SceneTree` script headless, bounded, with its output, its script errors and the resource repairs [ADDED] |
@@ -165,3 +166,4 @@ graph TD
 | 1.13.0 | 2026-11-02 | Agent (magic.spec) | [MODIFIED] TL-13: the answer of a one-off script counts the repairs and lists the first twenty instead of every one. Source: pull request 103. Stable → RFC → Stable after Post-Update Review. |
 | 1.14.0 | 2026-11-02 | Agent (magic.spec) | [REMOVED] `godot_check_voxel_model` from the catalog, and the sentence of TL-6 about a helper program that a tool waits for. Stable → RFC → Stable after Post-Update Review. |
 | 1.15.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] `godot_game_probe` in the catalog (raycasts and ground-height grids that move no node); [MODIFIED] the `godot_game_screenshot` row: `aim`. Stable → RFC → Stable after Post-Update Review. |
+| 1.16.0 | 2026-11-03 | Agent (magic.spec) | [ADDED] `godot_world_map` in the catalog (a map of many scene files rendered in tiles in a temporary process, nothing written to the project). Stable → RFC → Stable after Post-Update Review. |

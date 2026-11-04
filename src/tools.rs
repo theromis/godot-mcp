@@ -32,6 +32,7 @@ mod run;
 mod scenario;
 mod scripts;
 mod shaders;
+mod world_map;
 
 use headless::ScriptCheck;
 use project::EditorChoice;
@@ -148,6 +149,7 @@ impl ToolManager {
             name if export::handles(name) => export::call(&self, name, args).await,
             name if addon_update::handles(name) => addon_update::call(&self, args).await,
             name if import_params::handles(name) => import_params::call(&self, name, args).await,
+            name if world_map::handles(name) => world_map::call(&self, args).await,
             feedback::NOTE => self.handle_note_feedback(args).await,
             feedback::DRAFT => self.handle_draft_feedback(args).await,
             feedback::SUBMIT => self.handle_submit_feedback(args).await,
@@ -810,6 +812,7 @@ fn annotations(name: &str) -> Option<ToolAnnotations> {
         | "godot_list_export_presets"
         | "godot_get_import_params" => [true, false, true],
         "godot_capture_viewport"
+        | "godot_world_map"
         | "godot_resave_resources"
         | "godot_create_project"
         | "godot_create_scene"
@@ -1200,6 +1203,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
     tools.extend(code::catalog());
     tools.extend(export::catalog());
     tools.extend(import_params::catalog());
+    tools.extend(world_map::catalog());
     tools.extend(feedback::catalog(feedback_mode));
     tools
 }
