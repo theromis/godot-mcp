@@ -5475,3 +5475,90 @@ async fn an_update_passes_discard_to_the_editor_it_closes() {
         "nothing installed"
     );
 }
+
+/// godot_run_script drops the reports Godot prints while it shuts down (leaked instance
+/// dependencies, RID allocations, ObjectDB instances...) from stdout and stderr, counts them in
+/// exit_leaks, and leaves every other line where it was.
+#[cfg(unix)]
+#[tokio::test]
+async fn run_script_counts_exit_time_leaks_instead_of_returning_them() {
+    use std::os::unix::fs::PermissionsExt;
+    let project = project_dir();
+    std::fs::write(
+        project.path().join("place.gd"),
+        "extends SceneTree\n\nfunc _initialize() -> void:\n\tquit()\n",
+    )
+    .expect("write script");
+    let godot = project.path().join("leaking_godot.sh");
+    let mut script = String::from(
+        "#!/bin/sh\necho 'placed 100 zones'\necho \"ERROR: 7 RID allocations of type 'N13RendererDummy9DummyMeshE' were leaked at exit.\"\n",
+    );
+    script.push_str("echo 'ERROR: Failed to load resource res://zones/missing.tscn.' >&2\n");
+    script.push_str("echo '   at: _load (core/io/resource_loader.cpp:283)' >&2\n");
+    for _ in 0..150 {
+        script.push_str(
+            "echo 'WARNING: Leaked instance dependency: Bug - did not call instance_notify_deleted when freeing.' >&2\n",
+        );
+        script.push_str(
+            "echo '     at: ~DependencyTracker (servers/rendering/renderer_rd/storage_rd/utilities.h:79)' >&2\n",
+        );
+    }
+    script.push_str("echo 'WARNING: 5 ObjectDB instances were leaked at exit (run with `--verbose` for details).' >&2\n");
+    script.push_str("echo '   at: cleanup (core/object/object.cpp:2609)' >&2\n");
+    script.push_str(
+        "echo 'ERROR: 3 resources still in use at exit (run with --verbose for details).' >&2\n",
+    );
+    script.push_str("echo '   at: clear (core/io/resource.cpp:599)' >&2\n");
+    script.push_str("echo 'ERROR: Pages in use exist at exit in PagedAllocator: N7Skeleton' >&2\n");
+    script.push_str("echo '   at: ~PagedAllocator (./core/templates/paged_allocator.h:170)' >&2\n");
+    std::fs::write(&godot, script).expect("write fake godot");
+    std::fs::set_permissions(&godot, std::fs::Permissions::from_mode(0o755))
+        .expect("chmod fake godot");
+
+    let result = manager_in(project.path(), godot)
+        .call_tool("godot_run_script", json!({"script": "res://place.gd"}))
+        .await;
+    assert!(!result.is_error, "{}", text(&result));
+    let answer: Value = serde_json::from_str(&text(&result)).expect("json answer");
+    assert_eq!(
+        answer["exit_leaks"],
+        json!({
+            "leaked_instance_dependency": 150,
+            "objectdb_instances": 1,
+            "paged_allocator": 1,
+            "resources_in_use": 1,
+            "rid_allocations": 1,
+        }),
+        "{answer}"
+    );
+    assert_eq!(answer["stdout"], "placed 100 zones\n", "{answer}");
+    assert_eq!(
+        answer["stderr"],
+        "ERROR: Failed to load resource res://zones/missing.tscn.\n   at: _load (core/io/resource_loader.cpp:283)\n",
+        "{answer}"
+    );
+}
+
+/// A run with no exit-time reports answers exit_leaks null.
+#[cfg(unix)]
+#[tokio::test]
+async fn run_script_without_exit_time_leaks_answers_exit_leaks_null() {
+    let project = project_dir();
+    std::fs::write(
+        project.path().join("place.gd"),
+        "extends SceneTree\n\nfunc _initialize() -> void:\n\tquit()\n",
+    )
+    .expect("write script");
+    let result = manager_in(project.path(), fake_godot(project.path()))
+        .call_tool("godot_run_script", json!({"script": "res://place.gd"}))
+        .await;
+    assert!(!result.is_error, "{}", text(&result));
+    let answer: Value = serde_json::from_str(&text(&result)).expect("json answer");
+    assert!(answer["exit_leaks"].is_null(), "{answer}");
+    assert!(
+        answer["stdout"]
+            .as_str()
+            .is_some_and(|out| out.contains("NOISE_ON_STDOUT")),
+        "{answer}"
+    );
+}
