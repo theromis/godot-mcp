@@ -1,6 +1,6 @@
 # Tool Handlers (Rust)
 
-**Version:** 1.13.0
+**Version:** 1.14.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-tool-catalog.md
@@ -154,8 +154,9 @@ The number of the removed voxel model check is kept so that the references to th
 5. **Repair.** `resource_audit.rs` compares the files with the snapshot: a rewritten text file gets its `uid=` and the `[ext_resource]` uids written back and its `shader_parameter/<name> = null` lines removed; a binary file that lost its header uid gets it back through `CliRunner::set_binary_uids` (a fixed script outside the project calling `ResourceSaver.set_uid`, the pairs in a JSON file), and the headers are read again to see which took. `resource_repairs` lists what was repaired, `resource_damage` what was not, with a fix.
 6. **Refresh.** When an editor has the project open, the written files go to `resave_resources`, which also reloads what the editor holds; its answer is `editor_refresh`, a failure `editor_refresh_error`.
 7. **Keep it short.** [ADDED] `RepairReport` bounds the answer: `resource_repairs` holds the first 20 repairs with the count of restored `[ext_resource]` uids instead of the uids, `resource_repairs_total` counts them all, every list of `editor_refresh` stops at 20 with `<list>_total` beside a cut one, and the summary and the `resource_damage` warning name at most three files and count the rest. `exit_code`, the output, `script_errors`, `load_error` and `resource_damage` itself are never cut.
+8. **Exit-time leaks.** [ADDED] `exit_leaks.rs` collapses the reports Godot prints while a script's process shuts down (leaked instance dependencies, RID allocations, ObjectDB instances, resources in use, paged-allocator pages): each identical report is shown once where it first appeared with `×N`, every other line stays as it was, nothing is dropped, `exit_leaks` counts the reports by kind, and `hint` names what causes them (nodes that are not in the tree or were removed from it and never freed). Which kinds appear depends on the engine.
 
-`imports.rs` serves `godot_run_project` too: the stale-import notice lists sources whose import cache is older than the file and whose bytes differ from the `source_md5` Godot recorded in `.godot/imported/<name>-<hash>.md5` (a source rewritten with the same bytes is not reimported by Godot, so it is not stale; a missing cache always is), since a process run does not reimport.
+`imports.rs` serves `godot_run_project` and the headless resave too: the fingerprint of a resave covers the `.md5` record and the times as well as the sidecar text, so a model reimported with the same options is listed, a source Godot skipped because its modification second matched the last scan is named, and `force_reimport` removes the `.md5` record of the named source and moves its sidecar's time back one second so that the next scan tests it; the stale-import notice lists sources whose import cache is older than the file and whose bytes differ from the `source_md5` Godot recorded in `.godot/imported/<name>-<hash>.md5` (a source rewritten with the same bytes is not reimported by Godot, so it is not stale; a missing cache always is), since a process run does not reimport.
 
 ### 5.12 Export Tools [ADDED]
 
@@ -231,3 +232,4 @@ The number of the removed voxel model check is kept so that the references to th
 | 1.11.0 | 2026-11-02 | Agent (magic.spec) | [REMOVED] §5.7 (the voxel model check) with its compliance rows, file map entry and Canonical Reference; the section number stays as a stub. Stable → RFC → Stable after Post-Update Review. |
 | 1.12.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] §5.11 step 2: `godot_run_script` checks the imports before the script starts, reimporting through the editor or answering `import_warning` and `stale_imports`. Source: pull request 106. Stable → RFC → Stable after Post-Update Review. |
 | 1.13.0 | 2026-11-03 | Agent (magic.spec) | [MODIFIED] §5.11: the stale-import check compares the recorded `source_md5` before it calls a cache stale. Source: pull request 108. Stable → RFC → Stable after Post-Update Review. |
+| 1.14.0 | 2026-11-04 | Agent (magic.spec) | [ADDED] §5.11 step 8 (exit-time leak reports collapsed and counted) and the headless resave fingerprint, the skipped-source report and `force_reimport` in the `imports.rs` paragraph. Source: pull requests 120 and 114. Stable → RFC → Stable after Post-Update Review. |
