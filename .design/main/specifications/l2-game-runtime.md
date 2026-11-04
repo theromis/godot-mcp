@@ -1,6 +1,6 @@
 # Game Runtime Channel
 
-**Version:** 1.9.0
+**Version:** 1.10.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-runtime-observability.md
@@ -83,7 +83,7 @@ addons/godot_mcp/
 | `game.tree`, `game.get`, `game.set`, `game.signals`, `game.observe`, `game.snapshot` | `godot_game_tree`, `godot_game_get`, `godot_game_set`, `godot_game_signals`, `godot_game_observe`, `godot_game_snapshot` |
 | `input.run`, `input.release_all`, `input.wait` | `godot_game_input`, `godot_game_input_release`, `godot_game_wait` |
 | `game.physics`, `game.pause`, `game.body` | `godot_game_physics`; `godot_game_scenario` (pause and CharacterBody reads) |
-| `game.screenshot` | `godot_game_screenshot` (with `aim`: a temporary camera in a temporary viewport sharing the game's world, drawn twice under Compatibility before the readback) [MODIFIED] |
+| `game.screenshot` | `godot_game_screenshot` (a window that stopped drawing is drawn by the capture itself without presenting it, and the answer says `path`; with `aim`, optionally `size` or `fov` for the copy only: a temporary camera in a temporary viewport sharing the game's world, drawn twice under Compatibility before the readback) [MODIFIED] |
 | `game.probe` | `godot_game_probe` [ADDED] |
 | `game.record` | `godot_game_record` |
 | `project.state`, `project.command` | `godot_game_state`, `godot_game_command`; see [l2-project-adapter.md](l2-project-adapter.md) [ADDED] |
@@ -144,3 +144,4 @@ A click on a node uses the node's transform with its canvas, so a scrolling came
 | 1.7.1 | 2026-11-02 | Agent (magic.spec) | The file map names each runtime operation file, including `rt_record.gd` and `rt_result.gd`, which ventilation found unnamed. No requirement changed. |
 | 1.8.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] `game.probe` (raycasts that move no node, served while held) and the file `rt_probe.gd`; [MODIFIED] `game.screenshot` takes `aim`, drawn from a temporary camera in a viewport that shares the game's world. Stable → RFC → Stable after Post-Update Review. |
 | 1.9.0 | 2026-11-04 | Agent (magic.spec) | [MODIFIED] `game.screenshot` with `aim`: the temporary viewport is drawn once more under Compatibility before it is read, because the renderer can omit instance-shaded meshes on a fresh viewport's first draw; the scene does not advance. Source: pull request 117. Stable → RFC → Stable after Post-Update Review. |
+| 1.10.0 | 2026-11-04 | Agent (magic.spec) | [MODIFIED] `game.screenshot`: a covered or minimized window is captured by drawing one frame of the rendering server, the answer names the path (`window`, `forced_draw`, `mixed`, `held`), and `aim` takes `size` or `fov` for its copy of the camera. Source: pull requests 116 and 119. Stable → RFC → Stable after Post-Update Review. |

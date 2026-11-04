@@ -1,6 +1,6 @@
 # Tool Handlers (Rust)
 
-**Version:** 1.14.0
+**Version:** 1.15.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-tool-catalog.md
@@ -155,6 +155,7 @@ The number of the removed voxel model check is kept so that the references to th
 6. **Refresh.** When an editor has the project open, the written files go to `resave_resources`, which also reloads what the editor holds; its answer is `editor_refresh`, a failure `editor_refresh_error`.
 7. **Keep it short.** [ADDED] `RepairReport` bounds the answer: `resource_repairs` holds the first 20 repairs with the count of restored `[ext_resource]` uids instead of the uids, `resource_repairs_total` counts them all, every list of `editor_refresh` stops at 20 with `<list>_total` beside a cut one, and the summary and the `resource_damage` warning name at most three files and count the rest. `exit_code`, the output, `script_errors`, `load_error` and `resource_damage` itself are never cut.
 8. **Exit-time leaks.** [ADDED] `exit_leaks.rs` collapses the reports Godot prints while a script's process shuts down (leaked instance dependencies, RID allocations, ObjectDB instances, resources in use, paged-allocator pages): each identical report is shown once where it first appeared with `×N`, every other line stays as it was, nothing is dropped, `exit_leaks` counts the reports by kind, and `hint` names what causes them (nodes that are not in the tree or were removed from it and never freed). Which kinds appear depends on the engine.
+9. **Uid cache.** [ADDED] `godot/uid_cache.rs` records the uids the server wrote back in `.godot/uid_cache.bin`, in the format of `ResourceUID::save_to_cache`, the way the editor's rescan does (an id known for another path is moved, an entry that gave the same path another id is dropped); the file is replaced atomically, nothing is written when the project has no cache, and a cache that does not parse is left as it is and reported. Without it the next run that loads the new files prints one "invalid UID" warning per reference.
 
 `imports.rs` serves `godot_run_project` and the headless resave too: the fingerprint of a resave covers the `.md5` record and the times as well as the sidecar text, so a model reimported with the same options is listed, a source Godot skipped because its modification second matched the last scan is named, and `force_reimport` removes the `.md5` record of the named source and moves its sidecar's time back one second so that the next scan tests it; the stale-import notice lists sources whose import cache is older than the file and whose bytes differ from the `source_md5` Godot recorded in `.godot/imported/<name>-<hash>.md5` (a source rewritten with the same bytes is not reimported by Godot, so it is not stale; a missing cache always is), since a process run does not reimport.
 
@@ -175,6 +176,14 @@ The number of the removed voxel model check is kept so that the references to th
 4. **Install.** `addon::install` writes the files into the hidden `addons/.godot_mcp.new` (Godot does not scan it), renames the old folder to `.godot_mcp.old` and the new one into place; a failed second rename puts the old folder back. A file the new addon lacks goes with the old folder.
 5. **Enable.** `addon::enable_in` adds the manifest to `[editor_plugins] enabled` and keeps other plugins; a `project.godot` whose `enabled=` line has another shape is left unchanged.
 6. **Explain.** `ToolManager::call_tool` passes every result through `explain_unknown_command`: an error holding `Unknown command type: X` becomes one that names the editor's addon version, the server's and the update call with the editor's project path. `godot_read_shader` and `godot_edit_shader` (§5.8) answer such an error from the shader file instead, with the same note and the fields `addon_version` and `server_version`.
+
+### 5.14 Windowed One-Shot Tools [ADDED]
+
+`godot_review_assets` (`tools/review.rs`) and `godot_world_map` (`tools/world_map.rs`) draw a picture of project scenes that no running game shows. A headless engine does not render, so `CliRunner::run_script_with` starts `godot --path <project> --resolution 64x64 --audio-driver Dummy -s <embedded script> -- <request.json>`, with the script and the request in a scratch directory outside the project that is removed afterwards.
+
+1. **Check on the host.** Every path of the request goes through `resolve_in_project` and must exist with the right extension; the counts, sizes, numbers and timeouts are bounded and checked with their field names; `world_map` also takes a file-name pattern without separators and skips what Godot leaves out of a project. Nothing user-given reaches the command line or generated source.
+2. **Draw.** The script lays the scenes out (a row, or at the transforms saved in them), frames them and renders in a SubViewport, or in tiles for a world, writes the PNG next to the request, and answers JSON.
+3. **Answer.** The PNG and the JSON with totals, problems and per-scene data; `world_map` leads with totals and problems and cuts the scenes list at whole scenes so that the reply stays parseable. The project is not written to.
 
 ## 7. Drawbacks & Alternatives
 
@@ -233,3 +242,4 @@ The number of the removed voxel model check is kept so that the references to th
 | 1.12.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] §5.11 step 2: `godot_run_script` checks the imports before the script starts, reimporting through the editor or answering `import_warning` and `stale_imports`. Source: pull request 106. Stable → RFC → Stable after Post-Update Review. |
 | 1.13.0 | 2026-11-03 | Agent (magic.spec) | [MODIFIED] §5.11: the stale-import check compares the recorded `source_md5` before it calls a cache stale. Source: pull request 108. Stable → RFC → Stable after Post-Update Review. |
 | 1.14.0 | 2026-11-04 | Agent (magic.spec) | [ADDED] §5.11 step 8 (exit-time leak reports collapsed and counted) and the headless resave fingerprint, the skipped-source report and `force_reimport` in the `imports.rs` paragraph. Source: pull requests 120 and 114. Stable → RFC → Stable after Post-Update Review. |
+| 1.15.0 | 2026-11-04 | Agent (magic.spec) | [ADDED] §5.11 step 9 (the uid cache) and §5.14 (the windowed one-shot tools of the asset review and the world map). Source: pull requests 118, 112 and 121. Stable → RFC → Stable after Post-Update Review. |
