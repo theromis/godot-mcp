@@ -1,6 +1,6 @@
 # Test Suite
 
-**Version:** 1.7.1
+**Version:** 1.7.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-quality-assurance.md
@@ -24,7 +24,7 @@ Tells a contributor where a new test belongs and which environment variables the
 - Opt-in tests are marked ignored and read `GODOT_PATH` (and, on Windows, `GODOT_CONSOLE_PATH`, whose console binary is used to start the editor so its log can be shown on failure). A `.env` file fills in only variables that were not exported, so testing a specific Godot version means exporting both.
 - A `.env` with double-quoted Windows paths does not load; export the variables instead.
 - Editor end-to-end tests run with `--test-threads=2` in CI. Locally every ignored suite runs with `--test-threads=1`: windowed and process-heavy tests interfere in parallel.
-- CI runs the editor, addon export and runtime suites; the export and scenario suites run locally when their area changes.
+- CI runs the editor, addon export, runtime and scenario suites; the export suite runs locally when its area changes.
 
 ## 4. Invariant Compliance
 
@@ -132,3 +132,4 @@ Unit tests live next to the code in `src/paths.rs`, `src/validation.rs`, `src/cl
 | 1.6.0 | 2026-11-02 | Agent (magic.spec) | Reality sync after ventilation. [ADDED] The export end-to-end file (pull requests 89, 100, 101), the adapter fixture, the shared bridge port cases (75), their routing rows and references; which suites CI runs. [MODIFIED] QA-3 names the export suite; local runs use one test thread; unit-test locations. Stable → RFC → Stable after Post-Update Review. |
 | 1.7.0 | 2026-11-02 | Agent (magic.spec) | [REMOVED] The end-to-end file of the voxel model check from the layout, the routing table and the references. Stable → RFC → Stable after Post-Update Review. |
 | 1.7.1 | 2026-11-05 | Agent (magic.spec) | The version test and the script-reference cases are in the layout, the routing table and Canonical References. No requirement changed. Removed the `[ADDED]` and `[MODIFIED]` markers from the body: the history rows carry what changed. No requirement changed. |
+| 1.7.2 | 2026-11-05 | Agent (magic.spec) | CI runs the scenario suite, one step after the runtime suite; the contributor and agent guides already name it for changes to the scenario tool. |

@@ -1,6 +1,6 @@
 # Tool Handlers (Rust)
 
-**Version:** 1.16.0
+**Version:** 1.16.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-tool-catalog.md
@@ -20,6 +20,8 @@ The Rust realization of the tool catalog: the static catalog with input schemas,
 - [l2-held-stepping.md](l2-held-stepping.md) - The scenario tool routed to `tools/scenario.rs` (§5.8 there).
 - [l1-content-authoring.md](l1-content-authoring.md) - CA-7 to CA-10: the script read and edit tools (§5.4); CA-11: the authoring fallbacks (§5.5); CA-12: project creation (§5.6); CA-14 to CA-17: shaders, import parameters, InputMap actions and deletion (§5.8 to §5.10).
 - [l1-project-export.md](l1-project-export.md) - EX-1 to EX-7: the export tools (§5.12).
+- [l2-content-authoring-tools.md](l2-content-authoring-tools.md) - Where each authoring invariant (CA-1 to CA-17) is kept and tested.
+- [l2-project-export-tools.md](l2-project-export-tools.md) - Where each export invariant (EX-1 to EX-7) is kept and tested.
 
 ## 1. Motivation
 
@@ -51,9 +53,8 @@ Maps each safety rule of the catalog to the function that enforces it, so a new 
 | TL-12 Closing an editor | `tools/editor.rs`: an editor connected to the named project gets `close_editor`; its answer carries the editor's PID, which the tool waits on (`timeout_seconds`, 1 to 120, default 30). Without a bridge, `LaunchedEditors` keeps the editors `godot_launch_editor` started with their directories; only such an editor of the named project is stopped, with `discard`: SIGTERM on Unix so the engine can shut down, a kill when forced or on Windows; a process already reaped is never signalled, since its id may belong to another process. An exited launched editor is reaped so it never lingers as a zombie; an editor that reports another project is never asked to quit. |
 | TL-13 Headless scripts keep references | §5.11. |
 | TL-14 Older addon named, addon update | §5.13. |
-| CA-14 to CA-17 | §5.8 to §5.10. |
-| EX-1 to EX-7 | §5.12. |
-| CA-12 Project creation | §5.6: validation before any write, `create_new` for `project.godot`, an escaped name. |
+| CA-12, CA-14 to CA-17 | Mechanisms in §5.6 and §5.8 to §5.10; the invariant-by-invariant table is [l2-content-authoring-tools.md](l2-content-authoring-tools.md). |
+| EX-1 to EX-7 | Mechanisms in §5.12; the invariant-by-invariant table is [l2-project-export-tools.md](l2-project-export-tools.md). |
 
 ## 5. Detailed Design
 
@@ -252,3 +253,4 @@ The number of the removed voxel model check is kept so that the references to th
 | 1.14.0 | 2026-11-04 | Agent (magic.spec) | [ADDED] §5.11 step 8 (exit-time leak reports collapsed and counted) and the headless resave fingerprint, the skipped-source report and `force_reimport` in the `imports.rs` paragraph. Source: pull requests 120 and 114. Stable → RFC → Stable after Post-Update Review. |
 | 1.15.0 | 2026-11-04 | Agent (magic.spec) | [ADDED] §5.11 step 9 (the uid cache) and §5.14 (the windowed one-shot tools of the asset review and the world map). Source: pull requests 118, 112 and 121. Stable → RFC → Stable after Post-Update Review. |
 | 1.16.0 | 2026-11-05 | Agent (magic.spec) | §5.10: the `written` and `used` kinds of a reference to a deleted file (CA-17). The file map and Canonical References gain the modules merged without an entry (`reference_kind.rs`, `exit_leaks.rs`, `uid_cache.rs`, `review.rs`, `world_map.rs` and the two fixed scripts); `src/addon.rs` and `build.rs` are two rows, and a repeated row is gone. Stable → RFC → Stable after Post-Update Review. Removed the `[ADDED]` and `[MODIFIED]` markers from the body: the history rows carry what changed. No requirement changed. |
+| 1.16.1 | 2026-11-05 | Agent (magic.spec) | The compliance rows of CA-12, CA-14 to CA-17 and EX-1 to EX-7 point to the two realization specifications that now own them. No requirement changed. |

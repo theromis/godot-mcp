@@ -1,6 +1,6 @@
 # Content Authoring
 
-**Version:** 1.7.0
+**Version:** 1.7.1
 **Status:** Stable
 **Layer:** concept
 
@@ -13,6 +13,7 @@ Tools that create and change project content beyond node edits in an open scene:
 - [l1-tool-catalog.md](l1-tool-catalog.md) - TL-4 (confined, non-destructive writes), TL-5 (no injection) and TL-9 (editor sync) apply to every tool here.
 - [l1-editor-bridge.md](l1-editor-bridge.md) - BR-5: scene changes made through the editor must stay undoable.
 - [l2-tool-handlers.md](l2-tool-handlers.md) - Where the host side of these tools is realized.
+- [l2-content-authoring-tools.md](l2-content-authoring-tools.md) - Where each invariant is kept and which test proves it.
 
 ## 1. Motivation
 
@@ -93,3 +94,4 @@ Without these tools an agent can add nodes to an open scene and write a script f
 | 1.5.1 | 2026-11-02 | Agent (magic.run) | The editor path now holds CA-4 and CA-11 for settings as the file fallback does (phase 11); the 1.5.0 remark that it had to follow is satisfied. No requirement changed. |
 | 1.6.0 | 2026-11-02 | Agent (magic.spec) | [REMOVED] `godot_check_voxel_model` and CA-13 (the voxel model check): the tool ran an external exporter program that is not part of the technology the project is built on, and the project integrates no such product (CONTRIBUTING.md, Technology Scope). The numbers of the other requirements are unchanged. Stable → RFC → Stable after Post-Update Review. |
 | 1.7.0 | 2026-11-05 | Agent (magic.spec) | CA-17: a reference from a GDScript file that only writes the path is `written` and warns instead of refusing; the classifier and its shared cases are in Canonical References. Source: the delete-file change landed on 2026-11-04, which the code carried and the requirement did not. Stable → RFC → Stable after Post-Update Review. Removed the `[ADDED]` and `[MODIFIED]` markers from the body: the history rows carry what changed. No requirement changed. |
+| 1.7.1 | 2026-11-05 | Agent (magic.spec) | The realization specification is in Related Specifications. No requirement changed. |

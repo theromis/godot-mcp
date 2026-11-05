@@ -1,6 +1,6 @@
 # Project Export
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Status:** Stable
 **Layer:** concept
 
@@ -13,6 +13,7 @@ Tools that list and change a Godot project's export presets and export the proje
 - [l1-tool-catalog.md](l1-tool-catalog.md) - The rules every tool follows; TL-4 points here for the one file an export may replace.
 - [l1-content-authoring.md](l1-content-authoring.md) - The import parameters an export packs (CA-15).
 - [l2-tool-handlers.md](l2-tool-handlers.md) - Where the export tools are realized (§5.12).
+- [l2-project-export-tools.md](l2-project-export-tools.md) - Where each invariant is kept and which test proves it.
 - [l1-quality-assurance.md](l1-quality-assurance.md) - The opt-in tests that run the tools against a real engine.
 
 ## 1. Motivation
@@ -58,3 +59,4 @@ Before these tools an agent could build and run a game but not ship it: presets 
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-11-02 | Agent (magic.spec) | Reality sync after ventilation: written from the export tools as merged in pull request 89, which no specification covered. The two decisions record what the code does (confined output, an existing build file replaced). Promoted to Stable after Post-Update Review. |
+| 1.0.1 | 2026-11-05 | Agent (magic.spec) | The realization specification is in Related Specifications. No requirement changed. |

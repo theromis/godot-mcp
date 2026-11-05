@@ -105,7 +105,7 @@
 
 ### Phase 10 — 2026-11-02
 
-- A project names one development-only adapter script in `godot_mcp/adapter`; the in-game component loads it with godot-dev-bridge's registration contract (so its adapters work unchanged), keeps what it registers and what it refused, and shows its status in the hello and in `godot_get_run_status`.
+- A project names one development-only adapter script in `godot_mcp/adapter`; the in-game component loads it, keeps what it registers and what it refused, and shows its status in the hello and in `godot_get_run_status`.
 - `godot_game_state` reads the states the adapter registered and `godot_game_command` runs one of its commands by name, in a managed run and in editor Play, held or not (a held game defers what a command schedules to the next tick); answers are bounded and each failure class has its own recovery steps.
 - Failures in the project's own code are reported instead of hidden: the output logger marks script errors of a called handler, and a state that breaks fails alone.
 - Feasibility on a real engine first (Godot 4.8-beta1): the logger sees a handler's script error at once, so no specification amendment was needed.

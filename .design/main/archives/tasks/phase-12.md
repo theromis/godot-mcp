@@ -38,8 +38,8 @@ duration_minutes: ~
 - **Assignment:** Agent
 - **Verify:** `node .magic/scripts/executor.js check-prerequisites --json --verify-headers --workspace=main` reports `ok: true` with 31 specs and no warning; a script that reads each Canonical References table by its `Path` column finds no cell with two paths and no path that is not tracked; no spec body outside Document History contains `[ADDED]` or `[MODIFIED]`.
 - **Handoff:** T-12T01.
-- **Notes:** `Implements:` takes one parent, so `l1-content-authoring.md` and `l1-project-export.md` stay without an L2 of their own: `l2-tool-handlers.md` §4 realizes them and lists both in Related Specifications. A stub L2 would repeat that table.
-- **Changes:** CA-17 and the catalog row name the `written` and `used` kinds; the classifier and its shared cases are Canonical References; the two-path cells are two rows; the modules merged without an entry have rows; 23 specs lost their delta markers; patch and minor versions and the registry (1.9.4) follow.
+- **Notes:** `Implements:` takes one parent, so the two concepts that `l2-tool-handlers.md` realized without owning (`l1-content-authoring.md`, `l1-project-export.md`) get an L2 each. They hold the invariant-by-invariant table (a place and a test per row); the mechanisms stay in the sections of the tool handlers and the addon, and the three compliance rows that were in the tool handlers point to them.
+- **Changes:** CA-17 and the catalog row name the `written` and `used` kinds; the classifier and its shared cases are Canonical References; the two-path cells are two rows; the modules merged without an entry have rows; `l2-content-authoring-tools.md` and `l2-project-export-tools.md` are new; the name of a tool outside the technology scope is gone from the adapter specifications, the plan, the archived Phase 10 workbook and the changelog; 23 specs lost their delta markers; patch and minor versions and the registry (1.9.4) follow.
 
 ### [T-12B01] Guides and changelog: unreleased entries, new tools, version a build reports, scenario tests, parity
 
@@ -48,8 +48,8 @@ duration_minutes: ~
 - **Assignment:** Agent
 - **Verify:** Every `godot_` tool name in `README.md`, `AGENTS.md`, `CONTRIBUTING.md` and `docs/game-checks.md` is in the live `tools/list`; the 0.13.0 section of `CHANGELOG.md` holds only what `git merge-base --is-ancestor <commit> v0.13.0` confirms; no document describes using a product outside the technology scope.
 - **Handoff:** T-12T01.
-- **Notes:** The tag `v0.13.0` is at `0785e96`; the post-release entries (startup gate, uid cache, written references, covered window) and the two new tools moved to `[Unreleased]`. The CI workflow is unchanged on purpose: the scenario suite runs locally when its area changes, like the export suite (l2-test-suite.md).
-- **Changes:** `CHANGELOG.md`; `README.md` (the third-party compatibility sentence removed, the safety of the two windowed tools); `SECURITY.md` (the reported version carries the commit); `CONTRIBUTING.md` and `AGENTS.md` (scenario and version tests, the agent setup skill); `docs/feature-parity.md` (the import row, the capabilities added after the comparison, source map, tests, gaps); one comment in `addons/godot_mcp/runtime/ops/rt_registry.gd`.
+- **Notes:** The tag `v0.13.0` is at `0785e96`; the post-release entries (startup gate, uid cache, written references, covered window) and the two new tools moved to `[Unreleased]`. CI runs the scenario suite, one step after the runtime suite; the export suite stays local (l2-test-suite.md).
+- **Changes:** `.github/workflows/ci.yml` (the scenario step); `CHANGELOG.md`; `README.md` (the third-party compatibility sentence removed, the safety of the two windowed tools); `SECURITY.md` (the reported version carries the commit); `CONTRIBUTING.md` and `AGENTS.md` (scenario and version tests, the agent setup skill); `docs/feature-parity.md` (the import row, the capabilities added after the comparison, source map, tests, gaps); one comment in `addons/godot_mcp/runtime/ops/rt_registry.gd`.
 
 ### [T-12T01] Validation: pipeline, markdown lint, addon suites, path and link checks
 

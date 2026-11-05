@@ -1,6 +1,6 @@
 # Project Adapter
 
-**Version:** 1.1.1
+**Version:** 1.1.2
 **Status:** Stable
 **Layer:** concept
 
@@ -19,16 +19,16 @@ A project can teach the running-game tools its own vocabulary: named state the g
 
 The running-game tools see a game as a node tree with properties. An agent that tests a game thinks in the game's terms: is a run in progress, which level is active, how many bricks of each kind still stand. Reading that from the tree ties the agent to the scene's structure and costs many calls; acting on it is often impossible, because the actions a game offers (start a run, clear a level, grant an effect) free nodes or change the scene, which RO-6 refuses to a method call by design.
 
-godot-dev-bridge, a separate command-line tool by the same maintainer, proved a shape that solves this: the project names one adapter script, the adapter's `register(registry)` adds state providers and commands, and the driver reads and runs them by name. The game treaker drives its play-tests through eleven states and four commands of such an adapter. Offering the same contract here gives an agent domain-level reads and actions without an evaluator, and lets an adapter written for godot-dev-bridge move to godot-mcp unchanged.
+One shape solves this: the project names one adapter script, the adapter's `register(registry)` adds state providers and commands, and the agent reads and runs them by name. That gives an agent domain-level reads and actions without an evaluator.
 
 ## 2. Constraints & Assumptions
 
 - The adapter is the project's code, written by the project's developers, not by the caller. The caller can only name what the adapter registered.
 - The scripting language has no exception handling: a failure inside the adapter's code cannot be caught, only observed through what the engine logs.
 - By the project's convention the adapter is development-only: game code never names it; only one project setting does.
-- [DR] The registration contract is godot-dev-bridge's (protocol 1): one `register(registry)` entry point, state providers, commands with a help line, and a refusal helper. An adapter that uses only those registration calls works unchanged; only the setting that names it differs, and engine types in its values (vectors, colours, objects) come back in the form property reads of the running game use, which may differ from godot-dev-bridge's. Rejected: a contract of our own (every existing adapter would need a rewrite); reading godot-dev-bridge's setting as well (the server would name another product's configuration for good, to save a one-line migration). Override: `/magic.spec amend l1-project-adapter.md "read the dev-bridge setting"`.
-- [DR] This addon does not leave the adapter out of exports. Without the in-game component nothing loads it, so it ships as an inert file, while skipping it would break a release whose game code preloads it. A project that wants it out uses the exclude filter of its export preset. Rejected: skipping it in every export, as godot-dev-bridge does. Override: `/magic.spec amend l1-project-adapter.md "skip the adapter in exports"`.
-- **Assumption (forecast):** godot-mcp stays an MCP server. This concept brings over the adapter, not godot-dev-bridge's command-line driving, its file channel into the game or its sessions that outlive the driver; a project that needs scripted or CI driving outside an MCP client keeps godot-dev-bridge for that. Runner-up: a command-line client in godot-mcp over a second channel into the game. Override: `/magic.spec amend l1-project-adapter.md "a command-line client"`.
+- [DR] The registration contract is one `register(registry)` entry point, state providers, commands with a help line, and a refusal helper. Engine types in the values (vectors, colours, objects) come back in the form property reads of the running game use. Override: `/magic.spec amend l1-project-adapter.md "another registration contract"`.
+- [DR] This addon does not leave the adapter out of exports. Without the in-game component nothing loads it, so it ships as an inert file, while skipping it would break a release whose game code preloads it. A project that wants it out uses the exclude filter of its export preset. Rejected: skipping it in every export. Override: `/magic.spec amend l1-project-adapter.md "skip the adapter in exports"`.
+- **Assumption (forecast):** godot-mcp stays an MCP server. This concept brings the adapter, not a command-line driver, a file channel into the game or sessions that outlive the client; a project that needs scripted or CI driving outside an MCP client needs a tool outside this concept. Runner-up: a command-line client in godot-mcp over a second channel into the game. Override: `/magic.spec amend l1-project-adapter.md "a command-line client"`.
 
 ## 3. Core Invariants
 
@@ -78,11 +78,11 @@ sequenceDiagram
 
 ## 7. Drawbacks & Alternatives
 
-- **An expression evaluator** (godot-dev-bridge's `eval`): rejected; RO-6 allows no code from the caller in the game. The adapter is the way to project-specific actions.
-- **A command-line client and a second channel into the game** (godot-dev-bridge's file spool): not part of this concept. A second way into the game was rejected for held stepping (l1-controlled-time §5) because RO-5 keeps access to one loopback connection, and a command-line client of an MCP server would need a resident process that holds the debugger connection. godot-dev-bridge serves command-line and CI driving. Revisit when a project needs that driving and godot-dev-bridge can no longer serve it.
+- **An expression evaluator**: rejected; RO-6 allows no code from the caller in the game. The adapter is the way to project-specific actions.
+- **A command-line client and a second channel into the game**: not part of this concept. A second way into the game was rejected for held stepping (l1-controlled-time §5) because RO-5 keeps access to one loopback connection, and a command-line client of an MCP server would need a resident process that holds the debugger connection. Revisit when a project needs command-line or CI driving.
 - **Runs that outlive the driver**: unchanged. A managed run ends with the server (TL-6); editor Play already outlives it.
 - **Scenario steps that run a command or read state**: deferred. They can be added to the scenario's schema later without changing these invariants; until then an agent alternates `godot_game_physics` steps with the two tools.
-- **Reserved names**: godot-dev-bridge reserves its own command names because project commands share its verbs. Here project commands have their own tool, so no name is reserved, and an adapter that works there registers every command here as well.
+- **Reserved names**: none. Project commands have their own tool, so no name of a project command can collide with a name of the server.
 - **Refusal by a reserved key**: the refusal helper's value is recognised by one reserved key, so a command that returned exactly that key by hand would read as a refusal. Accepted for compatibility; the helper is documented as the only way.
 
 ## Canonical References
@@ -98,6 +98,7 @@ sequenceDiagram
 
 | Version | Date | Author | Description |
 | --- | --- | --- | --- |
-| 1.0.0 | 2026-10-29 | Agent (magic.spec) | Created from the comparison with godot-dev-bridge: the one capability of that tool godot-mcp lacked is the project adapter, so its contract is brought over unchanged, with failures in the project's code reported through the engine's log instead of hidden. Its command-line client, file channel, evaluator and long-lived sessions are left out, with reasons. Promoted to Stable after Post-Update Review. |
+| 1.0.0 | 2026-10-29 | Agent (magic.spec) | Created: the project adapter, a contract of registered states and commands, with failures in the project's code reported through the engine's log instead of hidden. A command-line client, a file channel, evaluator and long-lived sessions are left out, with reasons. Promoted to Stable after Post-Update Review. |
 | 1.1.0 | 2026-10-29 | Agent (magic.run) | [MODIFIED] PA-9: a provider or handler that awaits is not supported and fails through PA-6; the first version assumed it would hand back at its first `await`, which a real engine contradicts (measured by the feasibility test). Stable → RFC → Stable after Post-Update Review. |
 | 1.1.1 | 2026-11-05 | Agent (magic.spec) | Removed the `[ADDED]` and `[MODIFIED]` markers from the body: the history rows carry what changed. No requirement changed. |
+| 1.1.2 | 2026-11-05 | Agent (magic.spec) | The mentions of a tool outside the technology scope are gone: the contract is described by itself, and the compatibility promise and the comparisons with that tool are removed. No requirement of the adapter changed. |

@@ -4,7 +4,7 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-11-05 07:33
+**Updated:** 2026-11-05 07:54
 **Phase:** 12 — Reality Sync after 0.13.0
 **Status:** Active
 
@@ -12,7 +12,7 @@
 
 - **Task:** T-11E01 Carry the product commits since 0.12.0
 - **Spec:** l2-release-branches.md; l1-release-lines.md; l2-project-adapter.md §5.5
-- **Next Action:** Plan complete — run /magic.task main to plan new scope
+- **Next Action:** Push the commits after the maintainer's yes, then carry the documentation, addon comment and CI step to the release lines
 
 ## Progress
 
