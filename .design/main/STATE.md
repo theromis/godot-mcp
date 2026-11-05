@@ -4,20 +4,21 @@
 <!-- Maximum 100 lines. Agent updates AFTER each completed action. -->
 
 **Workspace:** main
-**Updated:** 2026-11-04 19:45
-**Phase:** 10 — Project Adapter
+**Updated:** 2026-11-05 07:33
+**Phase:** 12 — Reality Sync after 0.13.0
 **Status:** Active
 
 ## Current Position
 
 - **Task:** T-11E01 Carry the product commits since 0.12.0
 - **Spec:** l2-release-branches.md; l1-release-lines.md; l2-project-adapter.md §5.5
-- **Next Action:** Run /magic.task main to update the plan
+- **Next Action:** Plan complete — run /magic.task main to plan new scope
 
 ## Progress
 
 ```
-Overall: [10/10] ████████ 100%
+Phase 12: [3/3] ████████ 100%
+Overall: [11/11] ████████ 100%
 ```
 
 ## Recent Decisions

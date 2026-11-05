@@ -1,6 +1,6 @@
 # Repo Steward for godot-mcp
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-repository-stewardship.md
@@ -55,7 +55,7 @@ The skill is generic by design; this repository has facts it must be told: four 
 | ST-11 Disclosed, brief, businesslike voice | Language English, the language `CONTRIBUTING.md` prescribes for code, commit messages and documentation. |
 | ST-12 Closure states the outcome | A fix merged to `master` closes its issue as completed through its closing keyword; the fixed message says it ships in the next release, which contains every Godot line. A fix that exists only on a `godot-v*` branch is closed by the steward, since closing keywords act only on `master`. The released message names the release `vX.Y.Z` and the files ending in `-godotM.N` for the reporter's Godot version. |
 | ST-13 Conversation answered, disputes handed over | Skill defaults. |
-| ST-14 Idempotent, bounded, loop-free | Skill defaults; allowed bots: `dependabot[bot]` (no dependency bot is configured yet). |
+| ST-14 Idempotent, bounded, loop-free | Skill defaults; allowed bots: `dependabot[bot]` (configured in `.github/dependabot.yml`: weekly updates of the workflow actions and the Cargo dependencies, a release 14 days old before it is proposed). |
 | ST-15 One flow board, explicit policies | Board "godot-mcp issues and pull requests" owned by `zeegzoog`, public, linked to the repository; extra text field `Lines` (the Godot lines an item affects, for example `4.8 4.7 4.6`). |
 | ST-16 Maintainer decisions win | Skill defaults. |
 | ST-17 Readiness notice, never a release | §5.6. The notice points to the release skill, procedure C; DS-7 keeps every tag behind a person's approval. |
@@ -232,6 +232,15 @@ The branch protection for `godot-v*` stays as [l2-release-branches.md](l2-releas
 | `[CI]` | `.github/workflows/ci.yml` | The checks a merge waits for |
 | `[CHOOSER]` | `.github/ISSUE_TEMPLATE/config.yml` | Issue chooser kept with blank issues enabled |
 | `[IGNORE]` | `.gitignore` | Skill directory exception |
+| `[PROFILE]` | `.github/steward.yml` | The profile: settings and autonomy of the steward in this repository |
+| `[PRIORITIES]` | `.github/steward-priorities.md` | The maintainers' priorities the steward reads |
+| `[WF-AGENT]` | `.github/workflows/steward-agent.yml` | The workflow that runs the steward unattended |
+| `[WF-READINESS]` | `.github/workflows/steward-readiness.yml` | The release readiness workflow |
+| `[WF-STALE]` | `.github/workflows/steward-stale.yml` | The reminder and closing workflow for issues that wait for details |
+| `[BUG-FORM]` | `.github/ISSUE_TEMPLATE/bug_report.yml` | The bug report form |
+| `[FEATURE-FORM]` | `.github/ISSUE_TEMPLATE/feature_request.yml` | The feature request form |
+| `[PR-TEMPLATE]` | `.github/PULL_REQUEST_TEMPLATE.md` | The pull request template |
+| `[DEPENDABOT]` | `.github/dependabot.yml` | Dependency update pull requests the steward reviews |
 
 ## Document History
 
@@ -240,3 +249,4 @@ The branch protection for `godot-v*` stays as [l2-release-branches.md](l2-releas
 | 1.0.0 | 2026-10-20 | Agent (magic.spec) | Created with the stewardship concept: profile values, labels, board, priority examples, routing and carrying across the Godot lines, readiness for the lines, workflows, forms, guide changes, tests and maintainer setup. Promoted to Stable after Post-Update Review. |
 | 1.0.1 | 2026-10-20 | Agent (magic.run) | [MODIFIED] The skills ignore rule names the directory contents so that exceptions work, and the exception names only the canonical copy so a local agent link stays ignored; the `AGENTS.md` pointer sits in its introduction. |
 | 1.0.2 | 2026-10-20 | Agent (magic.run) | [ADDED] Seven tests for the hardened agent workflow, the message checks, the board queue and the script arguments. |
+| 1.0.3 | 2026-11-05 | Agent (magic.spec) | The profile, the priorities file, the three workflows, the issue forms, the pull request template and the dependency configuration are in Canonical References. ST-14 no longer says that no dependency bot is configured: `.github/dependabot.yml` configures one. |

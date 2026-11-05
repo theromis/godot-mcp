@@ -1,8 +1,8 @@
 # Master Task Index (Registry)
 
-**Version:** 1.9.1
-**Generated:** 2026-11-02
-**Based on:** .design/main/PLAN.md v1.9.1
+**Version:** 1.10.0
+**Generated:** 2026-11-05
+**Based on:** .design/main/PLAN.md v1.10.0
 **Based on RULES:** .design/RULES.md v1.4.0
 **Execution Mode:** Parallel
 **Status:** Active
@@ -27,8 +27,9 @@ Tactical registry of all phases and their statuses. Check individual phase files
 | [Phase 9](archives/tasks/phase-9.md) | Simulation QA remediation: the named project wins over the editor, honest stop and status answers, schema ranges, hints by failure class, fallbacks that accept what the editor accepts, a feedback mode that fails closed, language-server project check, the game-call refusal list and typed arguments, pointer input without a window, then user-facing text, validation and the release lines; pushing gated on approval | `Done (Archived)` |
 | [Phase 10](archives/tasks/phase-10.md) | Project adapter: a feasibility test of script-error reporting, the registry and loader in the in-game component, `project.state` and `project.command`, the `godot_game_state` and `godot_game_command` tools with run status and hints, editor Play, user-facing text, validation, then the release lines; pushing gated on approval | `Done (Archived)` |
 | [Phase 11](archives/tasks/phase-11.md) | Reality sync after ventilation: the editor path of project settings converts the text forms the file fallback converts (CA-4, CA-11), the repo steward labels a merged pull request whose planning is owed, validation, then the product commits since 0.12.0 carried to the release lines; pushing gated on approval | `Done (Archived)` |
+| [Phase 12](archives/tasks/phase-12.md) | Reality sync after 0.13.0: the file-deletion requirement (CA-17), Canonical References, delta markers, the changelog and the guides, validation | Done |
 
 ## Meta Information
 
-- **Last Updated**: 2026-11-02
+- **Last Updated**: 2026-11-05
 - **Maintainer**: Oleg Alexandrov

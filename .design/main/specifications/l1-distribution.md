@@ -1,6 +1,6 @@
 # Release & Distribution
 
-**Version:** 1.3.0
+**Version:** 1.3.1
 **Status:** Stable
 **Layer:** concept
 
@@ -22,8 +22,8 @@ Users install a prebuilt binary plus an addon folder, often through an AI assist
 ## 2. Constraints & Assumptions
 
 - Versioning follows Semantic Versioning; the project is pre-1.0, so minor versions may carry breaking changes, which the release notes must call out.
-- [MODIFIED] A release contains the files of every supported Godot release line; each file name and each line's version string name the line (RL-3, RL-8). Version numbers follow one sequence.
-- Release notes live in the repository changelog, one section per version, written for users; the section text is the published release description. [MODIFIED] The release notes of all lines are one changelog.
+- A release contains the files of every supported Godot release line; each file name and each line's version string name the line (RL-3, RL-8). Version numbers follow one sequence.
+- Release notes live in the repository changelog, one section per version, written for users; the section text is the published release description. The release notes of all lines are one changelog.
 - Supported platforms: Windows x86_64, Linux x86_64, macOS x86_64, macOS arm64.
 - Development-time scaffolding (planning artifacts, agent engines) is not part of any shipped artifact.
 
@@ -36,13 +36,13 @@ Users install a prebuilt binary plus an addon folder, often through an AI assist
 - **DS-5 Separate, editor-only addon.** The addon ships as its own archive, is enabled per project, and excludes itself from game exports while enabled; the docs tell users how to exclude it when it is disabled.
 - **DS-6 No machine-specific state in the repository.** Local paths, secrets and client configs with real paths are never committed; examples with placeholders are committed instead.
 - **DS-7 Human confirmation before publishing.** Creating and pushing a release tag happens only after a person has seen the version and the commit and explicitly approved it.
-- **DS-9 A build names its commit.** [ADDED] The version a running server reports adds the commit it was built from as build metadata, so builds between two releases can be told apart although the manifests change only in release commits. A build with no commit to name (no git, a source archive) reports the manifest version alone, and a commit that is not a short hexadecimal id is never put into the version.
-- **DS-10 The release number follows the changes.** [ADDED] The number a release takes is computed from the kind of the changes since the last release, by one script, not judged anew at each release: a breaking change or a new feature moves the minor number while the project is before 1.0, anything else the patch number. The version of the development line is moved to that number when it has fallen behind, in a commit of its own that is never carried to a release line.
+- **DS-9 A build names its commit.** The version a running server reports adds the commit it was built from as build metadata, so builds between two releases can be told apart although the manifests change only in release commits. A build with no commit to name (no git, a source archive) reports the manifest version alone, and a commit that is not a short hexadecimal id is never put into the version.
+- **DS-10 The release number follows the changes.** The number a release takes is computed from the kind of the changes since the last release, by one script, not judged anew at each release: a breaking change or a new feature moves the minor number while the project is before 1.0, anything else the patch number. The version of the development line is moved to that number when it has fallen behind, in a commit of its own that is never carried to a release line.
 - **DS-8 Scaffold-free artifacts.** No shipped artifact — binary archive, addon archive, or source archive generated from a tag — contains planning or agent-engine directories.
 
 ## 5. Detailed Design
 
-### 5.1 Release Flow [MODIFIED]
+### 5.1 Release Flow
 
 One pass for all supported lines (their branches, each with its own manifests; one changelog):
 
@@ -59,7 +59,7 @@ graph TD
     I --> J[One release published with every line's files]
 ```
 
-### 5.2 Release Assets [MODIFIED]
+### 5.2 Release Assets
 
 Every file name carries the line (`M.N`, e.g. `4.6`), so a downloaded file still says which Godot version it is for:
 
@@ -97,3 +97,4 @@ A release holds these five files for each supported line. Releases 0.1.0 to 0.4.
 | 1.1.0 | 2026-10-20 | Agent (magic.spec) | [ADDED] Releases per Godot release line: line in the version string, one numbering, per-line changelog; [MODIFIED] release flow per line and asset names with the line. Stable → RFC → Stable after Post-Update Review. |
 | 1.2.0 | 2026-10-20 | Agent (magic.spec) | [MODIFIED] One release per number holding the files of every supported line, one changelog, release flow and DS-3 accordingly. |
 | 1.3.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] DS-9 (a build names its commit) and DS-10 (the release number follows the changes). Source: the maintainer's observation that the patch number never moves between releases and the minor number only at publication; the manifests changing only in release commits is kept, because identity files differ per line and a per-pull-request bump would conflict on every carry. Stable → RFC → Stable after Post-Update Review. |
+| 1.3.1 | 2026-11-05 | Agent (magic.spec) | Removed the `[ADDED]` and `[MODIFIED]` markers from the body: the history rows carry what changed. No requirement changed. |

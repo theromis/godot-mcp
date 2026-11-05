@@ -1,6 +1,6 @@
 # Runtime Observability
 
-**Version:** 1.3.0
+**Version:** 1.3.1
 **Status:** Stable
 **Layer:** concept
 
@@ -15,7 +15,7 @@ How an agent observes and drives a running game, not only the editor: the game's
 - [l1-editor-bridge.md](l1-editor-bridge.md) - Loopback-only access applies to the game channel too.
 - [l2-game-runtime.md](l2-game-runtime.md) - Where this concept is realized.
 - [l1-controlled-time.md](l1-controlled-time.md) - Holding a running game still and stepping it by exact ticks; extends this concept.
-- [l1-project-adapter.md](l1-project-adapter.md) - State and commands a project registers for its own game; extends this concept and is the one place RO-1 and RO-6 defer to. [ADDED]
+- [l1-project-adapter.md](l1-project-adapter.md) - State and commands a project registers for its own game; extends this concept and is the one place RO-1 and RO-6 defer to.
 
 ## 1. Motivation
 
@@ -33,17 +33,17 @@ After `godot_run_project` an agent could tell whether a scene plays, but not why
 
 ## 3. Core Invariants
 
-- **RO-1** Observation does not change the game. Reading the tree, properties, logs and pictures has no side effect; everything that does change a running game (setting a property, calling a method, injecting input, setting the time scale) is an explicit tool call, and nothing it changes is saved to disk. A command the project's own adapter registered does what the project wrote, files included (PA-4 of [l1-project-adapter.md](l1-project-adapter.md)). [MODIFIED]
+- **RO-1** Observation does not change the game. Reading the tree, properties, logs and pictures has no side effect; everything that does change a running game (setting a property, calling a method, injecting input, setting the time scale) is an explicit tool call, and nothing it changes is saved to disk. A command the project's own adapter registered does what the project wrote, files included (PA-4 of [l1-project-adapter.md](l1-project-adapter.md)).
 - **RO-2** Captured output is bounded in memory and readable on demand; the oldest entries are dropped first.
-- **RO-3** Runtime tools follow the catalog's live-first and error-hint rules: with no game running they say so and how to start one, and a game that disconnected or exited fails the next call with that reason. A run that has ended keeps its exit code and the time it stopped, and says whether the server or the game ended it. [MODIFIED]
+- **RO-3** Runtime tools follow the catalog's live-first and error-hint rules: with no game running they say so and how to start one, and a game that disconnected or exited fails the next call with that reason. A run that has ended keeps its exit code and the time it stopped, and says whether the server or the game ended it.
 - **RO-4** The runtime component never ships. It is loaded only while a debugger is attached, through a temporary override that is removed when the run ends (also after a crash, on the next run), and the addon is excluded from exports.
 - **RO-5** Access to a game is local. The debugger listener binds to loopback, accepts one connection and then stops listening.
-- **RO-6** No code the caller wrote runs in the game, and a call cannot take the game apart. A method call needs the method named in an explicit permit list, and is refused for any method that can quit, evaluate code, call another method by name (directly, on a group, or through a signal or a notification), set a property or the script through a name argument, or free or replace a node. Property writes refuse `script` and private names; there is no expression evaluator. The permit list says what the caller wants to call; the refusal does not depend on it. A permitted call is usable: its arguments are converted to the types the method declares (a JSON string becomes a `StringName` or a `NodePath` where the method asks for one). A command registered by the project's adapter is not a method call: the caller names it and passes data, and what it may do is the project's decision (PA-3, PA-4). [MODIFIED]
+- **RO-6** No code the caller wrote runs in the game, and a call cannot take the game apart. A method call needs the method named in an explicit permit list, and is refused for any method that can quit, evaluate code, call another method by name (directly, on a group, or through a signal or a notification), set a property or the script through a name argument, or free or replace a node. Property writes refuse `script` and private names; there is no expression evaluator. The permit list says what the caller wants to call; the refusal does not depend on it. A permitted call is usable: its arguments are converted to the types the method declares (a JSON string becomes a `StringName` or a `NodePath` where the method asks for one). A command registered by the project's adapter is not a method call: the caller names it and passes data, and what it may do is the project's decision (PA-3, PA-4).
 - **RO-7** Input the server holds is released. A failed step, an explicit release, and the end of the game each clear every key, button, axis, Input Map action and touch that was pressed.
 - **RO-8** A picture is a real picture: a capture returns a validated PNG or an error, never a placeholder or an empty image. A comparison between captures of different sizes says it was not made.
 - **RO-9** Waits are bounded. Every wait for frames, a node, a signal or a stop has a limit and reports when it ran out.
 - **RO-10** Breakpoints and stepping work only on a game the server started, where the server is the debugger; the plugin relay carries only the server's own messages and leaves every other debugger message to the editor.
-- **RO-11** An input step is delivered or says what it could not do, never silently skipped. A step answers `ok` when the game received the event. A pointer step that lands outside the game's viewport carries a warning that controls there do not react to the pointer: a game without a window has a viewport of 64 × 64 pixels whatever the project sets, so most of a screen lies outside it. A step that cannot be delivered at all fails with the reason. [MODIFIED]
+- **RO-11** An input step is delivered or says what it could not do, never silently skipped. A step answers `ok` when the game received the event. A pointer step that lands outside the game's viewport carries a warning that controls there do not react to the pointer: a game without a window has a viewport of 64 × 64 pixels whatever the project sets, so most of a screen lies outside it. A step that cannot be delivered at all fails with the reason.
 
 ## 7. Drawbacks & Alternatives
 
@@ -55,7 +55,8 @@ After `godot_run_project` an agent could tell whether a scene plays, but not why
 
 | Alias | Path | Purpose |
 | --- | --- | --- |
-| `[GAME]` | `src/tools/game.rs`, `src/tools/game/` | Tool catalog and handlers |
+| `[GAME]` | `src/tools/game.rs` | Tool catalog and handlers |
+| `[GAME-TOOLS]` | `src/tools/game/` | Tool catalog and handlers (the modules under the router) |
 | `[RUNS]` | `src/godot/runs.rs` | Managed process runs |
 | `[RUNTIME]` | `addons/godot_mcp/runtime/mcp_runtime.gd` | In-game component |
 | `[E2E]` | `tests/runtime_e2e_test.rs` | Real-game tests |
@@ -71,3 +72,4 @@ After `godot_run_project` an agent could tell whether a scene plays, but not why
 | 1.2.0 | 2026-10-22 | Agent (magic.run) | [MODIFIED] RO-11: a pointer step outside the viewport answers ok with a warning instead of failing; the cause that the plan left open was isolated (the headless window is 64 × 64). Stable → RFC → Stable after Post-Update Review. |
 | 1.2.1 | 2026-10-26 | Agent (magic.spec) | [MODIFIED] RO-7 names Input Map actions among the input that is released. No new requirement. The `[GAME]` reference names `tools/game/`. |
 | 1.3.0 | 2026-10-29 | Agent (magic.spec) | [MODIFIED] RO-1 and RO-6 name the project adapter's commands as the project's own decision, governed by [l1-project-adapter.md](l1-project-adapter.md); the caller still sends no code. Stable → RFC → Stable after Post-Update Review. |
+| 1.3.1 | 2026-11-05 | Agent (magic.spec) | Canonical References: the two paths of `[GAME]` are two rows, so each is read as a path. No requirement changed. Removed the `[ADDED]` and `[MODIFIED]` markers from the body: the history rows carry what changed. No requirement changed. |

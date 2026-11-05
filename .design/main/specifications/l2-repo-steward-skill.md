@@ -1,6 +1,6 @@
 # Repo Steward Skill (GitHub)
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-repository-stewardship.md
@@ -157,7 +157,7 @@ Board actions additionally need the `project` scope (or `STEWARD_PROJECT_TOKEN` 
 | Outcome | `duplicate`, `invalid`, `wontfix` | GitHub's defaults, reused |
 | Priority | `priority: P0` … `priority: P3` | created |
 | Waiting | `status: needs-info`, `status: stale`, `status: blocked`, `status: needs-maintainer` | created; `status: stale` is set by the reminder workflow |
-| Planning debt | `status: planning-owed` | created; on a merged pull request whose planned behaviour still has to go through the planning ecosystem ([procedures](l2-repo-steward-procedures.md) §5.1) [ADDED] |
+| Planning debt | `status: planning-owed` | created; on a merged pull request whose planned behaviour still has to go through the planning ecosystem ([procedures](l2-repo-steward-procedures.md) §5.1) |
 | Exclusion | `steward: skip` | maintainers only |
 | Notice | `release-readiness` | the readiness issue; never triaged |
 
@@ -275,3 +275,4 @@ Manual steps printed by setup (generic):
 | 1.0.5 | 2026-10-21 | Agent (magic.spec) | Added the skill directory to Canonical References. No requirement changed. |
 | 1.1.0 | 2026-10-21 | Agent (magic.spec) | [REMOVED] The pull request procedure, planning adapters, board, readiness and workflow templates (former §5.7 to §5.11), the invariant rows ST-7, ST-9, ST-15 and ST-17, five GitHub facts and two alternatives moved to l2-repo-steward-procedures.md; run report and setup renumbered §5.7 and §5.8. No requirement changed. |
 | 1.2.0 | 2026-11-02 | Agent (magic.spec) | [ADDED] The label `status: planning-owed`, the run step that settles labelled merged requests, and the run report line, for the planning-after-merge rule of the procedures. Stable → RFC → Stable after Post-Update Review. |
+| 1.2.1 | 2026-11-05 | Agent (magic.spec) | Removed the `[ADDED]` and `[MODIFIED]` markers from the body: the history rows carry what changed. No requirement changed. |

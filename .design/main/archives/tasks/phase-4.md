@@ -56,7 +56,6 @@ duration_minutes: ~
 - **Notes:** Five checks from §5.2, each its own `#[test]` with a behaviour name and a failure message that names the file to fix. Plain string parsing, no new dependency. `project.godot`: the first entry of `config/features=PackedStringArray(...)`. `.github/godot-version`: trimmed; the build must start with `M.N` followed by `.`, `-` or the end. A pre-release identifier is allowed only when it is `dev`. No planning references in names or messages.
 - **Changes:** Four line identity tests in `tests/version_sync_test.rs` (version metadata and pre-release, plugin minimum, project feature, CI build), files read at run time with messages naming the file to fix. Red on the 0.4.0 tree (4 failed), green after T-4A02; each single-file mutation (MIN_MINOR 7, feature 4.7, build 4.7.2-stable, version -beta) fails exactly its own test.
 
-
 ### [T-4A02] Set the development line identity to Godot 4.8
 
 - **Spec:** l2-release-branches.md §5.1, §5.2; l1-release-lines.md RL-2
@@ -66,7 +65,6 @@ duration_minutes: ~
 - **Handoff:** T-4A03.
 - **Notes:** `Cargo.toml` and `plugin.cfg`: `0.5.0-dev+godot.4.8`. `plugin.gd`: `MIN_MINOR = 8`. `project.godot`: `config/features=PackedStringArray("4.8")` (after T-2C01 fixed its header comment). New file `.github/godot-version` with `4.8-beta1` and a trailing newline. Download the official Windows builds (editor and console) of 4.8-beta1 from the `godotengine/godot-builds` release into a folder outside the repository, and export `GODOT_PATH` / `GODOT_CONSOLE_PATH` (exported values win over `.env`).
 - **Changes:** Development line identity: `0.5.0-dev+godot.4.8` in `Cargo.toml`, `Cargo.lock`, `plugin.cfg`; `MIN_MINOR = 8`; feature `4.8`; new `.github/godot-version` `4.8-beta1`. fmt, clippy pass; `cargo test --all-targets`: all pass except the pre-existing `without_an_editor_or_a_project_the_unknowns_are_said_so`, which also fails on clean HEAD on this host (the server finds Godot 4.7.2 in Program Files; Windows resets ProgramFiles for every child process, so the test cannot isolate it). With 4.8-beta1: import and three check-only exit 0; editor_e2e 3/3, addon_export 2/2.
-
 
 ### [T-4A03] Warn when the editor is newer than the line
 
@@ -78,7 +76,6 @@ duration_minutes: ~
 - **Notes:** Older engine (major or minor) → `printerr` refusal as today. Newer engine (any newer major or minor) → `push_warning("[Godot MCP] This godot-mcp build is for Godot %d.%d, but this is Godot %s. Install the godot-mcp release for Godot %d.%d.")` and continue. Strict typing; no API newer than 4.5 (the same `plugin.gd` runs on line 4.5).
 - **Changes:** `plugin.gd`: older engine → refusal naming this build's line; newer engine → `push_warning` naming the line to install, bridge starts. With 4.8-beta1: MIN_MINOR 8 → no message; 7 → warning in the log and the token e2e test passes; 9 → refusal, bridge not started; restored to 8. check-only passes on 4.8-beta1 and 4.5.2.
 
-
 ### [T-4B01] Make CI line-aware
 
 - **Spec:** l2-release-branches.md §5.7; l2-ci-release-pipeline.md §2, §4 DS-3
@@ -88,7 +85,6 @@ duration_minutes: ~
 - **Handoff:** T-4F02 proves it on GitHub.
 - **Notes:** `on.push.branches: [master, 'godot-v*']`, `pull_request` unchanged. Drop the `GODOT_VERSION` env; read the file in the install step. Job and step names stay meaningful in the GitHub UI ("Install Godot $build").
 - **Changes:** `ci.yml`: pushes to `master` and `godot-v*`; the Godot job installs the build named in `.github/godot-version`; the changelog check skips versions with a pre-release identifier. YAML parses; locally the changelog step exits 0 for `0.5.0-dev+godot.4.8` and 1 for `0.5.0+godot.4.8` without a section; the 4.8-beta1 Linux download URL answers 200. GitHub run pending T-4F02.
-
 
 ### [T-4B02] Make the release workflow line-aware
 
@@ -100,7 +96,6 @@ duration_minutes: ~
 - **Notes:** Trigger `tags: ["v*.*.*+godot.*"]`. The verify job checks out with `fetch-depth: 0` and runs the script; the addon and build jobs use its suffix in file names; the release steps pass `name: godot-mcp X.Y.Z for Godot M.N` and `make_latest: "true"|"false"` to `softprops/action-gh-release@v3`. `release-notes.sh` stays as is (its `index()` match handles `+`). Script style like `release-notes.sh`: `set -euo pipefail`, usage line, messages to stderr.
 - **Changes:** New `.github/scripts/release-line.sh` (tag = manifest, `+godot.M.N`, no pre-release, commit on `origin/godot-vM.N`; prints line, suffix, title, latest). `release.yml`: trigger `v*.*.*+godot.*`, verify job with full history runs the script (explicit bash shell, so pipefail keeps a failed check fatal), file names with `-godotM.N`, release title and make_latest from its output. Scratch-repository cases 8/8 pass; `release-notes.sh` extracts `+godot` sections. GitHub run pending T-4F03.
 
-
 ### [T-4C01] Write the security policy
 
 - **Spec:** l2-community-health-files.md §4 CH-1–CH-4, CH-6, CH-9, §5.1; l1-community-health.md §5.1
@@ -110,7 +105,6 @@ duration_minutes: ~
 - **Handoff:** T-4F01 turns the reporting channel on before the file is pushed.
 - **Notes:** Link `README.md#security` for the security measures instead of restating them (CH-7). No personal e-mail address. Response targets 7 / 14 / 90 days. The For AI Agents section: stop, keep details out of issues and `godot_note_feedback` / `godot_submit_feedback`, tell the user how to report privately.
 - **Changes:** `SECURITY.md`: Supported Versions (line table, pre-release wording), Reporting a Vulnerability (private advisory link only, never issues or the feedback tools, contents, 7/14/90 days, advisory and credit), Scope, How Fixes Are Released, For AI Agents; links README § Security. SDD grep empty; markdownlint 0 issues.
-
 
 ### [T-4C02] Write the contributor guide
 
@@ -122,7 +116,6 @@ duration_minutes: ~
 - **Notes:** Supersedes T-2D01. Rust 1.85 (`rust-version`); editor tests with the build named in the branch's `.github/godot-version`; Conventional Commits with a scope; carrying with `git cherry-pick -x`; contributions under MIT. No Discussions: questions go to issues.
 - **Changes:** `CONTRIBUTING.md` with the twelve sections in order, line table and branch decision table, test placement table, Planning and Specifications section (replaces T-2D01). Verification commands identical to `AGENTS.md` (diff of command lines empty); markdownlint 0 issues.
 
-
 ### [T-4C03] Point the readme, agent guide, issue chooser and changelog at the lines and the new files
 
 - **Spec:** l2-release-branches.md §4 RL-9, RL-10, §6 step 2; l2-community-health-files.md §4 CH-1, CH-7, CH-8, §5.3
@@ -133,7 +126,6 @@ duration_minutes: ~
 - **Notes:** The three line tables must be identical in rows (RL-10). Keep README user-facing; no planning references.
 - **Changes:** README: line table and per-version release choice in Installation, Option A picks the newest release titled for the user's Godot (fallback v0.4.0), Option B names the -godotM.N files, Security links SECURITY.md, Development and Releasing reduced to links. AGENTS.md: link to CONTRIBUTING.md, line wording for target, guards and editor tests, Policy Documents checklist item. Issue chooser contact link; CHANGELOG note on per-line changelogs. SDD grep empty; markdownlint 0 issues on five files; release-notes.sh v0.4.0 unchanged.
 
-
 ### [T-4D01] Rewrite the release skill around the lines
 
 - **Spec:** l2-release-branches.md §5.4–§5.6, §4 RL-6–RL-10, RL-12; l2-community-health-files.md §4 CH-8
@@ -143,7 +135,6 @@ duration_minutes: ~
 - **Handoff:** T-4E01 exercises procedure E; T-4E02 exercises procedure B.
 - **Notes:** Keep the skill self-contained for an agent with no other context: define line, carry, version string and `M.N` once at the top.
 - **Changes:** Rewrote `.agents/skills/release/SKILL.md` (202 lines): model and terms first, procedures A–G, C with eight numbered steps and an approval stop before any push or tag, D newest line first, rules against force push and tag or release deletion. The uncarried-changes snippet was checked in a scratch repository (finds only the uncarried fix; clean carry, carry with conflict, planning-only and release commits filtered). markdownlint 0 issues; no task, phase or specification names; two mentions of the planning folder are process instructions.
-
 
 ### [T-4E01] Commit the line-aware development line and cut the three release branches
 
@@ -156,7 +147,6 @@ duration_minutes: ~
   Waiting for the user's go-ahead to commit: tracks A–D and T-2C01 are done in `master`'s working tree, uncommitted. Commit plan: the planning files in one commit, the product changes in another, then the cut.
 - **Changes:** Product commit d25a41e and planning commit ac265ed on master; branches godot-v4.5, godot-v4.6, godot-v4.7 cut from d25a41e, one identity commit each (0.5.0+godot.4.N, minimum engine, feature tag, Godot build 4.5.2/4.6.3/4.7.2-stable, line changelog note); version_sync_test passes on each. Local only, not pushed.
 
-
 ### [T-4E02] Call `is_importing` directly on the development line and line 4.7
 
 - **Spec:** l2-release-branches.md §5.3; l2-godot-editor-addon.md §2
@@ -166,7 +156,6 @@ duration_minutes: ~
 - **Handoff:** T-4T01.
 - **Notes:** A shared change for two lines: commit on `master` first, then `git cherry-pick -x` onto `godot-v4.7` (procedure B). Keep the function and its comment honest for the line it is on.
 - **Changes:** master 24cc054 calls is_importing directly (API present in 4.7-stable, absent in 4.6-stable); carried to godot-v4.7 with cherry-pick -x. 4.5 and 4.6 keep the guard. With 4.8-beta1: check-only exit 0, editor_e2e 3/3, addon_export 2/2.
-
 
 ### [T-4F01] Turn on private vulnerability reporting and protect the release branches
 
@@ -179,7 +168,6 @@ duration_minutes: ~
   Private vulnerability reporting: done by the user (confirmed enabled on 2026-10-20). Remaining: the ruleset for `godot-v*` (no deletion, no force push), instructions given; tick when `gh api repos/zeegzoog/godot-mcp/rulesets` lists it.
 - **Changes:** Private vulnerability reporting enabled and ruleset 'Protect Godot release lines' (godot-v*: no deletion, no force push) active; both done by the user.
 
-
 ### [T-4F02] Publish the branches
 
 - **Spec:** l2-release-branches.md §6 step 6; l1-distribution.md DS-7
@@ -190,7 +178,6 @@ duration_minutes: ~
 - **Notes:** Push only after T-4F01, so the reporting link in `SECURITY.md` works from the first day.
 - **Changes:** master, godot-v4.7, 4.6, 4.5 pushed after approval; CI green on all four heads (16/16 jobs), including the Linux token-file assertion.
 
-
 ### [T-4F03] Publish the first line releases (0.5.0)
 
 - **Spec:** l1-release-lines.md §5.3, §5.5; l2-release-branches.md §5.6 procedure D
@@ -200,7 +187,6 @@ duration_minutes: ~
 - **Handoff:** `/magic.task main update` to close the phase.
 - **Notes:** Each branch gets its own changelog section `## [0.5.0+godot.4.N] - <date>`, written for users: the tag and file names changed, which release to pick, the line gate and warning.
 - **Changes:** Releases v0.5.0+godot.4.7 (latest), 4.6, 4.5, each titled 'godot-mcp 0.5.0 for Godot 4.N' with 5 files suffixed -godot4.N; all release jobs green. The first 4.7 tag was deleted with the user's approval because the tagged commit's release workflow had an invalid tag filter ('+' is a quantifier); fixed with a guard test, carried to all lines, then re-tagged. Line tables in README and SECURITY.md now name the line releases.
-
 
 ### [T-4T01] Validate Phase 4 on every line against the specifications
 

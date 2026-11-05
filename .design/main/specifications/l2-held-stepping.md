@@ -1,6 +1,6 @@
 # Held Stepping
 
-**Version:** 1.2.1
+**Version:** 1.2.2
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-controlled-time.md
@@ -121,7 +121,7 @@ The step decision is the counter of the parent concept (its §4.2). The loop wai
 
 The change is a new capability, so it lands on `master` and is carried to every supported line, newest to oldest. Every engine call it uses exists in 4.5.0 (§2), so the carried copies need no guard; each line's end-to-end run proves it with that line's Godot build.
 
-### 5.8 Scenario [ADDED]
+### 5.8 Scenario
 
 `godot_game_scenario` plays one input sequence in a held managed process run and answers with what the game did. It builds on the held step (CT-3), the tick-scheduled input (CT-7) and the runtime methods `game.pause`, `game.body` and `game.get`.
 
@@ -161,7 +161,8 @@ Tests: `runtime_e2e_test.rs` for every row above and for `deterministic` on a he
 | `[INPUT]` | `addons/godot_mcp/runtime/ops/rt_input.gd` | Input steps, property-wait parsing and comparison reused by `until` |
 | `[VIEW]` | `addons/godot_mcp/runtime/ops/rt_view.gd` | Capture job and its render wait |
 | `[RUNS]` | `src/godot/runs.rs` | Managed launch arguments and `Run` state |
-| `[GAME]` | `src/tools/game.rs`, `src/tools/game/` | Tool schemas, runtime call timeout, debugger tools |
+| `[GAME]` | `src/tools/game.rs` | Tool schemas, runtime call timeout, debugger tools |
+| `[GAME-TOOLS]` | `src/tools/game/` | Tool schemas, runtime call timeout, debugger tools (the modules under the router) |
 | `[SCENARIO]` | `src/tools/scenario.rs` | The scenario tool |
 | `[SCENARIO-E2E]` | `tests/scenario_e2e_test.rs` | Real-game tests of the scenario: moves, pause, release, run pinning, the run lock |
 | `[E2E]` | `tests/runtime_e2e_test.rs` | Real-game tests that pin the hold behaviour |
@@ -175,3 +176,4 @@ Tests: `runtime_e2e_test.rs` for every row above and for `deterministic` on a he
 | 1.1.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] Engine facts marked verified; the CT-9 row drops the `is_active()` trigger, which does not turn false when the server disappears (measured), and states the limitation; the deferred keepalive recorded in the drawbacks. Re-reviewed and Stable. |
 | 1.2.0 | 2026-10-26 | Agent (magic.spec) | [ADDED] §5.8: the scenario tool as merged (steps, snapshots, the run lock, the deadline and the release of input, the pause it lifts); the Input Map action drawback closed. Stable → RFC → Stable after Post-Update Review. The references name the `tools/game/` modules. |
 | 1.2.1 | 2026-11-02 | Agent (magic.spec) | Added the scenario guide `docs/game-checks.md` to Canonical References; ventilation found it unnamed. No requirement changed. |
+| 1.2.2 | 2026-11-05 | Agent (magic.spec) | Canonical References: the two paths of `[GAME]` are two rows, so each is read as a path. No requirement changed. Removed the `[ADDED]` and `[MODIFIED]` markers from the body: the history rows carry what changed. No requirement changed. |

@@ -1,6 +1,6 @@
 # Project Context
 
-**Generated:** 2026-11-02
+**Generated:** 2026-11-05
 
 ## Active Technologies
 
@@ -43,6 +43,7 @@
 ├── AGENTS.md
 ├── CHANGELOG.md
 ├── CLAUDE.md
+├── CODEOWNERS
 ├── CONTRIBUTING.md
 ├── Cargo.lock
 ├── Cargo.toml
@@ -51,6 +52,7 @@
 ├── SECURITY.md
 ├── addons/
 │   └── godot_mcp/
+├── build.rs
 ├── docs/
 │   ├── feature-parity.md
 │   └── game-checks.md
@@ -58,6 +60,7 @@
 │   └── fake_gh.rs
 ├── project.godot
 ├── src/
+│   ├── addon.rs
 │   ├── bridge.rs
 │   ├── bridge_port.rs
 │   ├── cli_runner.rs
@@ -76,7 +79,8 @@
 │   ├── tools/
 │   ├── tools.rs
 │   ├── util.rs
-│   └── validation.rs
+│   ├── validation.rs
+│   └── version.rs
 └── tests/
     ├── addon_export_test.rs
     ├── bridge-port-vectors.json
@@ -88,11 +92,13 @@
     ├── feedback_test.rs
     ├── runtime_e2e_test.rs
     ├── scenario_e2e_test.rs
+    ├── script-reference-vectors.json
     ├── server_test.rs
     ├── stdio_protocol_test.rs
     ├── steward_test.rs
     ├── tools_test.rs
-    └── version_sync_test.rs
+    ├── version_sync_test.rs
+    └── version_test.rs
 ```
 
 ## Recent Changes

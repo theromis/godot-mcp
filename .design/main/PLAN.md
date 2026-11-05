@@ -1,8 +1,8 @@
 # Implementation Plan
 
-**Version:** 1.9.1
-**Generated:** 2026-11-02
-**Based on:** .design/main/INDEX.md v1.9.3
+**Version:** 1.10.0
+**Generated:** 2026-11-05
+**Based on:** .design/main/INDEX.md v1.9.4
 **Status:** Active
 
 ## Overview
@@ -127,10 +127,20 @@ The registry was bootstrapped from existing code (godot-mcp 0.3.0 plus unrelease
 
 - [x] **Project Export** ([l1-project-export.md](specifications/l1-project-export.md)) [L1] — written from the merged export tools
 - [x] Amendments: Live Editor Bridge 1.1.0 (BR-12, BR-13), MCP Server Core 1.3.0, Tool Catalog 1.11.0 (TL-13), Content Authoring 1.5.0 (CA-14 to CA-17), Rust Stdio Server 1.4.0, Bridge Client 1.1.0, Godot Editor Addon 1.11.0, Tool Handlers 1.8.0, CI & Release Pipeline 1.3.0, Test Suite 1.6.0, Game Runtime Channel 1.7.1, Held Stepping 1.2.1
-- [ ] Editor path of project settings converts the text forms (CA-4, CA-11) — **Content Authoring** / **Godot Editor Addon**
-- [ ] Planning debt label of the repo steward — **Repo Steward Procedures** 1.1.0, **Repo Steward Skill** 1.2.0
+- [x] Editor path of project settings converts the text forms (CA-4, CA-11) — **Content Authoring** / **Godot Editor Addon**
+- [x] Planning debt label of the repo steward — **Repo Steward Procedures** 1.1.0, **Repo Steward Skill** 1.2.0
 - [x] Validation of the editor conversion and the steward label
 - [x] The product commits since 0.12.0 carried to `godot-v4.7`, `godot-v4.6`, `godot-v4.5`; pushing gated on approval
+
+## Phase 12 — Reality Sync after 0.13.0 (Layers 1 and 2)
+
+*The pull requests landed after the 0.13.0 release left the specifications, the changelog and the guides behind the code. The specifications were synced first (asset review, world map, startup gate, uid cache, capture changes); this phase closes what a ventilation of 2026-11-05 found. See [TASKS.md](TASKS.md).*
+
+- [x] Amendments: Content Authoring 1.7.0 (CA-17 reference kinds), Tool Catalog 1.18.0, Tool Handlers 1.16.0 [L1/L2]
+- [x] Canonical References: one path per row, the modules merged without an entry, the agent setup skill
+- [x] Delta markers removed from the bodies of the specifications; history rows carry them
+- [x] Guides and changelog: post-release entries moved to Unreleased, the new tools, the version a build reports, the scenario tests, the parity comparison
+- [x] Validation of the pipeline, the markdown lint and the addon suites
 
 ## Backlog
 

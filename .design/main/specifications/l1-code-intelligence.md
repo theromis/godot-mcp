@@ -1,6 +1,6 @@
 # Code Intelligence
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** concept
 
@@ -33,7 +33,7 @@ GDScript diagnostics, symbols, completion, definitions and references for an age
 - **CI-4** A language server started for the tools is the server's own child: it gets no handle to the server's standard streams, does not outlive the server, and is private to it.
 - **CI-5** A query leaves no state behind in the language server: a document opened for a question is closed again, so the same script can be asked about repeatedly.
 - **CI-6** Messages are bounded in size; an oversized frame is refused.
-- **CI-7** The answer is about the project that was asked about. A language server that an editor already runs is not used when the bridge shows that editor has another project open; the tools start their own for the right project, and a timeout names the project. [ADDED]
+- **CI-7** The answer is about the project that was asked about. A language server that an editor already runs is not used when the bridge shows that editor has another project open; the tools start their own for the right project, and a timeout names the project.
 
 ## 7. Drawbacks & Alternatives
 
@@ -54,3 +54,4 @@ GDScript diagnostics, symbols, completion, definitions and references for an age
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-21 | Agent (magic.spec) | Specified after pull request 6 merged (diagnostics, symbols, completion, definition, references). |
 | 1.1.0 | 2026-10-21 | Agent (magic.spec) | [ADDED] CI-7 (a language server that the bridge shows to serve another project is not used). Source: simulation QA of 2026-10-21 (Q9); impossible positions are covered by TL-1 (Q22). Stable → RFC → Stable after Post-Update Review. |
+| 1.1.1 | 2026-11-05 | Agent (magic.spec) | Removed the `[ADDED]` and `[MODIFIED]` markers from the body: the history rows carry what changed. No requirement changed. |

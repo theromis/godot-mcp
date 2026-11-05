@@ -1,6 +1,6 @@
 # Agent Feedback Channel (Rust)
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-agent-feedback.md
@@ -283,6 +283,10 @@ Both calls run with prompts, colour and the update notice switched off through t
 | `[ENGINE]` | `src/cli_runner.rs` | Child process conventions (time limit, `kill_on_drop`, Windows handle isolation) |
 | `[HELPERS]` | `tests/common/mod.rs` | Session driver, mock editor, fake executables |
 | `[MANIFEST]` | `Cargo.toml` | Repository address |
+| `[SCRUB]` | `src/feedback.rs` | Scrubber, fingerprint, report shape and link builder |
+| `[JOURNAL]` | `src/journal.rs` | Notes, evidence, counters, drafts and their states |
+| `[ISSUES]` | `src/issues.rs` | The GitHub client runner and the outcome mapping |
+| `[FEEDBACK-TOOLS]` | `src/tools/feedback.rs` | Catalog entries, guidance text and the three handlers |
 
 ## Document History
 
@@ -292,3 +296,4 @@ Both calls run with prompts, colour and the update notice switched off through t
 | 1.0.1 | 2026-10-16 | Agent (magic.run) | Clarified during implementation: brace placeholders instead of angle brackets, fenced agent text, narrower credential rule, bidirectional override characters removed. |
 | 1.0.2 | 2026-10-16 | Agent (magic.run) | Recorded implementation decisions: module map with the journal and the tool submodule, mode-to-catalog cell, home directory shortened only once the project is known, delimiter set of the path step, stand-in provided as an example target. |
 | 1.1.0 | 2026-10-21 | Agent (magic.spec) | [MODIFIED] An unknown `GODOT_MCP_FEEDBACK` value selects `draft` instead of the default `full` (FB-10). Source: simulation QA of 2026-10-21 (Q11). Stable → RFC → Stable after Post-Update Review. |
+| 1.1.1 | 2026-11-05 | Agent (magic.spec) | The modules of the channel are in Canonical References. No requirement changed. |

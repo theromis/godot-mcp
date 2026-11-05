@@ -1,6 +1,6 @@
 # Tool Handlers (Rust)
 
-**Version:** 1.15.0
+**Version:** 1.16.0
 **Status:** Stable
 **Layer:** implementation
 **Implements:** l1-tool-catalog.md
@@ -14,12 +14,12 @@ The Rust realization of the tool catalog: the static catalog with input schemas,
 - [l1-tool-catalog.md](l1-tool-catalog.md) - Parent concept.
 - [l2-bridge-client-rust.md](l2-bridge-client-rust.md) - Transport for editor-backed tools.
 - [l2-rust-stdio-server.md](l2-rust-stdio-server.md) - Session that calls `ToolManager::call_tool`.
-- [l2-agent-feedback-rust.md](l2-agent-feedback-rust.md) - The feedback tools routed here and the outcome recording done after every call. [ADDED]
-- [l2-game-runtime.md](l2-game-runtime.md) - The running-game and debugger tools routed to `tools/game.rs` and `tools/game/`. [ADDED]
-- [l2-lsp-client.md](l2-lsp-client.md) - The language-server tools routed to `tools/code.rs`. [ADDED]
-- [l2-held-stepping.md](l2-held-stepping.md) - The scenario tool routed to `tools/scenario.rs` (§5.8 there). [ADDED]
-- [l1-content-authoring.md](l1-content-authoring.md) - CA-7 to CA-10: the script read and edit tools (§5.4); CA-11: the authoring fallbacks (§5.5); CA-12: project creation (§5.6); CA-14 to CA-17: shaders, import parameters, InputMap actions and deletion (§5.8 to §5.10). [MODIFIED]
-- [l1-project-export.md](l1-project-export.md) - EX-1 to EX-7: the export tools (§5.12). [ADDED]
+- [l2-agent-feedback-rust.md](l2-agent-feedback-rust.md) - The feedback tools routed here and the outcome recording done after every call.
+- [l2-game-runtime.md](l2-game-runtime.md) - The running-game and debugger tools routed to `tools/game.rs` and `tools/game/`.
+- [l2-lsp-client.md](l2-lsp-client.md) - The language-server tools routed to `tools/code.rs`.
+- [l2-held-stepping.md](l2-held-stepping.md) - The scenario tool routed to `tools/scenario.rs` (§5.8 there).
+- [l1-content-authoring.md](l1-content-authoring.md) - CA-7 to CA-10: the script read and edit tools (§5.4); CA-11: the authoring fallbacks (§5.5); CA-12: project creation (§5.6); CA-14 to CA-17: shaders, import parameters, InputMap actions and deletion (§5.8 to §5.10).
+- [l1-project-export.md](l1-project-export.md) - EX-1 to EX-7: the export tools (§5.12).
 
 ## 1. Motivation
 
@@ -28,8 +28,8 @@ Maps each safety rule of the catalog to the function that enforces it, so a new 
 ## 2. Constraints & Assumptions
 
 - The catalog is built once (`OnceLock`) and shared by `tools/list` and dispatch.
-- Engine time limits: `--version` 10 s, `--check-only` 30 s, the class check and the shader check 30 s; a one-off script 120 s by default (at most 600); an import or an export 600 s by default (1 to 3600) each. All use `kill_on_drop`; the long runs kill their process tree at the limit. [MODIFIED]
-- [ADDED] A fixed engine script never receives caller text in its source or on its command line. It is written to a new directory under the operating system's temporary directory, removed afterwards. Either that directory is a throw-away project (an empty `project.godot`) and the script reads its request from `res://request.json` there (setting types, import parameters, export presets), or the script gets one value as a user argument after `--` (the class check, in its throw-away project; the shader check, run on the caller's project with the script kept outside it).
+- Engine time limits: `--version` 10 s, `--check-only` 30 s, the class check and the shader check 30 s; a one-off script 120 s by default (at most 600); an import or an export 600 s by default (1 to 3600) each. All use `kill_on_drop`; the long runs kill their process tree at the limit.
+- A fixed engine script never receives caller text in its source or on its command line. It is written to a new directory under the operating system's temporary directory, removed afterwards. Either that directory is a throw-away project (an empty `project.godot`) and the script reads its request from `res://request.json` there (setting types, import parameters, export presets), or the script gets one value as a user argument after `--` (the class check, in its throw-away project; the shader check, run on the caller's project with the script kept outside it).
 - Windows-only code uses `windows-sys` (`Win32_Foundation`, `Win32_System_Console`).
 - Observed convention: every `unsafe` block carries a `SAFETY:` comment explaining why the call is sound.
 
@@ -37,22 +37,22 @@ Maps each safety rule of the catalog to the function that enforces it, so a new 
 
 | L1 Invariant | Implementation |
 | --- | --- |
-| TL-1 Schema-first validation | `call_tool` runs `validate_arguments(tool.input_schema, args)` before dispatch: object-or-null arguments, required keys present and non-null, `string`/`boolean`/`object`/`array`/`number`/`integer` (whole floats accepted), array item types, enums, and `minimum`/`maximum` where the schema gives them (lines, columns, tick counts). [MODIFIED] Every schema built by `tool()` sets `additionalProperties: false`, and a non-null top-level key the schema does not declare is refused before any other check, with a message that names the unknown keys and lists the accepted ones (a tool without parameters says it takes none); an older parameter name stays accepted only by being declared in the schema (`file_path` of `godot_create_script`). Object-typed parameters (`steps`, `until`, `roi`) declare their fields in `properties` so a caller can read them from `tools/list`; the nested fields are checked by the side that uses them. [MODIFIED] |
+| TL-1 Schema-first validation | `call_tool` runs `validate_arguments(tool.input_schema, args)` before dispatch: object-or-null arguments, required keys present and non-null, `string`/`boolean`/`object`/`array`/`number`/`integer` (whole floats accepted), array item types, enums, and `minimum`/`maximum` where the schema gives them (lines, columns, tick counts). Every schema built by `tool()` sets `additionalProperties: false`, and a non-null top-level key the schema does not declare is refused before any other check, with a message that names the unknown keys and lists the accepted ones (a tool without parameters says it takes none); an older parameter name stays accepted only by being declared in the schema (`file_path` of `godot_create_script`). Object-typed parameters (`steps`, `until`, `roi`) declare their fields in `properties` so a caller can read them from `tools/list`; the nested fields are checked by the side that uses them. |
 | TL-2 Live-first fallback | `handle_get_version` falls back unless the editor returned `ToolExecution`; `handle_run_project` and `resolve_project` fall back only on `BridgeUnavailable`. |
 | TL-3 Project resolution | `resolve_project` (`tools/project.rs`): `project_path` → editor `get_project_info.project_dir` → `find_project(cwd)`; `host_project` (launch, CLI run) skips the editor step. `find_project` walks ancestors, then accepts exactly one child with `project.godot`, else lists candidates. `ensure_project_dir` requires `project.godot`. The working directory is captured at start-up and overridable for tests. |
-| TL-10 Named project wins | `ToolManager::editor_choice` asks the editor for its `project_dir` (`get_project_info`) before a live-first call that changes a file or a setting, and before any call that names a `project_path`; it is asked each time (one round trip), so an editor restarted with another project is never mistaken for the old one. The two directories are compared with `paths::same_directory` (canonical path, `\` read as `/`, no verbatim prefix or trailing separator, case folded on Windows). Equal or no `project_path`: the editor command is sent and its answer gets `project_dir`. Different: the tool takes its file path (`host_project`) and its answer names that directory. No editor (`BridgeUnavailable`): the call goes on and falls back as before. An editor that answers without a directory, or with an error, is not sent the call: the tool returns that reason. [MODIFIED] |
-| TL-4 Confined, non-destructive writes | `resolve_in_project` strips `res://`, normalizes `\` to `/`, rejects `..` components (names containing `..` are fine), requires the nearest existing ancestor to canonicalize inside the project (blocks symlink escapes). `handle_create_script` opens with `create_new` unless `overwrite: true`, and flushes the file before reporting success. `godot_read_script` and `godot_edit_script` use the same path check and write only through a temporary file and a rename (§5.4). [MODIFIED] The shader tools write the same way (§5.8). An export replaces its output file by EX-4, after `output_file` refused a folder, a path in `.godot/` and a project file extension (§5.12). |
-| TL-5 No injection | `is_valid_identifier` gates `extends_class` and `class_name`; script content comes from a fixed template; `godot_run_project` requires `scene` to start with `res://` and contain no `..`; a breakpoint location (`res://file.gd:LINE`) passes the same check before it is stored or sent; [MODIFIED] the bridge receives values only as JSON parameters. |
-| TL-6 Detached launches | `spawn_detached`: null stdin/stdout/stderr; Windows `DETACHED_PROCESS \| CREATE_NEW_PROCESS_GROUP` and the server's own std handles marked non-inheritable before spawning; Unix `process_group(0)`. The child is not awaited. A managed process run (`GameHub::start`) takes the same process-group flags and a closed stdin, pipes its output into a bounded log instead of inheriting anything, and is killed when the hub is dropped. [MODIFIED] |
-| TL-7 Hints by failure class | `bridge_error_result` maps `BridgeUnavailable`, `Bridge` and `ToolExecution`; `editor_error_hints` specializes on "unauthorized", "no active scene", and not-found messages; host-side errors carry their own hints (`PROJECT_PATH_HINTS`, overwrite, writable directory, `GODOT_PATH`). Runtime codes (`DENIED`, `UNSUPPORTED`, `NOT_FOUND`, `BAD_PARAMS`) and the editor's refusals about unsaved changes or a file that differs from the editor's text each map to their own hint; `Process` errors (a Godot executable that is missing or does not start) name `GODOT_PATH` instead of syntax advice; paths in messages are shown as `res://` paths. The catch-all "correct the arguments" hint is used for nothing that has a better one. [MODIFIED] |
-| TL-11 Honest stop and status | `handle_stop_project` without `run_id` stops the managed runs first (`GameHub::stop_all`), then asks the editor `get_run_status` and sends `stop_project` only when it plays (an absent editor is not an error). The answer is `{message, stopped: {editor_play, runs}}`; `Nothing was running.` when it was so. A failure of the editor after runs were stopped is reported with their count. `handle_run_status` answers from the managed runs alone when no editor is connected (`running: false`, `editor: not connected (...)`, and `message: Nothing is running.` when no run is alive); `godot_run_output` with no run, no `run_id` and no editor answers `Nothing is running...` as text. [MODIFIED] |
+| TL-10 Named project wins | `ToolManager::editor_choice` asks the editor for its `project_dir` (`get_project_info`) before a live-first call that changes a file or a setting, and before any call that names a `project_path`; it is asked each time (one round trip), so an editor restarted with another project is never mistaken for the old one. The two directories are compared with `paths::same_directory` (canonical path, `\` read as `/`, no verbatim prefix or trailing separator, case folded on Windows). Equal or no `project_path`: the editor command is sent and its answer gets `project_dir`. Different: the tool takes its file path (`host_project`) and its answer names that directory. No editor (`BridgeUnavailable`): the call goes on and falls back as before. An editor that answers without a directory, or with an error, is not sent the call: the tool returns that reason. |
+| TL-4 Confined, non-destructive writes | `resolve_in_project` strips `res://`, normalizes `\` to `/`, rejects `..` components (names containing `..` are fine), requires the nearest existing ancestor to canonicalize inside the project (blocks symlink escapes). `handle_create_script` opens with `create_new` unless `overwrite: true`, and flushes the file before reporting success. `godot_read_script` and `godot_edit_script` use the same path check and write only through a temporary file and a rename (§5.4). The shader tools write the same way (§5.8). An export replaces its output file by EX-4, after `output_file` refused a folder, a path in `.godot/` and a project file extension (§5.12). |
+| TL-5 No injection | `is_valid_identifier` gates `extends_class` and `class_name`; script content comes from a fixed template; `godot_run_project` requires `scene` to start with `res://` and contain no `..`; a breakpoint location (`res://file.gd:LINE`) passes the same check before it is stored or sent; the bridge receives values only as JSON parameters. |
+| TL-6 Detached launches | `spawn_detached`: null stdin/stdout/stderr; Windows `DETACHED_PROCESS \| CREATE_NEW_PROCESS_GROUP` and the server's own std handles marked non-inheritable before spawning; Unix `process_group(0)`. The child is not awaited. A managed process run (`GameHub::start`) takes the same process-group flags and a closed stdin, pipes its output into a bounded log instead of inheriting anything, and is killed when the hub is dropped. |
+| TL-7 Hints by failure class | `bridge_error_result` maps `BridgeUnavailable`, `Bridge` and `ToolExecution`; `editor_error_hints` specializes on "unauthorized", "no active scene", and not-found messages; host-side errors carry their own hints (`PROJECT_PATH_HINTS`, overwrite, writable directory, `GODOT_PATH`). Runtime codes (`DENIED`, `UNSUPPORTED`, `NOT_FOUND`, `BAD_PARAMS`) and the editor's refusals about unsaved changes or a file that differs from the editor's text each map to their own hint; `Process` errors (a Godot executable that is missing or does not start) name `GODOT_PATH` instead of syntax advice; paths in messages are shown as `res://` paths. The catch-all "correct the arguments" hint is used for nothing that has a better one. |
+| TL-11 Honest stop and status | `handle_stop_project` without `run_id` stops the managed runs first (`GameHub::stop_all`), then asks the editor `get_run_status` and sends `stop_project` only when it plays (an absent editor is not an error). The answer is `{message, stopped: {editor_play, runs}}`; `Nothing was running.` when it was so. A failure of the editor after runs were stopped is reported with their count. `handle_run_status` answers from the managed runs alone when no editor is connected (`running: false`, `editor: not connected (...)`, and `message: Nothing is running.` when no run is alive); `godot_run_output` with no run, no `run_id` and no editor answers `Nothing is running...` as text. |
 | TL-8 Bounded engine calls | `get_version` and `validate_script` wrap the process in `timeout`; `strip_banner` drops `Godot Engine v…` lines; validation fails if the exit code is non-zero or stderr is non-empty. |
 | TL-9 Editor stays in sync | After `godot_create_script` writes into the editor's own project (taken from the editor or named by a `project_path` the bridge reports as its `project_dir`), it sends `resave_resources` for the new `res://` path (best effort). |
-| TL-12 Closing an editor | [ADDED] `tools/editor.rs`: an editor connected to the named project gets `close_editor`; its answer carries the editor's PID, which the tool waits on (`timeout_seconds`, 1 to 120, default 30). Without a bridge, `LaunchedEditors` keeps the editors `godot_launch_editor` started with their directories; only such an editor of the named project is stopped, with `discard`: SIGTERM on Unix so the engine can shut down, a kill when forced or on Windows; a process already reaped is never signalled, since its id may belong to another process. An exited launched editor is reaped so it never lingers as a zombie; an editor that reports another project is never asked to quit. |
-| TL-13 Headless scripts keep references | [ADDED] §5.11. |
-| TL-14 Older addon named, addon update | [ADDED] §5.13. |
-| CA-14 to CA-17 | [ADDED] §5.8 to §5.10. |
-| EX-1 to EX-7 | [ADDED] §5.12. |
+| TL-12 Closing an editor | `tools/editor.rs`: an editor connected to the named project gets `close_editor`; its answer carries the editor's PID, which the tool waits on (`timeout_seconds`, 1 to 120, default 30). Without a bridge, `LaunchedEditors` keeps the editors `godot_launch_editor` started with their directories; only such an editor of the named project is stopped, with `discard`: SIGTERM on Unix so the engine can shut down, a kill when forced or on Windows; a process already reaped is never signalled, since its id may belong to another process. An exited launched editor is reaped so it never lingers as a zombie; an editor that reports another project is never asked to quit. |
+| TL-13 Headless scripts keep references | §5.11. |
+| TL-14 Older addon named, addon update | §5.13. |
+| CA-14 to CA-17 | §5.8 to §5.10. |
+| EX-1 to EX-7 | §5.12. |
 | CA-12 Project creation | §5.6: validation before any write, `create_new` for `project.godot`, an escaped name. |
 
 ## 5. Detailed Design
@@ -62,14 +62,15 @@ Maps each safety rule of the catalog to the function that enforces it, so a new 
 ```plaintext
 src/
 ├── tools.rs        ToolManager, catalog, dispatch, fallback, hints, the helpers every tool group shares
-├── tools/          authoring.rs (scene, script, signal, resource and setting tools, project creation, and their file fallbacks), scripts.rs (reading and editing existing scripts), shaders.rs (§5.8), import_params.rs (§5.9), input_map.rs and files.rs (§5.10), export.rs (§5.12), editor.rs (closing an editor, TL-12), main_loop.rs (whether a script can be the main loop, §5.11), game.rs and game/ (routing, the log and method-call tools; the child modules hold the tool definitions, input steps, screenshots, recordings, the debugger tools and the way a call reaches the game), scenario.rs (the scenario tool), code.rs (language-server tools), feedback.rs [MODIFIED]
+├── addon.rs        the addon built into the server (§5.13)
+├── tools/          authoring.rs (scene, script, signal, resource and setting tools, project creation, and their file fallbacks), scripts.rs (reading and editing existing scripts), shaders.rs (§5.8), import_params.rs (§5.9), input_map.rs and files.rs (§5.10), export.rs (§5.12), editor.rs (closing an editor, TL-12), main_loop.rs (whether a script can be the main loop, §5.11), exit_leaks.rs (§5.11), reference_kind.rs (§5.10), review.rs and world_map.rs with their fixed scripts review_assets.gd and world_map.gd (§5.14), game.rs and game/ (routing, the log and method-call tools; the child modules hold the tool definitions, input steps, screenshots, recordings, the debugger tools and the way a call reaches the game), scenario.rs (the scenario tool), code.rs (language-server tools), feedback.rs
 │                   and, as handlers of the ToolManager: run.rs (Play mode and managed runs: run, stop, status, the stale-import notice), headless.rs (script validation, one-off scripts and their repairs, resaving and the headless import, which run the engine binary), project.rs (which project a call acts on, and where a live-first call goes)
-├── godot/          managed runs, debugger session, breakpoint control, Variant codec; and, for the host-side tools, imports.rs (sources whose import cache is older than the file), resource_audit.rs and binary_resource.rs (what a headless save dropped, §5.11) [MODIFIED]
+├── godot/          managed runs, debugger session, breakpoint control, Variant codec; and, for the host-side tools, imports.rs (sources whose import cache is older than the file), resource_audit.rs and binary_resource.rs (what a headless save dropped, §5.11), uid_cache.rs (§5.11)
 ├── lsp/            language-server client and framing
 ├── validation.rs   JSON-schema subset checks
 ├── paths.rs        is_valid_identifier, ensure_project_dir, find_project, resolve_in_project, same_directory
 ├── bridge_port.rs  the port derived from a project path (see l2-bridge-client-rust.md)
-└── cli_runner.rs   CliRunner: get_version, validate_script, launch_editor, run_project, spawn_detached, run_script, the class, setting-type and shader checks, import_project, import_params, export_presets, export_project [MODIFIED]
+└── cli_runner.rs   CliRunner: get_version, validate_script, launch_editor, run_project, spawn_detached, run_script, the class, setting-type and shader checks, import_project, import_params, export_presets, export_project
 ```
 
 ### 5.2 Adding a Tool
@@ -77,10 +78,10 @@ src/
 1. Add the catalog entry with a complete schema (required keys, types, enums) and a description that states whether it needs the editor.
 2. Write the failing test first in `tests/tools_test.rs` (host-side) or `tests/stdio_protocol_test.rs` / `tests/editor_e2e_test.rs` (bridge-backed).
 3. Route the name in `call_tool`; for an editor command, add the handler and its `PARAM_TYPES` entry in the addon.
-4. Reuse `resolve_in_project`, `is_valid_identifier` and `bridge_error_result`; never build engine arguments or script text from raw caller strings. A parameter that names a script is called `script_path`; `godot_create_script` takes `file_path` for compatibility and also accepts `script_path`. [MODIFIED]
+4. Reuse `resolve_in_project`, `is_valid_identifier` and `bridge_error_result`; never build engine arguments or script text from raw caller strings. A parameter that names a script is called `script_path`; `godot_create_script` takes `file_path` for compatibility and also accepts `script_path`.
 5. Update the README tool table.
 
-### 5.3 Feedback Hooks [ADDED]
+### 5.3 Feedback Hooks
 
 - `call_tool` hands every outcome to the feedback journal after the handler has returned: a failed argument check as `invalid_arguments`, an error result as `error`, and a per-tool call and failure count. Calls to the three feedback tools are not recorded. Recording never alters the result.
 - The three feedback tools are routed like host tools and appear in the catalog according to the configured feedback mode.
@@ -111,7 +112,7 @@ File fallback only:
 
 Refusals are `ToolResult` errors with at least one fix (the TL-7 rule): the count of matches, the stale label, the unsaved changes, the size limit, the extension.
 
-### 5.5 Authoring Fallbacks [ADDED]
+### 5.5 Authoring Fallbacks
 
 `godot_create_scene`, `godot_create_resource`, `godot_get_project_settings` and `godot_set_project_setting` write or read the file when no editor is connected, or when `project_path` names a project the editor does not have open (TL-10), and accept and refuse what the editor path does (CA-11).
 
@@ -120,9 +121,9 @@ Refusals are `ToolResult` errors with at least one fix (the TL-7 rule): the coun
 - A missing folder of a new file is created before the write (`create_dir_all`) and a failure names the file.
 - A settings key is checked by `is_setting_key`, the rule of CA-3: letters, digits and `_ / . -`, a section first, no empty, `.` or `..` segment.
 - The settings fallback answers `{source, project_dir, settings, truncated}`, with `settings` a map from key to the value's text without Godot's quoting (`hello`, not `"hello"`), as the editor path does.
-- [ADDED] Setting types (CA-4). A setting stored in `project.godot` as a plain string, number or boolean keeps that type. For one not stored yet, or stored as another type, `CliRunner::setting_type` asks the engine in a throw-away project for the setting's type and text; the value is then converted (an HTML color or color name for a `Color`, the `project.godot` text such as `Vector2i(1152, 648)` for other types, never an Object, a whole number for an `int`) or refused with nothing written; an engine that cannot run refuses the call with a way out. A new entry goes after the last entry of its section, keeping the blank line before the next section header. The editor path applies the same rules ([l2-godot-editor-addon.md](l2-godot-editor-addon.md) §5.2).
+- Setting types (CA-4). A setting stored in `project.godot` as a plain string, number or boolean keeps that type. For one not stored yet, or stored as another type, `CliRunner::setting_type` asks the engine in a throw-away project for the setting's type and text; the value is then converted (an HTML color or color name for a `Color`, the `project.godot` text such as `Vector2i(1152, 648)` for other types, never an Object, a whole number for an `int`) or refused with nothing written; an engine that cannot run refuses the call with a way out. A new entry goes after the last entry of its section, keeping the blank line before the next section header. The editor path applies the same rules ([l2-godot-editor-addon.md](l2-godot-editor-addon.md) §5.2).
 
-### 5.6 Project Creation [ADDED]
+### 5.6 Project Creation
 
 `godot_create_project` realizes CA-12 in `tools/authoring.rs`. It takes `project_path` (absolute) and `name` (not blank, no NUL), validates both before it touches the disk, creates the directory, resolves it with `resolve_in_project` (TL-4) and creates `project.godot` with `create_new`, so an existing project is refused whatever raced it. The file holds `config_version=5`, the name as an escaped string value (the same escaping as a setting, TL-5) and the Compatibility renderer for desktop and mobile. The answer is `{project_path, created, name}`, where `created` is `res://project.godot`. It needs neither the engine nor the editor; the bridge addon and a main scene are added by the caller with the other authoring tools.
 
@@ -130,43 +131,43 @@ Refusals are `ToolResult` errors with at least one fix (the TL-7 rule): the coun
 
 The number of the removed voxel model check is kept so that the references to the later sections stay valid.
 
-### 5.8 Shader Tools [ADDED]
+### 5.8 Shader Tools
 
 `tools/shaders.rs` realizes CA-14 like the script tools of §5.4: live-first through `create_shader`, `read_shader` and `edit_shader` ([l2-godot-editor-addon.md](l2-godot-editor-addon.md) §5.4), the file only on `BridgeUnavailable` or when `project_path` names another project (TL-10). The path ends in `.gdshader` or `.gdshaderinc` and goes through `resolve_in_project`; the version label, the matching and the 1 MiB limit are those of §5.4. The file fallback writes through a temporary file and a rename, refuses an existing file without `overwrite`, keeps a `\r\n` file's endings on edit, and gives a new file a `.uid` file (`ensure_uid_file`); a `.uid` it cannot write is an error that names the file. `godot_validate_shader` refuses a missing file and runs `CliRunner::check_shader`: the fixed `shader_check.gd` loads the shader (preprocessor, includes) and asks for its RID, so the headless renderer compiles it; a `Logger` subclass collects shader errors as `{file, line, message}`, printed after the marker `GODOT_MCP_SHADER=`. A `.gdshaderinc` is refused with the fix: Godot compiles an include only inside a shader, so the caller validates a `.gdshader` that includes it.
 
-### 5.9 Import Parameters [ADDED]
+### 5.9 Import Parameters
 
 `tools/import_params.rs` realizes CA-15. With an editor that has the project open (`editor_has_project`) the bridge's `import_params` command does the work and reimports through the editor's file system. Otherwise `CliRunner::import_params` copies the addon's `editor/import_ops.gd` into a throw-away project with a fixed driver script and the request in `res://request.json`, and `import_project_within` reimports headless. An `importer` is first checked against the built-in importers of the file type, because Godot replaces a name it lacks with the default; the importer the reimport used is checked after. The answer reports the importer before and after, the imported type, `new_options`, `ignored_options` and `reimported`; with `reimport: false` only the sidecar changes.
 
-### 5.10 InputMap and Deletion [ADDED]
+### 5.10 InputMap and Deletion
 
 - `tools/input_map.rs` (CA-16) sends `get_input_map` and `edit_input_action` and has no fallback; without an editor the call fails with the editor-unreachable hints (TL-7). The event schema is published in full (`type` and its fields), so the caller does not guess key names.
-- `tools/files.rs` (CA-17) sends `delete_files` when the editor has the project open. The fallback applies the same refusals (protected paths, companions whose file exists, directories, references by `res://` path or `uid://` unless `force`), deletes the files and their `.uid`, `.import` and `.godot/imported` data permanently, and answers `rescan_needed: true`. Both answer `deleted`, `refused` and `references`; with `dry_run`, `would_delete` and nothing deleted.
+- `tools/files.rs` (CA-17) sends `delete_files` when the editor has the project open. The fallback applies the same refusals (protected paths, companions whose file exists, directories, references by `res://` path or `uid://` unless `force`; a GDScript file that only writes the path is a `written` reference that warns and does not refuse, classified by `reference_kind.rs` exactly as the addon does), deletes the files and their `.uid`, `.import` and `.godot/imported` data permanently, and answers `rescan_needed: true`. Both answer `deleted`, `refused` and `references`, each reference with its `kind` (`written` or `used`); with `dry_run`, `would_delete` and nothing deleted.
 
-### 5.11 One-Off Scripts [ADDED]
+### 5.11 One-Off Scripts
 
 `godot_run_script` (`headless.rs`) realizes TL-13.
 
 1. **Check.** The script path goes through `resolve_in_project`; `main_loop_problem` follows the script's `extends` chain (at most 16 base scripts, global classes from `.godot/global_script_class_cache.cfg`) and refuses a script that does not extend `SceneTree` or `MainLoop`, because Godot 4.8 prints an error and exits with code 0 for one.
-2. **Imports.** [ADDED] Headless Godot loads the `.godot/imported` cache as it is, so `check_imports` (`run.rs`, shared with `godot_run_project`) compares the files with a `.import` sidecar with their cache first. An editor that has the project open reimports the stale ones through `resave_resources`; otherwise the script still runs and `import_warning` names the paths and `godot_resave_resources`. `stale_imports` holds the first 20 paths, `total` and `reimported`. The check runs before the snapshot, so a reimport is not taken for the script's writes.
+2. **Imports.** Headless Godot loads the `.godot/imported` cache as it is, so `check_imports` (`run.rs`, shared with `godot_run_project`) compares the files with a `.import` sidecar with their cache first. An editor that has the project open reimports the stale ones through `resave_resources`; otherwise the script still runs and `import_warning` names the paths and `godot_resave_resources`. `stale_imports` holds the first 20 paths, `total` and `reimported`. The check runs before the snapshot, so a reimport is not taken for the script's writes.
 3. **Snapshot.** `TextResourceSnapshot::take` records every text scene and resource (uids, `[ext_resource]` uids) and the header uid of every binary one (`binary_resource.rs` reads `RSRC` and the zstd-compressed `RSCC` form). Files over 16 MiB are fingerprinted only.
 4. **Run.** `CliRunner::run_script`: `--headless --path <project> -s <script>`, `user_args` after `--`, a timeout of 120 s by default (at most 600) after which the process tree is killed and the last lines are quoted. After a `SCRIPT ERROR`, a stretch of silence means the main loop is idle and the run is stopped (`stopped_idle`). `script_load_failure` turns a script Godot could not load into `load_error`.
 5. **Repair.** `resource_audit.rs` compares the files with the snapshot: a rewritten text file gets its `uid=` and the `[ext_resource]` uids written back and its `shader_parameter/<name> = null` lines removed; a binary file that lost its header uid gets it back through `CliRunner::set_binary_uids` (a fixed script outside the project calling `ResourceSaver.set_uid`, the pairs in a JSON file), and the headers are read again to see which took. `resource_repairs` lists what was repaired, `resource_damage` what was not, with a fix.
 6. **Refresh.** When an editor has the project open, the written files go to `resave_resources`, which also reloads what the editor holds; its answer is `editor_refresh`, a failure `editor_refresh_error`.
-7. **Keep it short.** [ADDED] `RepairReport` bounds the answer: `resource_repairs` holds the first 20 repairs with the count of restored `[ext_resource]` uids instead of the uids, `resource_repairs_total` counts them all, every list of `editor_refresh` stops at 20 with `<list>_total` beside a cut one, and the summary and the `resource_damage` warning name at most three files and count the rest. `exit_code`, the output, `script_errors`, `load_error` and `resource_damage` itself are never cut.
-8. **Exit-time leaks.** [ADDED] `exit_leaks.rs` collapses the reports Godot prints while a script's process shuts down (leaked instance dependencies, RID allocations, ObjectDB instances, resources in use, paged-allocator pages): each identical report is shown once where it first appeared with `×N`, every other line stays as it was, nothing is dropped, `exit_leaks` counts the reports by kind, and `hint` names what causes them (nodes that are not in the tree or were removed from it and never freed). Which kinds appear depends on the engine.
-9. **Uid cache.** [ADDED] `godot/uid_cache.rs` records the uids the server wrote back in `.godot/uid_cache.bin`, in the format of `ResourceUID::save_to_cache`, the way the editor's rescan does (an id known for another path is moved, an entry that gave the same path another id is dropped); the file is replaced atomically, nothing is written when the project has no cache, and a cache that does not parse is left as it is and reported. Without it the next run that loads the new files prints one "invalid UID" warning per reference.
+7. **Keep it short.** `RepairReport` bounds the answer: `resource_repairs` holds the first 20 repairs with the count of restored `[ext_resource]` uids instead of the uids, `resource_repairs_total` counts them all, every list of `editor_refresh` stops at 20 with `<list>_total` beside a cut one, and the summary and the `resource_damage` warning name at most three files and count the rest. `exit_code`, the output, `script_errors`, `load_error` and `resource_damage` itself are never cut.
+8. **Exit-time leaks.** `exit_leaks.rs` collapses the reports Godot prints while a script's process shuts down (leaked instance dependencies, RID allocations, ObjectDB instances, resources in use, paged-allocator pages): each identical report is shown once where it first appeared with `×N`, every other line stays as it was, nothing is dropped, `exit_leaks` counts the reports by kind, and `hint` names what causes them (nodes that are not in the tree or were removed from it and never freed). Which kinds appear depends on the engine.
+9. **Uid cache.** `godot/uid_cache.rs` records the uids the server wrote back in `.godot/uid_cache.bin`, in the format of `ResourceUID::save_to_cache`, the way the editor's rescan does (an id known for another path is moved, an entry that gave the same path another id is dropped); the file is replaced atomically, nothing is written when the project has no cache, and a cache that does not parse is left as it is and reported. Without it the next run that loads the new files prints one "invalid UID" warning per reference.
 
 `imports.rs` serves `godot_run_project` and the headless resave too: the fingerprint of a resave covers the `.md5` record and the times as well as the sidecar text, so a model reimported with the same options is listed, a source Godot skipped because its modification second matched the last scan is named, and `force_reimport` removes the `.md5` record of the named source and moves its sidecar's time back one second so that the next scan tests it; the stale-import notice lists sources whose import cache is older than the file and whose bytes differ from the `source_md5` Godot recorded in `.godot/imported/<name>-<hash>.md5` (a source rewritten with the same bytes is not reimported by Godot, so it is not stale; a missing cache always is), since a process run does not reimport.
 
-### 5.12 Export Tools [ADDED]
+### 5.12 Export Tools
 
 `tools/export.rs` realizes EX-1 to EX-7.
 
 - **Presets.** `godot_list_export_presets` and `godot_set_export_preset` call `CliRunner::export_presets`: a fixed script edits `export_presets.cfg` with `ConfigFile` in a throw-away project, the request in `res://request.json`. Limits: names 128 characters, fields 4096, at most 128 options; an option value is a string, number or boolean and keeps its stored type. A new preset needs `platform` (the built-in names, or one an export plugin adds); an existing one must match its stored platform. `set` refuses while `editor_has_project` (EX-2). The answer lists `new_options`.
 - **Export.** `godot_export_project`: `output_file` resolves the output (the preset's `export_path` by default) inside the project and refuses a folder, a path under `.godot/`, an extension of `SOURCE_EXTENSIONS` (`gd`, `tscn`, `scn`, `tres`, `res`, `godot`, `cfg`, `import`, `uid`, `gdshader`, `cs`) and, in pack mode, anything but `.pck` or `.zip`; the folder is created and Godot gets the absolute path, which never starts with `-`. `import_project_within` runs first unless `import` is false or the editor has the project open; then `CliRunner::export_project` runs `--export-pack`, `--export-release` or `--export-debug` with the preset name. The answer quotes up to 40 `ERROR`/`WARNING` lines and the last 12 KiB of each stream; a missing template, no file written or a timeout is an error with that log.
 
-### 5.13 Addon Update [ADDED]
+### 5.13 Addon Update
 
 `build.rs` lists every file below `addons/godot_mcp` (names starting with `.` are skipped), embeds each with `include_bytes!` in a generated table and watches the folder, so a build carries the addon of its own sources. `addon.rs` holds that table (`FILES`) and `SERVER_VERSION`, the manifest version, which the addon's `plugin.cfg` carries too. `tools/addon_update.rs` realizes TL-14.
 
@@ -177,7 +178,7 @@ The number of the removed voxel model check is kept so that the references to th
 5. **Enable.** `addon::enable_in` adds the manifest to `[editor_plugins] enabled` and keeps other plugins; a `project.godot` whose `enabled=` line has another shape is left unchanged.
 6. **Explain.** `ToolManager::call_tool` passes every result through `explain_unknown_command`: an error holding `Unknown command type: X` becomes one that names the editor's addon version, the server's and the update call with the editor's project path. `godot_read_shader` and `godot_edit_shader` (§5.8) answer such an error from the shader file instead, with the same note and the fields `addon_version` and `server_version`.
 
-### 5.14 Windowed One-Shot Tools [ADDED]
+### 5.14 Windowed One-Shot Tools
 
 `godot_review_assets` (`tools/review.rs`) and `godot_world_map` (`tools/world_map.rs`) draw a picture of project scenes that no running game shows. A headless engine does not render, so `CliRunner::run_script_with` starts `godot --path <project> --resolution 64x64 --audio-driver Dummy -s <embedded script> -- <request.json>`, with the script and the request in a scratch directory outside the project that is removed afterwards.
 
@@ -207,14 +208,21 @@ The number of the removed voxel model check is kept so that the references to th
 | `[INPUT]` | `src/tools/input_map.rs` | InputMap tools (§5.10) |
 | `[FILES]` | `src/tools/files.rs` | File deletion (§5.10) |
 | `[EDITOR]` | `src/tools/editor.rs` | Closing an editor (TL-12) |
-| `[ADDON]` | `src/addon.rs`, `build.rs` | The embedded addon, its comparison and installation (§5.13) |
+| `[ADDON]` | `src/addon.rs` | The embedded addon, its comparison and installation (§5.13) |
+| `[BUILD]` | `build.rs` | Embeds the addon at build time (§5.13) |
 | `[ADDON-UPDATE]` | `src/tools/addon_update.rs` | The update tool and the older-addon explanations (TL-14) |
 | `[MAIN-LOOP]` | `src/tools/main_loop.rs` | Main-loop check of a one-off script (§5.11) |
 | `[AUDIT]` | `src/godot/resource_audit.rs` | What a headless save dropped, and its repair (§5.11) |
 | `[BINARY]` | `src/godot/binary_resource.rs` | The header uid of a binary scene or resource |
 | `[IMPORTS]` | `src/godot/imports.rs` | Stale import caches |
 | `[EXPORT]` | `src/tools/export.rs` | Export tools (§5.12) |
-| `[ENGINE]` | `src/cli_runner.rs` | Engine runs and the fixed scripts |
+| `[REFERENCE-KIND]` | `src/tools/reference_kind.rs` | Classifies a script's reference to a path as written or used (§5.10) |
+| `[EXIT-LEAKS]` | `src/tools/exit_leaks.rs` | Collapses the leak reports of a script's shutdown (§5.11) |
+| `[UID-CACHE]` | `src/godot/uid_cache.rs` | Uid cache entries for the files a headless script saved (§5.11) |
+| `[REVIEW]` | `src/tools/review.rs` | The asset review tool (§5.14) |
+| `[REVIEW-SCRIPT]` | `src/tools/review_assets.gd` | The fixed script of the asset review (§5.14) |
+| `[WORLD-MAP]` | `src/tools/world_map.rs` | The world map tool (§5.14) |
+| `[WORLD-MAP-SCRIPT]` | `src/tools/world_map.gd` | The fixed script of the world map (§5.14) |
 | `[DOCS]` | `README.md` | User-facing tool table |
 | `[PARITY]` | `docs/feature-parity.md` | Comparison of the tool set with other Godot MCP servers |
 
@@ -243,3 +251,4 @@ The number of the removed voxel model check is kept so that the references to th
 | 1.13.0 | 2026-11-03 | Agent (magic.spec) | [MODIFIED] §5.11: the stale-import check compares the recorded `source_md5` before it calls a cache stale. Source: pull request 108. Stable → RFC → Stable after Post-Update Review. |
 | 1.14.0 | 2026-11-04 | Agent (magic.spec) | [ADDED] §5.11 step 8 (exit-time leak reports collapsed and counted) and the headless resave fingerprint, the skipped-source report and `force_reimport` in the `imports.rs` paragraph. Source: pull requests 120 and 114. Stable → RFC → Stable after Post-Update Review. |
 | 1.15.0 | 2026-11-04 | Agent (magic.spec) | [ADDED] §5.11 step 9 (the uid cache) and §5.14 (the windowed one-shot tools of the asset review and the world map). Source: pull requests 118, 112 and 121. Stable → RFC → Stable after Post-Update Review. |
+| 1.16.0 | 2026-11-05 | Agent (magic.spec) | §5.10: the `written` and `used` kinds of a reference to a deleted file (CA-17). The file map and Canonical References gain the modules merged without an entry (`reference_kind.rs`, `exit_leaks.rs`, `uid_cache.rs`, `review.rs`, `world_map.rs` and the two fixed scripts); `src/addon.rs` and `build.rs` are two rows, and a repeated row is gone. Stable → RFC → Stable after Post-Update Review. Removed the `[ADDED]` and `[MODIFIED]` markers from the body: the history rows carry what changed. No requirement changed. |

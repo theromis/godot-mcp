@@ -1,6 +1,6 @@
 # Community Health Files
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Status:** Stable
 **Layer:** concept
 
@@ -15,7 +15,7 @@ Defines the two policy documents a security reporter or a contributor meets firs
 - [l1-editor-bridge.md](l1-editor-bridge.md) - Guarantees the security policy names as its scope.
 - [l1-tool-catalog.md](l1-tool-catalog.md) - Write and launch safety, part of the security scope.
 - [l1-agent-feedback.md](l1-agent-feedback.md) - The public feedback channel the security policy keeps vulnerabilities out of.
-- [l1-repository-stewardship.md](l1-repository-stewardship.md) - How issues and pull requests are handled once opened, which the contributor guide describes. [ADDED]
+- [l1-repository-stewardship.md](l1-repository-stewardship.md) - How issues and pull requests are handled once opened, which the contributor guide describes.
 - [l2-community-health-files.md](l2-community-health-files.md) - Implementation of this concept.
 
 ## 1. Motivation
@@ -66,7 +66,7 @@ Both documents exist only as headings. A reporter without a private channel eith
 | Making a Change | Test first, where each kind of test goes, coding standards (link to the agent guide) |
 | Verification | The full pipeline, as copyable commands |
 | Commits and Pull Requests | Commit message format, one logical change per pull request, what the description states, what never to commit |
-| Issues and Pull Requests | [ADDED] That an AI assistant triages, answers and reviews on the maintainers' behalf and says so in every message; what the labels and priorities mean; when an unanswered request for information closes an issue and how to reopen it; how to reach a person; that the maintainers decide on accepting features and on releases; where the board is |
+| Issues and Pull Requests | That an AI assistant triages, answers and reviews on the maintainers' behalf and says so in every message; what the labels and priorities mean; when an unanswered request for information closes an issue and how to reopen it; how to reach a person; that the maintainers decide on accepting features and on releases; where the board is |
 | Carrying Changes Between Lines | How a merged change reaches older lines, who does it |
 | Planning and Specifications | That the planning directory is shared and maintained on the default branch, how maintainers use the planning workflow, what contributors need to know without it |
 | For AI Agents | Read and follow the agent guide; the commands here are the same |
@@ -83,7 +83,7 @@ Both documents exist only as headings. A reporter without a private channel eith
 | Verification commands, toolchain or engine minimum change | — | Development Setup, Verification |
 | Branch model or carrying procedure changes | How Fixes Are Released | Branches and Godot Versions, Carrying Changes Between Lines |
 | Commit or pull request conventions change | — | Commits and Pull Requests |
-| Stewardship settings change (labels, timings, autonomy, the board) | — | Issues and Pull Requests [ADDED] |
+| Stewardship settings change (labels, timings, autonomy, the board) | — | Issues and Pull Requests |
 
 ## 7. Drawbacks & Alternatives
 
@@ -106,3 +106,4 @@ Both documents exist only as headings. A reporter without a private channel eith
 | --- | --- | --- | --- |
 | 1.0.0 | 2026-10-20 | Agent (magic.spec) | Created from the request to fill the security policy and the contributor guide following GitHub's guidance, readable by people and AI agents, and to keep them current. Promoted to Stable after Post-Update Review. |
 | 1.1.0 | 2026-10-20 | Agent (magic.spec) | [ADDED] CH-5 and the contributor guide's Issues and Pull Requests section, with its update trigger, for the AI-assisted handling of issues and pull requests. Stable → RFC → Stable after Post-Update Review. |
+| 1.1.1 | 2026-11-05 | Agent (magic.spec) | Removed the `[ADDED]` and `[MODIFIED]` markers from the body: the history rows carry what changed. No requirement changed. |
