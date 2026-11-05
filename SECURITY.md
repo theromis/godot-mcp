@@ -14,7 +14,7 @@ Each godot-mcp release holds the files for every supported Godot minor version. 
 | 4.8 (pre-release) | `master` | Fixed here first; no releases | Build from source |
 | 0.4.0 and older | — | No | The latest release |
 
-- The files for Godot 4.6 end in `-godot4.6`, and the version they report ends in `+godot.4.6`.
+- The files for Godot 4.6 end in `-godot4.6`, and the version they report contains `+godot.4.6`; a release build adds the commit it was built from after it (`0.13.0+godot.4.6.g1a2b3c4d5`).
 - To find the version you run, read `version=` in `addons/godot_mcp/plugin.cfg` of your project.
 
 ## Reporting a Vulnerability

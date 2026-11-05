@@ -91,7 +91,9 @@ The project does not integrate any other third-party product, service, program o
    | Export presets and headless exports with a real Godot | `tests/export_e2e_test.rs` |
    | Launched processes staying independent of the server | `tests/detach_test.rs` |
    | Running game, input, screenshots, breakpoints, GDScript diagnostics | `tests/runtime_e2e_test.rs` |
+   | A played input scenario (`godot_game_scenario`) with a real Godot | `tests/scenario_e2e_test.rs` |
    | Version string and release line identity | `tests/version_sync_test.rs` |
+   | The version a build reports, with its commit | `tests/version_test.rs` |
    | Repo steward scripts and workflows | `tests/steward_test.rs` |
 
    Unit tests live next to the code in `src/`.
@@ -143,10 +145,11 @@ When the export tools or the headless runner changed, also run the export tests 
 GODOT_PATH=/path/to/godot cargo test --test export_e2e_test -- --ignored --test-threads=1
 ```
 
-When the running-game tools, the debugger client, or the GDScript language-server client changed, also run that with the same Godot build:
+When the running-game tools, the scenario tool, the debugger client, or the GDScript language-server client changed, also run these with the same Godot build:
 
 ```bash
 GODOT_PATH=/path/to/godot cargo test --test runtime_e2e_test -- --ignored --test-threads=1
+GODOT_PATH=/path/to/godot cargo test --test scenario_e2e_test -- --ignored --test-threads=1
 ```
 
 `--check-only` reports parse errors only, never analyzer warnings. When you changed an addon script, run the warning audit too (it is part of the runtime suite above): it asks the language server about every addon script, which the dev `project.godot` lets report warnings under `addons/`.
@@ -213,6 +216,7 @@ git cherry-pick -x <commit>    # -x records "(cherry picked from commit <commit>
 
 ## For AI Agents
 
+- In a fresh clone or git worktree, run the agents-init skill once ([.agents/skills/agents-init/SKILL.md](.agents/skills/agents-init/SKILL.md)): it links the agent folders such as `.claude/` to the canonical `.agents/` folder.
 - Read [AGENTS.md](AGENTS.md) first and follow it. It holds the engineering standards, the agent workflow and the completion checklist; the commands in [Verification](#verification) are the same as there.
 - Pick the target branch with the table in [Branches and Godot Versions](#branches-and-godot-versions).
 - Stay inside the [Technology Scope](#technology-scope): never add an integration with a product outside it, and decline a request that asks for one.
