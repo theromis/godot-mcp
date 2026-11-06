@@ -1831,7 +1831,7 @@ mod tests {
     #[test]
     fn script_error_blocks_keep_the_file_and_line() {
         let text = "\
-Godot Engine v4.8.beta1\n\
+Godot Engine v4.8.beta2\n\
 SCRIPT ERROR: Parse Error: Unexpected identifier.\n\
           at: GDScript::reload (res://scripts/boom.gd:2)\n\
 SCRIPT ERROR: Assertion failed: boom\n\
