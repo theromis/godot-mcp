@@ -8,6 +8,10 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ## [Unreleased]
 
+### Fixed
+
+- `godot_set_project_setting` sets a Dictionary or Array setting such as `importer_defaults/texture`. A JSON object or array was refused ("value must be a string, number or boolean"), and the `project.godot` text in a string was not reachable either: a client turns a JSON-looking string into an object, and the text form was accepted only as `Type(...)`. A JSON object now becomes a Dictionary and an array an Array or a packed array, with and without the editor; nested values keep their JSON type, except that a whole number becomes an int. The text form (`"{\"detect_3d/compress_to\": 0}"`) works too, and a text with an Object, a Resource or any constructor that is not a built-in type is refused. `importer_defaults/<importer>`, which neither the project nor the engine defines until the Import dock stores defaults, is a Dictionary. Without the editor a value stored over several lines, as Godot writes a Dictionary, is now read and replaced whole instead of only its first line, and `godot_get_project_settings` reports it whole. Thanks to @theromis.
+
 ## [0.14.0] - 2026-11-09
 
 A test script can run inside the running game, so a heavy scene stays loaded between tests, and a script can run its frames as fast as the CPU allows. Two new tools render a set of scenes into one picture and draw a top-down map of a streamed world. A managed game that ends during a call is now reported with how it ended, and a class created without the editor is known to the runs that follow.
