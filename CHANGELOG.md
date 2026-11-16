@@ -11,6 +11,7 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 ### Fixed
 
 - `godot_run_script` gives every rewritten binary scene and resource its uid back, however many the script re-saved. The Godot process that writes them had 30 s, whatever the number and size of the files, so a run that re-saved 96 compressed meshes (373 MB) repaired 77 and left 20 without their uid. Its time now grows with the files and their size, and a pass that runs out of time is followed by up to two more for the files still missing. When some are still left, `binary_uid_error` counts them, names a few and says how to write the uids back.
+- `godot_run_script` no longer gives a rewritten scene or resource a new uid when its header had none at the start of the run but the project's uid cache still holds its uid: a file an earlier run left without its uid (a run stopped before its repair, or a headless run in another session on the same project) got a new uid, and every `uid://` reference to it in other scenes and the uid cache then pointed at nothing. The repair, `resource_damage` and the binary uid writes take the uid from the header as it was before the run and, when it has none, from `.godot/uid_cache.bin`, unless another file's header now carries that uid; a new uid is made only for a file with neither.
 
 ## [0.14.0] - 2026-11-09
 
