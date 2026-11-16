@@ -22,6 +22,7 @@ mod editor;
 mod exit_leaks;
 mod export;
 mod feedback;
+mod file_move;
 mod files;
 mod game;
 mod headless;
@@ -145,6 +146,7 @@ impl ToolManager {
             name if authoring::handles(name) => authoring::call(&self, name, args).await,
             name if input_map::handles(name) => input_map::call(&self, name, args).await,
             name if files::handles(name) => files::call(&self, args).await,
+            name if file_move::handles(name) => file_move::call(&self, args).await,
             name if scripts::handles(name) => scripts::call(&self, name, args).await,
             name if shaders::handles(name) => shaders::call(&self, name, args).await,
             name if game::handles(name) => game::call(&self, name, args).await,
@@ -882,6 +884,7 @@ fn annotations(name: &str) -> Option<ToolAnnotations> {
         | "godot_game_command"
         | "godot_game_run_script"
         | "godot_close_editor"
+        | "godot_move_file"
         | "godot_export_project" => [false, true, false],
         _ => return None,
     };
@@ -1235,6 +1238,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
     tools.extend(authoring::catalog());
     tools.extend(input_map::catalog());
     tools.extend(files::catalog());
+    tools.extend(file_move::catalog());
     tools.extend(scripts::catalog());
     tools.extend(shaders::catalog());
     tools.extend(addon_update::catalog());
