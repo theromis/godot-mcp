@@ -8,6 +8,10 @@ Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.
 
 ## [Unreleased]
 
+### Added
+
+- `godot_run_pack` smoke-runs an exported pack: `godot --main-pack <pack>` (headless by default, optionally a `scene`, game `user_args` after `--`), stopped after `seconds` (default 10). It returns `ok`, whether the game ran the whole time, the exit code, the `ERROR` and `WARNING` lines and the end of the output, and names in `missing_resources` the `res://` and `uid://` paths Godot failed to load ("Resource file not found", "Can't open file from path" and the like). A trimmed export (`export_filter` `resources` or `scenes`) can now be checked on the machine that made it for files the game loads by a path no scene names, whichever platform the pack is for.
+
 ### Fixed
 
 - `godot_run_script` gives every rewritten binary scene and resource its uid back, however many the script re-saved. The Godot process that writes them had 30 s, whatever the number and size of the files, so a run that re-saved 96 compressed meshes (373 MB) repaired 77 and left 20 without their uid. Its time now grows with the files and their size, and a pass that runs out of time is followed by up to two more for the files still missing. When some are still left, `binary_uid_error` counts them, names a few and says how to write the uids back.
