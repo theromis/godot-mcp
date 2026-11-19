@@ -7990,7 +7990,8 @@ async fn a_movie_run_puts_movie_maker_before_the_separator_and_user_args_after_i
         text(&result)
     );
 
-    let arguments = wait_for_file(&record).await;
+    // Windows quotes each argument of a batch file; compare the paths without the quotes.
+    let arguments = wait_for_file(&record).await.replace('"', "");
     let (engine, game) = arguments.split_once(" -- ").unwrap_or((&arguments, ""));
     assert_eq!(arguments.matches(" -- ").count(), 1, "{arguments}");
     let output = project.path().join("movies").join("clip.avi");
@@ -8028,7 +8029,8 @@ async fn a_movie_run_defaults_to_sixty_frames_a_second_without_a_frame_limit() {
         .await;
     assert!(!result.is_error, "{}", text(&result));
     assert!(text(&result).contains("PNG sequence"), "{}", text(&result));
-    let arguments = wait_for_file(&record).await;
+    // Windows quotes each argument of a batch file; compare the paths without the quotes.
+    let arguments = wait_for_file(&record).await.replace('"', "");
     assert!(arguments.contains("--fixed-fps 60"), "{arguments}");
     assert!(!arguments.contains("--quit-after"), "{arguments}");
     assert!(!arguments.contains(" -- "), "{arguments}");
@@ -8128,7 +8130,8 @@ async fn a_movie_outside_the_project_needs_the_folder_the_person_allowed() {
         )
         .await;
     assert!(!result.is_error, "{}", text(&result));
-    let arguments = wait_for_file(&record).await;
+    // Windows quotes each argument of a batch file; compare the paths without the quotes.
+    let arguments = wait_for_file(&record).await.replace('"', "");
     assert!(
         arguments.contains(&format!("--write-movie {}", output.display())),
         "{arguments}"
