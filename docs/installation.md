@@ -1,20 +1,20 @@
 # Installation
 
-The files to download for your Godot version are listed in the [README](../README.md#installation). The quickest way to install is the prompt for your AI assistant in the README; these are the steps by hand.
+The files to download are listed in the [README](../README.md#installation). The quickest way to install is the prompt for your AI assistant in the README; these are the steps by hand.
 
 ## Install by hand
 
-**1. Download** the server for your platform and the addon from the [latest release](https://github.com/zeegzoog/godot-mcp/releases/latest), the files for your Godot version (see [the table above](../README.md#installation)). `M.N` is your Godot version, e.g. `4.6`.
+**1. Download** the server for your platform and the addon from the [latest release](https://github.com/zeegzoog/godot-mcp/releases/latest), the same files for every Godot version from 4.5 up (see [the README](../README.md#installation)).
 
 | Platform | Asset |
 | --- | --- |
-| Windows x86_64 | `godot-mcp-x86_64-pc-windows-msvc-godotM.N.zip` |
-| Linux x86_64 | `godot-mcp-x86_64-unknown-linux-gnu-godotM.N.tar.gz` |
-| macOS Apple Silicon | `godot-mcp-aarch64-apple-darwin-godotM.N.tar.gz` |
-| macOS Intel | `godot-mcp-x86_64-apple-darwin-godotM.N.tar.gz` |
-| Godot addon (required, any platform) | `godot-mcp-addon-godotM.N.zip` |
+| Windows x86_64 | `godot-mcp-x86_64-pc-windows-msvc.zip` |
+| Linux x86_64 | `godot-mcp-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS Apple Silicon | `godot-mcp-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `godot-mcp-x86_64-apple-darwin.tar.gz` |
+| Godot addon (required, any platform) | `godot-mcp-addon.zip` |
 
-The addon warns in the editor's Output panel when your Godot is newer than the release was made for, and refuses to start in an older Godot.
+The addon warns in the editor's Output panel when your Godot is newer than 4.8 (the newest version the tests run against), and refuses to start in an older Godot.
 
 **2. Enable the plugin.** Copy `addons/godot_mcp` from the addon archive into your project's `addons/` folder, open the project, and enable **Godot MCP Bridge** in **Project → Project Settings → Plugins**. The bridge listens on a port derived from the project's path, which a server started in the project directory derives too (see [Bridge port](configuration.md#bridge-port)), so editors of several projects or git worktrees can run at once. The addon is editor-only and leaves itself out of exported games while the plugin is enabled; if you export with it disabled, add `addons/godot_mcp/*` to the export preset's exclude filter.
 

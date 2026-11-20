@@ -4,9 +4,13 @@ All notable changes to godot-mcp. The server and the Godot addon always ship wit
 version number. The section for a version is used as the text of its GitHub Release, so every
 release needs one (the release workflow fails without it).
 
-Each Godot version has its own release line and branch (`godot-v4.5`, `godot-v4.6`, `godot-v4.7`, …). From 0.5.1 on, one release holds the files of every supported Godot version, and its notes are the section of this file; they mark changes that concern some Godot versions only.
+Releases 0.5.1 to 0.15.0 were built once per Godot version, from the branches `godot-v4.5`, `godot-v4.6` and `godot-v4.7`, and held the files of every supported Godot version, with names ending in `-godotM.N`. Releases after 0.15.0 are made from `master` as one build for Godot 4.5 and newer.
 
 ## [Unreleased]
+
+### Changed
+
+- **One build for every Godot version again.** Releases 0.5.1 to 0.15.0 were built once per Godot version, with files ending in `-godot4.5`, `-godot4.6` or `-godot4.7`. A release is now made from `master` alone: one server archive per platform (`godot-mcp-<target>.zip` or `.tar.gz`) and one addon archive (`godot-mcp-addon.zip`), which serve Godot 4.5 to 4.8; CI runs the editor, running-game, scenario, export and addon-export suites on 4.5, 4.6, 4.7 and 4.8. The version no longer carries `+godot.M.N`, and a release tag is `vX.Y.Z` only. The addon refuses an editor older than 4.5 as before, and warns on one newer than 4.8 instead of asking for a release for that version. Releases up to 0.15.0 stay available; the branches `godot-v4.5`, `godot-v4.6` and `godot-v4.7` are kept as they are and get no further fixes: update to the latest release.
 
 ## [0.15.0] - 2026-11-19
 
