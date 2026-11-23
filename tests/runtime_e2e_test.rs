@@ -5114,6 +5114,80 @@ async fn set_resource_properties_without_an_editor_keeps_uids_and_unset_uniforms
     );
 }
 
+/// godot_create_resource without an editor writes a file Godot loads as the class it was asked
+/// for, and godot_set_resource_properties can change that file right after.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn created_resource_without_an_editor_loads_and_takes_properties() {
+    let _ = IGNORE;
+    let project = project_dir_with_scripts();
+    let root = project.path();
+    std::fs::write(
+        root.join("scripts/load_overlay.gd"),
+        "extends SceneTree\n\nfunc _initialize() -> void:\n\tvar loaded: Resource = ResourceLoader.load(\"res://materials/overlay.tres\", \"\", ResourceLoader.CACHE_MODE_IGNORE)\n\tprint(\"LOADED \", loaded.get_class() if loaded else \"null\")\n\tquit(0)\n",
+    )
+    .unwrap();
+    let tools = manager(root);
+
+    let created = call(
+        &tools,
+        "godot_create_resource",
+        json!({
+            "class_name": "StandardMaterial3D",
+            "resource_path": "res://materials/overlay.tres",
+            "project_path": root
+        }),
+    )
+    .await;
+    let created_text = text_of(&created);
+    assert!(!created.is_error, "{created_text}");
+    assert!(
+        created_text.contains("Godot loads it"),
+        "the answer does not say the file loads: {created_text}"
+    );
+    let header = std::fs::read_to_string(root.join("materials/overlay.tres")).unwrap();
+    assert!(
+        header.starts_with("[gd_resource type=\"StandardMaterial3D\" format=3 uid=\"uid://"),
+        "the header has no uid: {header}"
+    );
+
+    let loaded = call(
+        &tools,
+        "godot_run_script",
+        json!({"script": "res://scripts/load_overlay.gd", "project_path": root, "timeout_seconds": 30}),
+    )
+    .await;
+    let loaded_text = text_of(&loaded);
+    assert!(!loaded.is_error, "{loaded_text}");
+    assert!(
+        loaded_text.contains("LOADED StandardMaterial3D"),
+        "Godot could not load the created resource: {loaded_text}"
+    );
+    assert!(
+        !loaded_text.contains("Parse Error"),
+        "the created file has a parse error: {loaded_text}"
+    );
+
+    let set = call(
+        &tools,
+        "godot_set_resource_properties",
+        json!({
+            "resource_path": "res://materials/overlay.tres",
+            "properties": {"albedo_color": {"r": 1, "g": 0, "b": 0, "a": 0.5}},
+            "project_path": root
+        }),
+    )
+    .await;
+    let set_text = text_of(&set);
+    assert!(!set.is_error, "{set_text}");
+    let saved = std::fs::read_to_string(root.join("materials/overlay.tres")).unwrap();
+    assert!(
+        saved.starts_with("[gd_resource type=\"StandardMaterial3D\"")
+            && saved.contains("albedo_color = Color(1, 0, 0, 0.5)"),
+        "the property was not saved:\n{saved}\n{set_text}"
+    );
+}
+
 fn project_dir_with_scripts() -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("script project");
     let root = dir.path();

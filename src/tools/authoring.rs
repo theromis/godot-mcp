@@ -3,9 +3,11 @@
 //! The editor path goes through the bridge and is undoable. With no editor, creating
 //! a scene, a resource or a project setting falls back to writing the file.
 
+use super::shaders::{random_uid, uid_text};
 use super::{EditorChoice, ToolManager, str_arg};
 use crate::cli_runner::{ClassKind, SettingType};
 use crate::error::McpError;
+use crate::godot::{UidCacheUpdate, record_uids};
 use crate::paths::{res_display, resolve_in_project};
 use crate::protocol::{Tool, ToolResult};
 use serde_json::{Value, json};
@@ -60,7 +62,7 @@ pub fn catalog() -> Vec<Tool> {
         ),
         tool(
             "godot_create_resource",
-            "Creates a Resource .tres of a built-in class. Never replaces an existing file. Uses the editor when connected; without it, writes an empty resource as text.",
+            "Creates a Resource .tres of a built-in class. Never replaces an existing file. Uses the editor when connected; without it, writes an empty resource as text (with a uid and an empty [resource] section, as Godot saves one), loads it in a headless Godot to check it, and removes it again with an error when Godot cannot load it.",
             json!({"resource_path": s(""), "class_name": s("For example StandardMaterial3D."), "project_path": s("")}),
             &["resource_path", "class_name"],
         ),
@@ -326,7 +328,8 @@ async fn create_resource(tools: &ToolManager, args: &Value) -> ToolResult {
                     );
                 }
             };
-            let body = format!("[gd_resource type=\"{class_name}\" format=3]\n");
+            let uid = uid_text(random_uid());
+            let body = empty_resource_text(class_name, &uid);
             match create_new_file(&file, &body) {
                 Ok(()) => {}
                 Err(error) if error.kind() == ErrorKind::AlreadyExists => {
@@ -344,13 +347,52 @@ async fn create_resource(tools: &ToolManager, args: &Value) -> ToolResult {
                     );
                 }
             }
+            let res_path = res_display(&project, &file);
+            let verified = match tools.cli.check_resource_load(&project, &res_path).await {
+                Ok(load) if load.loaded && load.class == class_name => {
+                    "Godot loads it (checked in a headless run)".to_string()
+                }
+                Ok(load) => {
+                    // The file is the one this call made, so removing it leaves the project as it was.
+                    let _ = std::fs::remove_file(&file);
+                    let seen = if load.loaded {
+                        format!("Godot loaded it as {}", load.class)
+                    } else {
+                        "Godot could not load it".to_string()
+                    };
+                    return ToolResult::error(
+                        format!(
+                            "{res_path} was written but {seen}, so it was removed again: {}",
+                            super::export::tail(&load.output)
+                        ),
+                        &[
+                            "Open the project in the editor with the Godot MCP Bridge plugin and create the resource there",
+                            "Report this with godot_note_feedback: the text the server writes should load in this Godot version",
+                        ],
+                    );
+                }
+                Err(error) => format!(
+                    "the load check could not run ({error}), so it is not verified that Godot loads it"
+                ),
+            };
+            let cache = match record_uids(&project, &[(res_path.clone(), uid.clone())]) {
+                Ok(UidCacheUpdate::Recorded(_)) => " Its uid is recorded in .godot/uid_cache.bin.",
+                Ok(UidCacheUpdate::Missing) | Err(_) => "",
+            };
             ToolResult::text(format!(
-                "Created {path} ({class_name}) in {} as text. Open the editor to let Godot import it.",
+                "Created {res_path} ({class_name}, {uid}) in {} as text; {verified}.{cache} Open the editor to let Godot import it.",
                 project.display()
             ))
         }
         Err(error) => super::bridge_error_result(&error),
     }
+}
+
+/// The text Godot saves for a new resource of `class` whose values are all defaults: the header
+/// with its uid and an empty `[resource]` section, without which the text loader stops at
+/// "Unexpected end of file".
+fn empty_resource_text(class: &str, uid: &str) -> String {
+    format!("[gd_resource type=\"{class}\" format=3 uid=\"{uid}\"]\n\n[resource]\n")
 }
 
 /// The class could not be checked because the engine could not be run; nothing was written.

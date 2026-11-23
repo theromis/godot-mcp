@@ -166,7 +166,9 @@ pub fn slowly_printing_godot(dir: &Path) -> PathBuf {
 /// A stand-in for the Godot executable that answers the class check of the authoring fallbacks:
 /// it reads the class name after `--` (the last argument) and prints `GODOT_MCP_CLASS=scene` for
 /// a few Node classes, `resource` for a few Resource classes and `no` for anything else. It
-/// answers the project setting type check as for a setting the engine does not define.
+/// answers the project setting type check as for a setting the engine does not define, and the
+/// resource load check (a `res://` path last) as a file that loaded as the resource class it
+/// classified last.
 pub fn classifying_godot(dir: &Path) -> PathBuf {
     #[cfg(windows)]
     {
@@ -176,9 +178,14 @@ pub fn classifying_godot(dir: &Path) -> PathBuf {
             "@echo off
 echo GODOT_MCP_SETTING={}
 for %%a in (%*) do set LAST=%%a
+if \"%LAST:~0,6%\"==\"res://\" goto load
 for %%c in (Node Node2D Node3D Control) do if \"%LAST%\"==\"%%c\" (echo GODOT_MCP_CLASS=scene& exit /b 0)
-for %%c in (Resource Curve Gradient) do if \"%LAST%\"==\"%%c\" (echo GODOT_MCP_CLASS=resource& exit /b 0)
+for %%c in (Resource Curve Gradient) do if \"%LAST%\"==\"%%c\" (>\"%~dp0last_class.txt\" echo %%c& echo GODOT_MCP_CLASS=resource& exit /b 0)
 echo GODOT_MCP_CLASS=no
+exit /b 0
+:load
+set /p CLASS=<\"%~dp0last_class.txt\"
+echo GODOT_MCP_RESOURCE={\"loaded\":true,\"class\":\"%CLASS%\"}
 ",
         )
         .expect("write classifying godot");
@@ -194,8 +201,9 @@ echo GODOT_MCP_CLASS=no
 echo 'GODOT_MCP_SETTING={}'
 for last; do :; done
 case \"$last\" in
+  res://*) echo \"GODOT_MCP_RESOURCE={\\\"loaded\\\":true,\\\"class\\\":\\\"$(cat \"$(dirname \"$0\")/last_class\")\\\"}\" ;;
   Node|Node2D|Node3D|Control) echo GODOT_MCP_CLASS=scene ;;
-  Resource|Curve|Gradient) echo GODOT_MCP_CLASS=resource ;;
+  Resource|Curve|Gradient) echo \"$last\" > \"$(dirname \"$0\")/last_class\"; echo GODOT_MCP_CLASS=resource ;;
   *) echo GODOT_MCP_CLASS=no ;;
 esac
 ",

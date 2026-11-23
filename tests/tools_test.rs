@@ -715,7 +715,25 @@ async fn create_resource_without_an_editor_never_replaces_a_file() {
     let first = call_classified("godot_create_resource", args("Curve")).await;
     assert!(!first.is_error, "{}", text(&first));
     let written = std::fs::read_to_string(project.path().join("made.tres")).expect("resource");
-    assert!(written.contains("type=\"Curve\""), "{written}");
+    let (header, rest) = written.split_once('\n').expect("header line");
+    let uid = header
+        .strip_prefix("[gd_resource type=\"Curve\" format=3 uid=\"")
+        .and_then(|tail| tail.strip_suffix("\"]"))
+        .unwrap_or_else(|| panic!("no uid in the header the editor writes: {written}"));
+    assert!(
+        uid.starts_with("uid://") && uid.len() > "uid://".len(),
+        "{written}"
+    );
+    assert_eq!(
+        rest, "\n[resource]\n",
+        "Godot's text loader needs the [resource] section"
+    );
+    assert!(text(&first).contains(uid), "{}", text(&first));
+    assert!(
+        text(&first).contains("Godot loads it"),
+        "the answer does not say the file was checked: {}",
+        text(&first)
+    );
 
     let second = call_classified("godot_create_resource", args("Gradient")).await;
     assert!(second.is_error, "{}", text(&second));
@@ -728,6 +746,48 @@ async fn create_resource_without_an_editor_never_replaces_a_file() {
         std::fs::read_to_string(project.path().join("made.tres")).expect("resource again"),
         written,
         "the second call replaced the file"
+    );
+}
+
+/// When the headless load check says Godot cannot read the resource it just wrote, the call
+/// is an error with Godot's message, and the file it made is gone again.
+#[cfg(unix)]
+#[tokio::test]
+async fn create_resource_without_an_editor_removes_a_file_godot_cannot_load() {
+    use std::os::unix::fs::PermissionsExt;
+    let project = project_dir();
+    let cwd = tempfile::tempdir().expect("working dir");
+    let engine = tempfile::tempdir().expect("engine dir");
+    let godot = engine.path().join("refusing_godot.sh");
+    std::fs::write(
+        &godot,
+        "#!/bin/sh
+for last; do :; done
+case \"$last\" in
+  res://*) echo 'made.tres:2 - Parse Error: Unexpected end of file' >&2
+           echo 'GODOT_MCP_RESOURCE={\"loaded\":false,\"class\":\"\"}' ;;
+  *) echo GODOT_MCP_CLASS=resource ;;
+esac
+",
+    )
+    .expect("write fake godot");
+    std::fs::set_permissions(&godot, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let result = manager_in(cwd.path(), godot)
+        .call_tool(
+            "godot_create_resource",
+            json!({"resource_path": "res://made.tres", "class_name": "Curve",
+                   "project_path": project.path()}),
+        )
+        .await;
+    assert!(result.is_error, "{}", text(&result));
+    assert!(
+        text(&result).contains("Unexpected end of file"),
+        "Godot's message is missing: {}",
+        text(&result)
+    );
+    assert!(
+        !project.path().join("made.tres").exists(),
+        "the file Godot cannot load was left behind"
     );
 }
 

@@ -726,6 +726,34 @@ func _init() -> void:
 	quit()
 ";
 
+const RESOURCE_LOAD_TIMEOUT: Duration = Duration::from_secs(30);
+const RESOURCE_LOAD_MARKER: &str = "GODOT_MCP_RESOURCE=";
+
+/// The script the resource load check runs. Fixed text: the resource path reaches it only as a
+/// user argument after `--`, never inside the source. It loads the file past the cache, as a game
+/// would read it from disk, and prints whether that gave a resource and of which class.
+const RESOURCE_LOAD_SCRIPT: &str = "extends SceneTree
+
+func _init() -> void:
+\tvar args: PackedStringArray = OS.get_cmdline_user_args()
+\tvar path: String = args[0] if args.size() > 0 else \"\"
+\tvar resource: Resource = null
+\tif path.begins_with(\"res://\"):
+\t\tresource = ResourceLoader.load(path, \"\", ResourceLoader.CACHE_MODE_IGNORE)
+\tvar answer: Dictionary = {\"loaded\": resource != null, \"class\": resource.get_class() if resource != null else \"\"}
+\tprint(\"GODOT_MCP_RESOURCE=\", JSON.stringify(answer))
+\tquit()
+";
+
+/// What the resource load check saw: whether Godot loaded the file, the class it got, and
+/// Godot's own messages when it did not.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResourceLoad {
+    pub loaded: bool,
+    pub class: String,
+    pub output: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct CliRunner {
     godot_binary: PathBuf,
@@ -891,6 +919,60 @@ impl CliRunner {
         let outcome = self.run_setting_type(&dir, &request).await;
         let _ = std::fs::remove_dir_all(&dir);
         outcome
+    }
+
+    /// Loads the resource file `res_path` of `project_path` in a headless Godot and says whether
+    /// that gave a resource and of which class, with Godot's output when it did not (a parse
+    /// error, a missing dependency). The path travels as a user argument after `--`.
+    pub async fn check_resource_load(
+        &self,
+        project_path: &Path,
+        res_path: &str,
+    ) -> Result<ResourceLoad> {
+        let dir = create_scratch_dir("resource-load")?;
+        let outcome = async {
+            let script = dir.join("resource_load.gd");
+            std::fs::write(&script, RESOURCE_LOAD_SCRIPT)?;
+            self.run_script_with(
+                &["--headless"],
+                project_path,
+                &script,
+                &[res_path.to_string()],
+                RESOURCE_LOAD_TIMEOUT.as_secs(),
+                None,
+            )
+            .await
+        }
+        .await;
+        let _ = std::fs::remove_dir_all(&dir);
+        let run = outcome?;
+        let output = strip_banner(&format!("{}\n{}", run.stdout.trim(), run.stderr.trim()))
+            .trim()
+            .to_string();
+        let answer: serde_json::Value = run
+            .stdout
+            .lines()
+            .find_map(|line| line.trim().strip_prefix(RESOURCE_LOAD_MARKER))
+            .and_then(|answer| serde_json::from_str(answer).ok())
+            .ok_or_else(|| {
+                McpError::Process(if run.timed_out {
+                    format!(
+                        "Godot did not finish loading {res_path} within {}s",
+                        RESOURCE_LOAD_TIMEOUT.as_secs()
+                    )
+                } else {
+                    format!("Godot gave no answer to the load check of {res_path}: {output}")
+                })
+            })?;
+        Ok(ResourceLoad {
+            loaded: answer.get("loaded").and_then(serde_json::Value::as_bool) == Some(true),
+            class: answer
+                .get("class")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            output,
+        })
     }
 
     /// Compiles the shader at `res_path` with the engine's shader compiler in a headless Godot
