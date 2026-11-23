@@ -326,7 +326,9 @@ async fn create_resource(tools: &ToolManager, args: &Value) -> ToolResult {
                     );
                 }
             };
-            let body = format!("[gd_resource type=\"{class_name}\" format=3]\n");
+            // The empty `[resource]` section is what Godot itself saves for a resource with only
+            // default values; without it the text loader stops at "Unexpected end of file".
+            let body = format!("[gd_resource type=\"{class_name}\" format=3]\n\n[resource]\n");
             match create_new_file(&file, &body) {
                 Ok(()) => {}
                 Err(error) if error.kind() == ErrorKind::AlreadyExists => {

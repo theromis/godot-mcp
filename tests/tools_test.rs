@@ -715,7 +715,10 @@ async fn create_resource_without_an_editor_never_replaces_a_file() {
     let first = call_classified("godot_create_resource", args("Curve")).await;
     assert!(!first.is_error, "{}", text(&first));
     let written = std::fs::read_to_string(project.path().join("made.tres")).expect("resource");
-    assert!(written.contains("type=\"Curve\""), "{written}");
+    assert_eq!(
+        written, "[gd_resource type=\"Curve\" format=3]\n\n[resource]\n",
+        "Godot's text loader needs the [resource] section"
+    );
 
     let second = call_classified("godot_create_resource", args("Gradient")).await;
     assert!(second.is_error, "{}", text(&second));
