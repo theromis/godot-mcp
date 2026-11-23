@@ -314,7 +314,7 @@ async fn ensure_uid_file(file: &Path) -> std::io::Result<String> {
 }
 
 /// A new resource id: 63 random bits, as Godot draws them.
-fn random_uid() -> u64 {
+pub(super) fn random_uid() -> u64 {
     // The low 64 bits of a version 4 UUID: 62 random bits plus two fixed variant bits, of
     // which the top one is cleared like Godot clears the sign bit.
     (uuid::Uuid::new_v4().as_u128() as u64) & 0x7fff_ffff_ffff_ffff

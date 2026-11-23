@@ -14,7 +14,7 @@ Releases 0.5.1 to 0.15.0 were built once per Godot version, from the branches `g
 
 ### Fixed
 
-- `godot_create_resource` without an editor wrote only the `[gd_resource ...]` header, a file Godot could not load ("Parse Error: Unexpected end of file"), so `godot_set_resource_properties` and every scene using it failed on it. It now writes the empty `[resource]` section Godot itself saves for a resource with default values.
+- `godot_create_resource` without an editor wrote only the `[gd_resource ...]` header, a file Godot could not load ("Parse Error: Unexpected end of file"), so `godot_set_resource_properties` and every scene using it failed on it. It now writes what Godot itself saves for a new resource with default values: a header with a uid (also recorded in `.godot/uid_cache.bin` when the project has one) and an empty `[resource]` section. The server then loads the file in a headless Godot and says so in the answer; a file Godot cannot load is removed again, and the error quotes Godot's message.
 
 ## [0.15.0] - 2026-11-19
 

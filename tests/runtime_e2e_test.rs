@@ -5139,7 +5139,17 @@ async fn created_resource_without_an_editor_loads_and_takes_properties() {
         }),
     )
     .await;
-    assert!(!created.is_error, "{}", text_of(&created));
+    let created_text = text_of(&created);
+    assert!(!created.is_error, "{created_text}");
+    assert!(
+        created_text.contains("Godot loads it"),
+        "the answer does not say the file loads: {created_text}"
+    );
+    let header = std::fs::read_to_string(root.join("materials/overlay.tres")).unwrap();
+    assert!(
+        header.starts_with("[gd_resource type=\"StandardMaterial3D\" format=3 uid=\"uid://"),
+        "the header has no uid: {header}"
+    );
 
     let loaded = call(
         &tools,
