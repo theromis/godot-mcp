@@ -834,7 +834,7 @@ impl Run {
             return Err(self.gone(method).await);
         }
         let id = NEXT_REQUEST.fetch_add(1, Ordering::Relaxed);
-        let mut rx = self.session.subscribe();
+        let mut reply = self.session.expect_reply(id);
         let payload = serde_json::to_string(&json!({
             "id": id,
             "method": method,
@@ -853,12 +853,10 @@ impl Run {
             }
             // A reply that arrived before the game went away is read first: this only looks at
             // the process when nothing is waiting to be read.
-            let message = match tokio::time::timeout(left.min(WATCH_INTERVAL), rx.recv()).await {
-                Ok(Ok(message)) => message,
-                Ok(Err(broadcast::error::RecvError::Lagged(_))) => continue,
-                Ok(Err(broadcast::error::RecvError::Closed)) => {
-                    return Err(self.gone(method).await);
-                }
+            let mut parsed = match tokio::time::timeout(left.min(WATCH_INTERVAL), &mut reply).await
+            {
+                Ok(Ok(parsed)) => parsed,
+                Ok(Err(_)) => return Err(self.gone(method).await),
                 Err(_) => {
                     if self.gone_away() {
                         return Err(self.gone(method).await);
@@ -866,20 +864,13 @@ impl Run {
                     continue;
                 }
             };
-            if message.message != "mcp:reply" {
-                continue;
-            }
-            let Some(text) = message.data.first().and_then(Value::as_str) else {
-                continue;
-            };
-            let parsed: Value = serde_json::from_str(text)?;
-            if !json_id_eq(parsed.get("id"), id) {
-                continue;
-            }
             if let Some(err) = parsed.get("error") {
                 return Err(McpError::ToolExecution(err.to_string()));
             }
-            return Ok(parsed.get("result").cloned().unwrap_or(Value::Null));
+            return Ok(parsed
+                .get_mut("result")
+                .map(Value::take)
+                .unwrap_or(Value::Null));
         }
     }
 
@@ -998,19 +989,6 @@ fn spawn_log_task(run: Arc<Run>) {
             }
         }
     });
-}
-
-pub fn json_id_eq(value: Option<&Value>, id: i64) -> bool {
-    let Some(value) = value else {
-        return false;
-    };
-    if value.as_i64() == Some(id) {
-        return true;
-    }
-    // Godot's JSON parser stores every number as a float, so a reply echoes 1.0.
-    value
-        .as_f64()
-        .is_some_and(|number| number == id as f64 && number.fract() == 0.0)
 }
 
 fn ingest(run: &Run, message: &GameMessage) {

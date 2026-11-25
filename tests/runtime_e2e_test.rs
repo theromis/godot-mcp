@@ -8936,3 +8936,82 @@ async fn stopping_a_movie_run_lets_godot_finish_the_avi() {
         "{summary}"
     );
 }
+
+/// A game that fills its window with random pixels, so a PNG of it does not compress.
+fn noise_project() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("project");
+    let root = dir.path();
+    std::fs::write(
+        root.join("project.godot"),
+        "config_version=5\n\n[application]\n\nconfig/name=\"Noise\"\nrun/main_scene=\"res://noise.tscn\"\nconfig/features=PackedStringArray(\"4.5\")\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("noise.gd"),
+        "extends Sprite2D\n\nfunc _ready() -> void:\n\tvar size := Vector2i(1152, 648)\n\tvar bytes := PackedByteArray()\n\tbytes.resize(size.x * size.y * 3)\n\tvar rng := RandomNumberGenerator.new()\n\tfor i in bytes.size():\n\t\tbytes[i] = rng.randi() & 255\n\tcentered = false\n\ttexture = ImageTexture.create_from_image(Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGB8, bytes))\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("noise.tscn"),
+        "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://noise.gd\" id=\"1\"]\n\n[node name=\"Noise\" type=\"Sprite2D\"]\nscript = ExtResource(\"1\")\n",
+    )
+    .unwrap();
+    dir
+}
+
+/// Godot's debugger drops a message over 8 MiB without telling anyone. A screenshot sheet of
+/// random pixels is far larger: the runtime has to refuse it with the reason at once, instead of
+/// leaving the call to time out, and the game must keep answering afterwards.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn a_screenshot_too_large_for_the_debugger_is_refused_with_the_reason() {
+    let _ = IGNORE;
+    if !windowed_game_can_open() {
+        eprintln!("skipped: a windowed screenshot needs a display server");
+        return;
+    }
+    let project = noise_project();
+    let tools = manager(project.path());
+    let started = call(
+        &tools,
+        "godot_run_project",
+        json!({
+            "project_path": project.path(),
+            "scene": "res://noise.tscn",
+            "mode": "process",
+            "headless": false
+        }),
+    )
+    .await;
+    assert!(!started.is_error, "{}", text_of(&started));
+    let run_id = run_id_of(&started);
+
+    let huge = call(
+        &tools,
+        "godot_game_screenshot",
+        json!({"run_id": run_id, "frames": 8, "every": 1, "max_dimension": 4096}),
+    )
+    .await;
+    assert!(huge.is_error, "{}", text_of(&huge));
+    let note = text_of(&huge);
+    assert!(
+        note.contains("more than the") && note.contains("debugger connection carries"),
+        "{note}"
+    );
+
+    let small = call(
+        &tools,
+        "godot_game_screenshot",
+        json!({"run_id": run_id, "max_dimension": 64}),
+    )
+    .await;
+    assert!(!small.is_error, "{}", text_of(&small));
+    assert!(
+        text_of(&small).contains("Game screenshot"),
+        "{}",
+        text_of(&small)
+    );
+
+    let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
+    assert!(!stopped.is_error, "{}", text_of(&stopped));
+}
