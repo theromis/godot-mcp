@@ -194,7 +194,11 @@ impl ToolManager {
     async fn handle_get_version(&self) -> ToolResult {
         // Try live editor bridge first
         match self.bridge.send_command("get_version", json!({})).await {
-            Ok(result) => {
+            Ok(mut result) => {
+                // The command list is for the bridge client, and long.
+                if let Some(fields) = result.as_object_mut() {
+                    fields.remove("commands");
+                }
                 return ToolResult::text(format!(
                     "Godot Engine (Live Editor Connected):\n{}",
                     serde_json::to_string_pretty(&result).unwrap_or_default()

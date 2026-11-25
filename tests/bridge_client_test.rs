@@ -101,3 +101,103 @@ async fn unanswered_commands_time_out_with_a_bridge_error() {
         .expect_err("nobody answers");
     assert!(matches!(err, McpError::Bridge(_)), "{err:?}");
 }
+
+/// A fake addon of bridge protocol 2 that lists `open_scene` with one parameter.
+fn listing_addon(command: &Value) -> Reply {
+    match command["type"].as_str() {
+        Some("get_version") => Reply::Ok(json!({
+            "version_string": "4.5.stable",
+            "protocol": 2,
+            "commands": {"open_scene": ["scene_path"], "ping": []}
+        })),
+        _ => Reply::Ok(json!({"done": true})),
+    }
+}
+
+fn sent_types(bridge: &MockBridge) -> Vec<String> {
+    bridge
+        .received()
+        .iter()
+        .filter_map(|command| command["type"].as_str().map(str::to_string))
+        .collect()
+}
+
+#[tokio::test]
+async fn a_parameter_the_addon_does_not_list_is_refused_before_it_is_sent() {
+    let bridge = MockBridge::start(listing_addon).await;
+    let client = BridgeClient::new(bridge.port);
+
+    let err = client
+        .send_command(
+            "open_scene",
+            json!({"scene_path": "res://a.tscn", "reload": true}),
+        )
+        .await
+        .expect_err("the addon has no reload");
+    match err {
+        McpError::ToolExecution(message) => assert!(
+            message.starts_with("Unknown parameter 'reload' for command 'open_scene'"),
+            "{message}"
+        ),
+        other => panic!("unexpected error class: {other:?}"),
+    }
+    assert_eq!(sent_types(&bridge), ["get_version"]);
+
+    // A listed parameter, a null one and a command the addon does not list are sent; the
+    // commands are read once per connection.
+    client
+        .send_command(
+            "open_scene",
+            json!({"scene_path": "res://a.tscn", "reload": null}),
+        )
+        .await
+        .expect("listed parameters");
+    client
+        .send_command("__test_hook", json!({"anything": 1}))
+        .await
+        .expect("an unlisted command is left to the addon");
+    assert_eq!(
+        sent_types(&bridge),
+        ["get_version", "open_scene", "__test_hook"]
+    );
+}
+
+#[tokio::test]
+async fn an_addon_without_a_protocol_is_sent_every_parameter() {
+    let bridge = MockBridge::start(|command| match command["type"].as_str() {
+        Some("get_version") => Reply::Ok(json!({"version_string": "4.5.stable"})),
+        _ => Reply::Ok(json!({"done": true})),
+    })
+    .await;
+    let client = BridgeClient::new(bridge.port);
+
+    client
+        .send_command(
+            "open_scene",
+            json!({"scene_path": "res://a.tscn", "reload": true}),
+        )
+        .await
+        .expect("an old addon gets the call as before");
+    let received = bridge.received();
+    let sent = received
+        .iter()
+        .find(|command| command["type"] == "open_scene")
+        .expect("open_scene was sent");
+    assert_eq!(sent["params"]["reload"], true);
+}
+
+#[tokio::test]
+async fn an_addon_that_cannot_list_its_commands_still_gets_the_call() {
+    let bridge = MockBridge::start(|command| match command["type"].as_str() {
+        Some("get_version") => Reply::Never,
+        _ => Reply::Ok(json!({"done": true})),
+    })
+    .await;
+    let client = BridgeClient::new(bridge.port).with_timeout(Duration::from_millis(400));
+
+    let answer = client
+        .send_command("open_scene", json!({"scene_path": "res://a.tscn"}))
+        .await
+        .expect("the call goes out after the list times out");
+    assert_eq!(answer["done"], true);
+}

@@ -10,6 +10,7 @@ use super::scripts::{
     MAX_BYTES, TextFile, TextKind, edit_file, label, locate, locate_in, read_file, replace_file,
 };
 use super::{EditorChoice, ToolManager, bridge_error_result, str_arg};
+use crate::bridge_protocol::for_editor;
 use crate::error::McpError;
 use crate::protocol::{Tool, ToolResult};
 use serde::Deserialize;
@@ -106,7 +107,11 @@ async fn read(tools: &ToolManager, args: &Value) -> ToolResult {
     if matches!(choice, EditorChoice::Host) {
         return read_file(tools, args, &SHADER).await;
     }
-    match tools.bridge.send_command("read_shader", args.clone()).await {
+    match tools
+        .bridge
+        .send_command("read_shader", for_editor(args, &[]))
+        .await
+    {
         Ok(value) => ToolResult::text(
             serde_json::to_string_pretty(&choice.name_project(value)).unwrap_or_default(),
         ),
@@ -135,7 +140,11 @@ async fn edit(tools: &ToolManager, args: &Value) -> ToolResult {
     if matches!(choice, EditorChoice::Host) {
         return edit_file(tools, args, &SHADER).await;
     }
-    match tools.bridge.send_command("edit_shader", args.clone()).await {
+    match tools
+        .bridge
+        .send_command("edit_shader", for_editor(args, &[]))
+        .await
+    {
         Ok(value) => ToolResult::text(
             serde_json::to_string_pretty(&choice.name_project(value)).unwrap_or_default(),
         ),
@@ -175,7 +184,7 @@ async fn create(tools: &ToolManager, args: &Value) -> ToolResult {
     }
     match tools
         .bridge
-        .send_command("create_shader", args.clone())
+        .send_command("create_shader", for_editor(args, &[]))
         .await
     {
         Ok(value) => ToolResult::text(

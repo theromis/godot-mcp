@@ -1,6 +1,7 @@
 pub mod addon;
 pub mod bridge;
 pub mod bridge_port;
+pub mod bridge_protocol;
 pub mod cli_runner;
 pub mod config;
 pub mod error;

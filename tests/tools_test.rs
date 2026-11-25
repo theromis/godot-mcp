@@ -1393,6 +1393,35 @@ async fn editor_runtime_waits_for_hello_and_targets_the_ready_session() {
 }
 
 #[tokio::test]
+async fn an_editor_game_of_another_runtime_protocol_is_refused_with_the_update() {
+    use common::{MockBridge, Reply};
+    let bridge = MockBridge::start(
+        |command| match command["type"].as_str().unwrap_or_default() {
+            "get_run_status" => Reply::Ok(json!({"running": true})),
+            "game_status" => {
+                Reply::Ok(json!({"sessions": [{"session": 3, "hello": "{\"protocol\": 99}"}]}))
+            }
+            "game_send" => Reply::Err("a request reached a runtime of another protocol".into()),
+            _ => Reply::Ok(json!({})),
+        },
+    )
+    .await;
+    let result = editor_manager(&bridge)
+        .call_tool("godot_game_tree", json!({"run_id": "editor"}))
+        .await;
+    assert!(result.is_error);
+    let message = text(&result);
+    assert!(message.contains("runtime protocol 99"), "{message}");
+    assert!(message.contains("godot_update_addon"), "{message}");
+    assert!(
+        !bridge
+            .received()
+            .iter()
+            .any(|command| command["type"] == "game_send")
+    );
+}
+
+#[tokio::test]
 async fn editor_runtime_without_a_running_game_does_not_send_input() {
     use common::{MockBridge, Reply};
     let bridge = MockBridge::start(
@@ -2093,11 +2122,10 @@ async fn read_script_asks_the_editor_first_and_does_not_hide_its_errors() {
         "{}",
         text(&refused)
     );
-    assert!(
-        bridge.received().iter().all(
-            |command| command["type"] == "read_script" || command["type"] == "get_project_info"
-        )
-    );
+    assert!(bridge.received().iter().all(|command| {
+        ["read_script", "get_project_info", "get_version"]
+            .contains(&command["type"].as_str().unwrap_or_default())
+    }));
 }
 
 const TWO_VARS: &str = "extends Node\n\nvar x = 1\nvar y = 1\n";
@@ -2436,11 +2464,13 @@ async fn manager_with_editor(
     (bridge, manager)
 }
 
+/// The commands sent, less the get_version that reads the addon's commands once per connection.
 fn sent_types(bridge: &common::MockBridge) -> Vec<String> {
     bridge
         .received()
         .iter()
         .filter_map(|command| command["type"].as_str().map(str::to_string))
+        .filter(|kind| kind != "get_version")
         .collect()
 }
 
@@ -6875,6 +6905,81 @@ async fn a_command_the_editors_addon_lacks_names_both_versions_and_the_update() 
         "the project to update: {message}"
     );
     assert!(!message.contains("retry in a moment"), "{message}");
+}
+
+#[tokio::test]
+async fn a_parameter_the_editors_addon_lacks_is_explained_before_the_call_is_sent() {
+    use common::{MockBridge, Reply};
+    let project = project_dir();
+    let dir = project.path().to_string_lossy().replace('\\', "/");
+    let bridge = MockBridge::start(move |command| match command["type"].as_str() {
+        Some("get_version") => Reply::Ok(json!({
+            "version_string": "4.5.stable", "protocol": 2,
+            "commands": {"open_scene": ["scene_path"], "get_project_info": []}
+        })),
+        Some("get_project_info") => {
+            Reply::Ok(json!({"project_dir": dir, "addon_version": "0.15.0"}))
+        }
+        _ => Reply::Ok(json!({"opened": true})),
+    })
+    .await;
+    let result = editor_manager(&bridge)
+        .call_tool(
+            "godot_open_scene",
+            json!({"scene_path": "res://main.tscn", "reload": true}),
+        )
+        .await;
+    assert!(result.is_error, "{}", text(&result));
+    let message = text(&result);
+    assert!(message.contains("older than this server"), "{message}");
+    assert!(
+        message.contains("'open_scene' command has no parameter 'reload'"),
+        "{message}"
+    );
+    assert!(message.contains("0.15.0"), "{message}");
+    assert!(message.contains("godot_update_addon"), "{message}");
+    assert!(
+        bridge
+            .received()
+            .iter()
+            .all(|command| command["type"] != "open_scene"),
+        "the call was sent to an addon that would ignore reload"
+    );
+}
+
+#[tokio::test]
+async fn an_addon_too_old_to_list_its_commands_is_served_and_updated_as_before() {
+    let (project, bridge) = editor_with_old_addon(&[]).await;
+    let tools = editor_manager(&bridge);
+    let opened = Arc::clone(&tools)
+        .call_tool(
+            "godot_open_scene",
+            json!({"scene_path": "res://main.tscn", "reload": true}),
+        )
+        .await;
+    assert!(!opened.is_error, "{}", text(&opened));
+    let received = bridge.received();
+    let sent = received
+        .iter()
+        .find(|command| command["type"] == "open_scene")
+        .expect("open_scene was sent");
+    assert_eq!(sent["params"]["reload"], true);
+
+    // The recovery path keeps working against it: the update names the old addon and asks for
+    // the editor to be restarted.
+    let update = tools
+        .call_tool(
+            "godot_update_addon",
+            json!({"project_path": project.path()}),
+        )
+        .await;
+    assert!(update.is_error, "{}", text(&update));
+    assert!(
+        text(&update).contains("restart_editor: true"),
+        "{}",
+        text(&update)
+    );
+    assert!(text(&update).contains("0.11.1-dev"), "{}", text(&update));
 }
 
 #[tokio::test]

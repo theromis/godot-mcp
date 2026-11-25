@@ -4,6 +4,7 @@
 
 use super::{ToolManager, str_arg};
 use crate::addon::{self, Installed, SERVER_VERSION};
+use crate::bridge_protocol::{UNKNOWN_COMMAND, unknown_parameter_in};
 use crate::error::McpError;
 use crate::paths::same_directory;
 use crate::protocol::{Tool, ToolContent, ToolResult};
@@ -12,9 +13,6 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 pub const UPDATE: &str = "godot_update_addon";
-
-/// What an addon answers for a command it does not have.
-const UNKNOWN_COMMAND: &str = "Unknown command type: ";
 
 pub fn handles(name: &str) -> bool {
     name == UPDATE
@@ -351,29 +349,36 @@ fn update_hint(dir: Option<&Path>) -> String {
     )
 }
 
-/// A tool error that only carries an addon's "Unknown command type", made to say that the
-/// editor's addon is older than the server, with both versions and the update call.
+/// A tool error that only carries an addon's "Unknown command type" or "Unknown parameter"
+/// (answered by the addon, or by the bridge client from the commands the addon listed), made to
+/// say that the editor's addon is older than the server, with both versions and the update call.
 pub(super) async fn explain_unknown_command(
     tools: &ToolManager,
     tool: &str,
     result: ToolResult,
 ) -> ToolResult {
-    let command = match result.content.first() {
-        Some(ToolContent::Text { text }) if result.is_error => command_in(text),
-        _ => None,
-    };
-    let Some(command) = command else {
-        return result;
+    let (lacks, command) = match result.content.first() {
+        Some(ToolContent::Text { text }) if result.is_error => {
+            match (unknown_parameter_in(text), command_in(text)) {
+                (Some((key, command)), _) => (
+                    format!("its '{command}' command has no parameter '{key}'"),
+                    command,
+                ),
+                (None, Some(command)) => (format!("it has no '{command}' command"), command),
+                (None, None) => return result,
+            }
+        }
+        _ => return result,
     };
     let (version, dir) = editor_addon(tools).await;
     let on_disk = dir.as_deref().map(addon::installed);
     let what = if on_disk == Some(Installed::Version(SERVER_VERSION.to_string())) {
         format!(
-            "The editor runs Godot MCP addon {version}, which has no '{command}' command that {tool} needs. The addon on disk is already {SERVER_VERSION} (this server's version), but the editor loaded the older one"
+            "The editor runs Godot MCP addon {version}: {lacks}, which {tool} needs, so the '{command}' command was not run. The addon on disk is already {SERVER_VERSION} (this server's version), but the editor loaded the older one"
         )
     } else {
         format!(
-            "The editor's Godot MCP addon ({version}) is older than this server ({SERVER_VERSION}): it has no '{command}' command, which {tool} needs"
+            "The editor's Godot MCP addon ({version}) is older than this server ({SERVER_VERSION}): {lacks}, which {tool} needs, so the '{command}' command was not run"
         )
     };
     ToolResult::error(

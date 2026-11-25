@@ -384,6 +384,83 @@ fn child_names(node: &Value) -> Vec<String> {
 
 #[tokio::test]
 #[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn the_bridge_lists_its_commands_and_refuses_parameters_it_does_not_have() {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::connect_async;
+    use tokio_tungstenite::tungstenite::Message;
+
+    let editor = start_editor(false).await;
+    wait_until_started(&editor.bridge, &editor.log, "the editor").await;
+
+    let version = editor
+        .bridge
+        .send_command("get_version", json!({}))
+        .await
+        .expect("version");
+    assert_eq!(
+        version["protocol"],
+        godot_mcp::bridge_protocol::BRIDGE_PROTOCOL,
+        "{version}"
+    );
+    let open_scene: Vec<&str> = version["commands"]["open_scene"]
+        .as_array()
+        .expect("open_scene is listed")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    for name in ["scene_path", "reload", "discard"] {
+        assert!(open_scene.contains(&name), "{version}");
+    }
+    assert_eq!(version["commands"]["save_scene"], json!([]), "{version}");
+
+    // The addon itself refuses a parameter it does not have, as an older addon receiving a
+    // newer server's call would, instead of ignoring it.
+    let token = editor.bridge.secret().expect("bridge token");
+    let (mut ws, _) = connect_async(format!("ws://127.0.0.1:{}", editor.port))
+        .await
+        .expect("loopback handshake");
+    let mut ask = async |params: Value| -> Value {
+        let command =
+            json!({"commandId": "p", "type": "get_open_scenes", "params": params, "token": token});
+        ws.send(Message::Text(command.to_string().into()))
+            .await
+            .expect("send");
+        let reply = timeout(Duration::from_secs(5), ws.next())
+            .await
+            .expect("reply in time")
+            .expect("stream open")
+            .expect("frame");
+        serde_json::from_str(reply.to_text().expect("text frame")).expect("json")
+    };
+    let refused = ask(json!({"newer_option": true})).await;
+    assert_eq!(refused["status"], "error", "{refused}");
+    let message = refused["error"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("Unknown parameter 'newer_option' for command 'get_open_scenes'"),
+        "{refused}"
+    );
+    assert!(message.contains("godot_update_addon"), "{refused}");
+    let null_ok = ask(json!({"newer_option": null})).await;
+    assert_eq!(
+        null_ok["status"], "success",
+        "a null value is not given: {null_ok}"
+    );
+
+    // The bridge client refuses it from the list, before it is sent.
+    expect_error(
+        editor
+            .bridge
+            .send_command(
+                "open_scene",
+                json!({"scene_path": "res://main.tscn", "newer_option": 1}),
+            )
+            .await,
+        "Unknown parameter 'newer_option' for command 'open_scene'",
+    );
+}
+
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
 async fn bridge_is_loopback_only_and_requires_the_token() {
     let _ = IGNORE_REASON;
     use futures_util::{SinkExt, StreamExt};
