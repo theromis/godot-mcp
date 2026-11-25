@@ -32,25 +32,25 @@ pub fn catalog() -> Vec<Tool> {
     vec![
         tool(
             "godot_create_project",
-            "Creates a minimal Godot 4 project without an engine or editor. Accepts a new or existing directory (documentation and assets are preserved). Never replaces project.godot. Does not install the editor bridge or create a main scene.",
-            json!({"project_path": s("Absolute directory path, without parent traversal."), "name": s("Non-empty project display name.")}),
+            "Creates a minimal Godot 4 project without an engine, in a new or existing directory (files kept). Never replaces project.godot; installs no bridge or main scene.",
+            json!({"project_path": s("Absolute directory without .. segments."), "name": s("Non-empty project display name.")}),
             &["project_path", "name"],
         ),
         tool(
             "godot_create_scene",
-            "Creates a .tscn with one root node and opens it in the editor when the bridge is connected. Refuses to replace an existing scene. Without the editor, writes the file directly.",
+            "Creates a .tscn with one root node (opened in the editor when connected, else written directly). Refuses an existing scene.",
             json!({"scene_path": s("res:// path ending in .tscn"), "root_type": s("Default Node2D."), "root_name": s("Default Root."), "project_path": s("")}),
             &["scene_path"],
         ),
         tool(
             "godot_attach_script",
-            "Attaches a script to a node in the edited scene (undoable). The script must exist in the project. Pass an empty script_path to detach.",
+            "Attaches an existing project script to a node in the edited scene (undoable); empty script_path detaches.",
             json!({"node_path": s(""), "script_path": s("res:// path, or empty to detach."), "make_editable": super::make_editable_param()}),
             &["node_path"],
         ),
         tool(
             "godot_connect_signal",
-            "Connects a signal inside the edited scene with CONNECT_PERSIST (undoable). The target must already have the method (attach its script first); a connection that exists is refused.",
+            "Connects a signal in the edited scene with CONNECT_PERSIST (undoable). The target must already have the method (attach its script first); an existing connection is refused.",
             json!({"node_path": s(""), "signal_name": s(""), "target_path": s("Default: the same node."), "method": s(""), "make_editable": super::make_editable_param()}),
             &["node_path", "signal_name", "method"],
         ),
@@ -62,25 +62,25 @@ pub fn catalog() -> Vec<Tool> {
         ),
         tool(
             "godot_create_resource",
-            "Creates a Resource .tres of a built-in class. Never replaces an existing file. Uses the editor when connected; without it, writes an empty resource as text (with a uid and an empty [resource] section, as Godot saves one), loads it in a headless Godot to check it, and removes it again with an error when Godot cannot load it.",
+            "Creates a .tres of a built-in Resource class; never replaces a file. Uses the editor when connected; else writes it with a uid and removes it with an error if a headless Godot cannot load it.",
             json!({"resource_path": s(""), "class_name": s("For example StandardMaterial3D."), "project_path": s("")}),
             &["resource_path", "class_name"],
         ),
         tool(
             "godot_get_project_settings",
-            "Reads project settings. Uses the live editor when connected, otherwise the keys stored in project.godot.",
+            "Reads project settings: the live editor's when connected, else the keys in project.godot.",
             json!({"prefix": s("Optional key prefix."), "project_path": s("")}),
             &[],
         ),
         tool(
             "godot_set_project_setting",
-            "Sets one project setting and saves it, or removes it. Uses the live editor when connected. Pass exactly one of value, value_text and remove: true. value is a string, number, boolean, array or object, of the type the setting has: the stored one, else the engine's definition of the setting (a feature override such as name.mobile has the type of name); importer_defaults/<importer> (the Import dock's defaults) is a Dictionary of import options, such as {\"detect_3d/compress_to\": 0} for importer_defaults/texture. A JSON object becomes a Dictionary and an array an Array or a packed array; nested values keep their JSON type (a nested string stays a String, never a Vector4 or a Color) except that a whole number becomes an int. A setting of another type takes a string, with and without the editor: an HTML color or color name (\"#102b38\", \"white\") for a Color, otherwise the text project.godot stores (\"Vector2i(1152, 648)\"). A setting that is neither stored nor defined by the engine takes the type of value, so a string is stored as a String. value_text is a value as project.godot stores it, parsed as Godot reads project.godot, with and without the editor: {\"type\": \"vec4\", \"value\": Vector4(0, -1000, 0, 0)} becomes a Dictionary holding a Vector4 (a global shader uniform under shader_globals/<name>), \"text\" a String; only built-in types are built, an Object or Resource never. A value of another type than the setting's is refused; replace_type: true lets a setting the engine does not define (a project's own, such as shader_globals/<name>) take it. remove: true removes the setting from project.godot (one the engine defines returns to its default). Without the editor, project.godot is written and the engine is asked for the type of a setting and to read value_text. InputMap actions (input/...) are changed with godot_edit_input_action.",
+            "Sets and saves one project setting, or removes it (editor when connected, else project.godot). Pass exactly one of value, value_text, remove: true. value must have the setting's type (stored, else engine-defined, else value's): objects become Dictionaries, arrays Arrays, whole numbers int; other types take a string (an HTML color, or project.godot text). value_text is project.godot text (built-in types only, e.g. a shader_globals Dictionary with a Vector4). A type mismatch is refused unless replace_type is true for a setting the engine does not define. remove: true deletes it (engine settings return to default). input/... actions: godot_edit_input_action.",
             json!({
                 "key": s("For example application/config/name."),
                 "value": {"description": "String, number, boolean, array or object."},
-                "value_text": s("A value as project.godot stores it, such as Vector2i(1152, 648) or {\"type\": \"vec4\", \"value\": Vector4(0, -1000, 0, 0)}. Instead of value."),
-                "replace_type": {"type": "boolean", "description": "Store a value of another type than the stored one, for a setting the engine does not define. Default false."},
-                "remove": {"type": "boolean", "description": "Remove the setting instead of setting it. Default false."},
+                "value_text": s("Instead of value: project.godot text, e.g. {\"type\": \"vec4\", \"value\": Vector4(0, -1000, 0, 0)}."),
+                "replace_type": {"type": "boolean", "description": "Allow another type for a setting the engine does not define. Default false."},
+                "remove": {"type": "boolean", "description": "Remove the setting. Default false."},
                 "project_path": s("")
             }),
             &["key"],
