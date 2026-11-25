@@ -1117,11 +1117,12 @@ async fn read_capped_line<R: AsyncBufRead + Unpin>(
 ) -> std::io::Result<Option<bool>> {
     line.clear();
     let mut cut = false;
+    let mut pending_cr = false;
     let mut read_any = false;
     loop {
         let available = reader.fill_buf().await?;
         if available.is_empty() {
-            return Ok(read_any.then_some(cut));
+            return Ok(read_any.then_some(cut || pending_cr));
         }
         read_any = true;
         let (used, done) = match available.iter().position(|byte| *byte == b'\n') {
@@ -1129,11 +1130,23 @@ async fn read_capped_line<R: AsyncBufRead + Unpin>(
             None => (available.len(), false),
         };
         let room = cap.saturating_sub(line.len());
-        if used > room {
-            // A newline cut off with the rest is not lost text.
-            cut |= !(done && used == room + 1);
+        let kept = used.min(room);
+        // Only text is lost text: a dropped line end (`\n` or `\r\n`) is not. A `\r` dropped
+        // at the end of one read is judged with the next one.
+        let mut dropped = &available[kept..used];
+        if pending_cr {
+            pending_cr = false;
+            cut |= dropped.first() != Some(&b'\n');
         }
-        line.extend_from_slice(&available[..used.min(room)]);
+        if done {
+            dropped = dropped.strip_suffix(b"\n").unwrap_or(dropped);
+            dropped = dropped.strip_suffix(b"\r").unwrap_or(dropped);
+        } else if let Some(rest) = dropped.strip_suffix(b"\r") {
+            pending_cr = true;
+            dropped = rest;
+        }
+        cut |= !dropped.is_empty();
+        line.extend_from_slice(&available[..kept]);
         reader.consume(used);
         if done {
             return Ok(Some(cut));
@@ -1789,6 +1802,29 @@ mod tests {
         assert_eq!((cut, line.as_slice()), (Some(false), &b"abcd"[..]));
         let cut = read_capped_line(&mut reader, &mut line, 4).await.unwrap();
         assert_eq!((cut, line.as_slice()), (Some(false), &b"ab"[..]));
+    }
+
+    /// A Windows line end dropped at the cap is not lost text, even when its `\r` and `\n`
+    /// arrive in different reads; a `\r` followed by more text is.
+    #[tokio::test]
+    async fn a_crlf_dropped_at_the_cap_is_not_marked_cut() {
+        for capacity in [1, 2, 8] {
+            let input: &[u8] = b"abcd\r\nabcd\rx\n";
+            let mut reader = BufReader::with_capacity(capacity, input);
+            let mut line = Vec::new();
+            let cut = read_capped_line(&mut reader, &mut line, 4).await.unwrap();
+            assert_eq!(
+                (cut, line.as_slice()),
+                (Some(false), &b"abcd"[..]),
+                "{capacity}"
+            );
+            let cut = read_capped_line(&mut reader, &mut line, 4).await.unwrap();
+            assert_eq!(
+                (cut, line.as_slice()),
+                (Some(true), &b"abcd"[..]),
+                "{capacity}"
+            );
+        }
     }
 
     /// Log lines and error messages keep the same number of characters and say they were cut.
