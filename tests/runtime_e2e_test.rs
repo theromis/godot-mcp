@@ -5869,6 +5869,63 @@ func mark_report() -> Dictionary:
     var entries: Array = output.call("lines_since", start)
     var later: int = output.call("mark")
     return {"entries": entries, "later_is_after": later > start, "after_later": output.call("lines_since", later).size()}
+
+func wrap_report() -> Dictionary:
+    var output = load(runtime_dir + "/ops/rt_output.gd")
+    var start: int = output.call("mark")
+    for index in 2500:
+        print("wrap-%d" % index)
+    var kept: Array = output.call("lines_since", start)
+    var ordered := true
+    for index in kept.size():
+        if kept[index]["text"] != "wrap-%d" % (500 + index):
+            ordered = false
+    var tail: Array = []
+    for entry: Dictionary in output.call("lines_since", start + 2497):
+        tail.append(entry["text"])
+    return {"start": start, "count": kept.size(), "ordered": ordered, "tail": tail}
+
+func _noise(width: int, height: int) -> Image:
+    return Image.create_from_data(width, height, false, Image.FORMAT_RGBA8, Crypto.new().generate_random_bytes(width * height * 4))
+
+func diff_report() -> Dictionary:
+    var view = load(runtime_dir + "/ops/rt_view.gd")
+    var before := _noise(768, 432)
+    var one := before.duplicate() as Image
+    one.set_pixel(500, 300, Color(before.get_pixel(500, 300).r, 0.5, 0.5, 1.0 - before.get_pixel(500, 300).a))
+    var line := before.duplicate() as Image
+    for y in 432:
+        line.set_pixel(401, y, Color(1.0 - before.get_pixel(401, y).r, 0.0, 0.0, 1.0))
+    var started := Time.get_ticks_usec()
+    var everything: Dictionary = view._diff_against(_noise(768, 432), before)
+    var everything_usec := Time.get_ticks_usec() - started
+    return {
+        "same": view._diff_against(before.duplicate(), before),
+        "one": view._diff_against(one, before),
+        "line": view._diff_against(line, before),
+        "everything": everything,
+        "everything_usec": everything_usec,
+        "within_tolerance": view._measure(one, before, 255, Rect2i(0, 0, 768, 432)),
+    }
+
+func record_report(directory: String) -> Dictionary:
+    var record = load(runtime_dir + "/ops/rt_record.gd")
+    var images: Array = []
+    var meta: Array = []
+    for index in 24:
+        images.append(_noise(640, 360))
+        meta.append({"file": "frame-%04d.png" % (index + 1)})
+    var state := {"images": images, "meta": meta, "directory": directory, "write_task": -1}
+    var started := Time.get_ticks_usec()
+    record._write_frames(state)
+    var main_usec := Time.get_ticks_usec() - started
+    while not WorkerThreadPool.is_group_task_completed(int(state["write_task"])):
+        OS.delay_usec(1000)
+    var written = record._written(state)
+    var paths: Array = []
+    for info: Dictionary in meta:
+        paths.append(info.get("path", ""))
+    return {"main_usec": main_usec, "whole_usec": Time.get_ticks_usec() - started, "error": written, "paths": paths, "images_dropped": (state["images"] as Array).is_empty()}
 "#,
     )
     .unwrap();
@@ -6014,6 +6071,159 @@ async fn output_marks_return_what_was_logged_since_with_the_script_errors_told_a
             .is_some_and(|lines| lines.iter().all(|line| line.get("script").is_none())),
         "{}",
         text_of(&output)
+    );
+
+    let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
+    assert!(!stopped.is_error, "{}", text_of(&stopped));
+}
+
+/// The runtime keeps the last 2000 lines in a ring. Once it has wrapped, the lines still come
+/// back oldest first with their own numbers, and a `since` cursor pages through them.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn output_ring_keeps_the_newest_lines_in_order_after_it_wraps() {
+    let _ = IGNORE;
+    let (_project, tools, run_id) = start_registry_probe().await;
+
+    let report = game_method(&tools, &run_id, "wrap_report").await;
+    assert_eq!(report["count"], 2000, "{report}");
+    assert_eq!(report["ordered"], true, "{report}");
+    assert_eq!(
+        report["tail"],
+        json!(["wrap-2497", "wrap-2498", "wrap-2499"]),
+        "{report}"
+    );
+    let start = report["start"].as_u64().expect("start");
+
+    let page = call(
+        &tools,
+        "godot_run_output",
+        json!({"run_id": run_id, "since": start + 2400}),
+    )
+    .await;
+    assert!(!page.is_error, "{}", text_of(&page));
+    let body = json_of(&page);
+    let lines = body["lines"].as_array().expect("lines");
+    let texts: Vec<&str> = lines
+        .iter()
+        .map(|line| line["text"].as_str().unwrap_or("?"))
+        .collect();
+    let expected: Vec<String> = (2400..2500).map(|index| format!("wrap-{index}")).collect();
+    assert_eq!(texts, expected, "{body}");
+    assert_eq!(lines[0]["seq"].as_u64(), Some(start + 2400), "{body}");
+    assert_eq!(body["next"].as_u64(), Some(start + 2500), "{body}");
+
+    let oldest = call(
+        &tools,
+        "godot_run_output",
+        json!({"run_id": run_id, "since": 0}),
+    )
+    .await;
+    assert!(!oldest.is_error, "{}", text_of(&oldest));
+    let body = json_of(&oldest);
+    assert_eq!(body["lines"][0]["text"], "wrap-500", "{body}");
+    assert_eq!(
+        body["lines"][0]["seq"].as_u64(),
+        Some(start + 500),
+        "{body}"
+    );
+    assert!(body["lines"][0]["scene"].is_object(), "{body}");
+
+    let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
+    assert!(!stopped.is_error, "{}", text_of(&stopped));
+}
+
+/// The previous-capture diff runs on the game's main thread. It stays exact for a small change,
+/// a single pixel included, never misses a thin change across many rows, and compares at most
+/// 65536 samples when everything changed instead of every one of the 331776 pixels.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn screenshot_diff_is_exact_for_small_changes_and_sampled_for_large_ones() {
+    let _ = IGNORE;
+    let (_project, tools, run_id) = start_registry_probe().await;
+
+    let report = game_method(&tools, &run_id, "diff_report").await;
+    assert_eq!(report["same"]["changed"], 0, "{report}");
+    assert_eq!(report["same"]["exact"], true, "{report}");
+    assert_eq!(report["same"]["rect"], Value::Null, "{report}");
+
+    assert_eq!(report["one"]["changed"], 1, "{report}");
+    assert_eq!(report["one"]["sampled"], 768 * 432, "{report}");
+    assert_eq!(report["one"]["exact"], true, "{report}");
+    assert_eq!(
+        report["one"]["rect"],
+        json!({"x": 500, "y": 300, "w": 1, "h": 1}),
+        "{report}"
+    );
+
+    assert_eq!(report["line"]["changed"], 432, "{report}");
+    assert_eq!(report["line"]["exact"], true, "{report}");
+    assert_eq!(
+        report["line"]["rect"],
+        json!({"x": 401, "y": 0, "w": 1, "h": 432}),
+        "{report}"
+    );
+
+    let everything = &report["everything"];
+    assert_eq!(everything["exact"], false, "{report}");
+    assert!(json_number(&everything["sampled"]) <= 65536.0, "{report}");
+    assert!(json_number(&everything["ratio"]) > 0.99, "{report}");
+    assert_eq!(
+        everything["rect"],
+        json!({"x": 0, "y": 0, "w": 768, "h": 432}),
+        "{report}"
+    );
+    eprintln!(
+        "a 768x432 diff with every pixel changed took {} us",
+        report["everything_usec"]
+    );
+
+    assert_eq!(report["within_tolerance"]["changed"], 0, "{report}");
+    assert_eq!(report["within_tolerance"]["exact"], true, "{report}");
+
+    let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
+    assert!(!stopped.is_error, "{}", text_of(&stopped));
+}
+
+/// A recording encodes its PNGs on worker threads: starting the writes costs the game's main
+/// thread almost nothing, every frame still lands in its file, and the images are let go after.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn recorded_frames_are_written_off_the_main_thread() {
+    let _ = IGNORE;
+    let (_project, tools, run_id) = start_registry_probe().await;
+    let shots = tempfile::tempdir().expect("record dir");
+
+    let reply = call(
+        &tools,
+        "godot_game_call",
+        json!({
+            "run_id": run_id,
+            "path": ".",
+            "method": "record_report",
+            "permit": ["record_report"],
+            "args": [shots.path().display().to_string()]
+        }),
+    )
+    .await;
+    assert!(!reply.is_error, "{}", text_of(&reply));
+    let report = call_value(&json_of(&reply));
+    assert_eq!(report["error"], Value::Null, "{report}");
+    assert_eq!(report["images_dropped"], true, "{report}");
+    let paths = report["paths"].as_array().expect("paths");
+    assert_eq!(paths.len(), 24, "{report}");
+    for (index, path) in paths.iter().enumerate() {
+        let expected = shots.path().join(format!("frame-{:04}.png", index + 1));
+        assert_eq!(path, &json!(expected.display().to_string()), "{report}");
+        let bytes = std::fs::read(&expected)
+            .unwrap_or_else(|error| panic!("{}: {error}", expected.display()));
+        assert_eq!(png_size(&bytes), Some((640, 360)), "{}", expected.display());
+    }
+    let main = json_number(&report["main_usec"]);
+    let whole = json_number(&report["whole_usec"]);
+    assert!(
+        main * 4.0 < whole,
+        "the main thread spent {main} us of {whole} us writing 24 PNGs: {report}"
     );
 
     let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
