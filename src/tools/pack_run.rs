@@ -31,10 +31,6 @@ const MISSING_PHRASES: &[&str] = &[
 /// How many missing files an answer names.
 const MAX_LISTED_MISSING: usize = 200;
 
-pub fn handles(name: &str) -> bool {
-    name == RUN_PACK
-}
-
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         RUN_PACK,
@@ -48,7 +44,7 @@ pub fn catalog() -> Vec<Tool> {
             "project_path": {"type": "string", "description": "Project directory containing project.godot, which pack_path is relative to. Optional: defaults to the project open in the connected editor, else the project the server was started in."}
         }),
         &["pack_path"],
-    )]
+    ).additive()]
 }
 
 pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {

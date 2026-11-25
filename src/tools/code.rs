@@ -10,17 +10,6 @@ use crate::protocol::{Tool, ToolResult};
 use serde_json::{Value, json};
 use std::path::Path;
 
-pub fn handles(name: &str) -> bool {
-    matches!(
-        name,
-        "godot_code_diagnostics"
-            | "godot_code_complete"
-            | "godot_code_symbols"
-            | "godot_code_definition"
-            | "godot_code_references"
-    )
-}
-
 pub fn catalog() -> Vec<Tool> {
     vec![
         tool(
@@ -28,31 +17,31 @@ pub fn catalog() -> Vec<Tool> {
             "GDScript errors and warnings from Godot's language server (1-based lines), including analyzer warnings such as SHADOWED_GLOBAL_IDENTIFIER. Godot leaves scripts under res://addons/ out of analyzer warnings unless the project sets debug/gdscript/warnings/exclude_addons=false; for such a script the answer carries warnings_hidden saying so. Uses an editor already listening on GODOT_MCP_LSP_PORT (default 6005) when it has this project open, otherwise a private headless editor of this project, which is started again when another script of the project changed so that new class_names are known. Does not report a clean file if the server never answers. godot_validate_script reports the same diagnostics when this server is already running, and otherwise only a headless parse check.",
             json!({"script_path": s("res:// path of a .gd file."), "project_path": s("")}),
             &["script_path"],
-        ),
+        ).read_only(),
         tool(
             "godot_code_complete",
             "Code completion at a 1-based line and column, from Godot's language server.",
             json!({"script_path": s(""), "line": position("Line, counted from 1."), "character": position("Column, counted from 1."), "project_path": s("")}),
             &["script_path", "line", "character"],
-        ),
+        ).read_only(),
         tool(
             "godot_code_symbols",
             "Document symbols of a GDScript file, from Godot's language server.",
             json!({"script_path": s(""), "project_path": s("")}),
             &["script_path"],
-        ),
+        ).read_only(),
         tool(
             "godot_code_definition",
             "Go to definition at a 1-based position, from Godot's language server.",
             json!({"script_path": s(""), "line": position("Line, counted from 1."), "character": position("Column, counted from 1."), "project_path": s("")}),
             &["script_path", "line", "character"],
-        ),
+        ).read_only(),
         tool(
             "godot_code_references",
             "Find references at a 1-based position, from Godot's language server.",
             json!({"script_path": s(""), "line": position("Line, counted from 1."), "character": position("Column, counted from 1."), "project_path": s("")}),
             &["script_path", "line", "character"],
-        ),
+        ).read_only(),
     ]
 }
 
@@ -64,7 +53,7 @@ fn s(description: &str) -> Value {
     }
 }
 
-fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Tool {
+fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> super::ToolDraft {
     super::tool(name, description, properties, required)
 }
 

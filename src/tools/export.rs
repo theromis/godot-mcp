@@ -60,10 +60,6 @@ const SOURCE_EXTENSIONS: &[&str] = &[
     "gd", "tscn", "scn", "tres", "res", "godot", "cfg", "import", "uid", "gdshader", "cs",
 ];
 
-pub fn handles(name: &str) -> bool {
-    matches!(name, LIST | SET | EXPORT)
-}
-
 pub fn catalog() -> Vec<Tool> {
     let project_path = json!({
         "type": "string",
@@ -75,7 +71,7 @@ pub fn catalog() -> Vec<Tool> {
             "Lists the export presets in the project's export_presets.cfg, read by Godot's own ConfigFile: index, name, platform, export_path, export_filter, export_files (the res:// paths the resources, exclude and scenes filters use, when stored), include_filter, exclude_filter, custom_features and every stored option (such as binary_format/architecture or texture_format/etc2_astc). Options the preset never stored are absent; Godot uses the platform's default for them. Needs the Godot binary, not the editor.",
             json!({ "project_path": project_path }),
             &[],
-        ),
+        ).read_only(),
         super::tool(
             SET,
             "Creates an export preset (create true, with platform) or changes one, in export_presets.cfg through Godot's own ConfigFile, the way the editor's Export dialog stores it. Only the fields and options given are changed; a new preset exports all resources (export_filter all_resources), and every option it does not store gets the platform's default when Godot loads it. An option keeps the type it already has (a whole number becomes an int unless the option holds a float). Godot ignores an option name its platform does not have, so the answer lists new_options: the names that were not stored before; check them for typos. Refused while the editor has the project open, because the editor would write its own copy of the presets back: close it with godot_close_editor first. Platform names: Linux, Windows Desktop, macOS, Android, iOS, Web, visionOS, or one an export plugin adds.",
@@ -97,7 +93,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": project_path
             }),
             &["name"],
-        ),
+        ).destructive_idempotent(),
         super::tool(
             EXPORT,
             "Exports the project headless with one of its presets: mode pack runs godot --export-pack (a .pck or .zip of the project data, no export template needed), release runs --export-release and debug runs --export-debug (both need the platform's export templates, or the preset's custom_template options). Runs godot --headless --import first (import false skips it; it is skipped while the editor has the project open, since that editor keeps the imports current). Returns ok, the output path and size_bytes, the exit code, the duration, the ERROR and WARNING lines, and the last lines of Godot's output. A missing preset, a missing export template, a failed import, an export that wrote no file or a timeout is an error with the log. output_path defaults to the preset's export_path and must resolve inside the project (such as build/game.pck); its folder is created. An existing file there is replaced. The import and the export wait for the godot_run_script calls working in the project to finish, and run alone there until the file is written: a script started meanwhile waits. Other projects never wait.",
@@ -110,7 +106,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": project_path
             }),
             &["preset"],
-        ),
+        ).destructive(),
     ]
 }
 

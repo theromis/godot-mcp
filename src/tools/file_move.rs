@@ -38,10 +38,6 @@ const IMPORTED_DIR: &str = "res://.godot/imported/";
 /// The editor's cache of global classes, which a game run without the editor reads.
 const CLASS_CACHE: &str = ".godot/global_script_class_cache.cfg";
 
-pub fn handles(name: &str) -> bool {
-    name == MOVE
-}
-
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         MOVE,
@@ -63,7 +59,7 @@ pub fn catalog() -> Vec<Tool> {
             "project_path": {"type": "string", "description": "Project directory. Optional: defaults to the project open in the editor, else the one the server was started in."}
         }),
         &["moves"],
-    )]
+    ).destructive()]
 }
 
 pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {

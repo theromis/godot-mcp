@@ -14,20 +14,6 @@ use serde_json::{Value, json};
 use std::io::{ErrorKind, Write};
 use std::path::Path;
 
-pub fn handles(name: &str) -> bool {
-    matches!(
-        name,
-        "godot_create_project"
-            | "godot_create_scene"
-            | "godot_attach_script"
-            | "godot_connect_signal"
-            | "godot_list_signals"
-            | "godot_create_resource"
-            | "godot_set_project_setting"
-            | "godot_get_project_settings"
-    )
-}
-
 pub fn catalog() -> Vec<Tool> {
     vec![
         tool(
@@ -35,43 +21,43 @@ pub fn catalog() -> Vec<Tool> {
             "Creates a minimal Godot 4 project without an engine or editor. Accepts a new or existing directory (documentation and assets are preserved). Never replaces project.godot. Does not install the editor bridge or create a main scene.",
             json!({"project_path": s("Absolute directory path, without parent traversal."), "name": s("Non-empty project display name.")}),
             &["project_path", "name"],
-        ),
+        ).additive_idempotent(),
         tool(
             "godot_create_scene",
             "Creates a .tscn with one root node and opens it in the editor when the bridge is connected. Refuses to replace an existing scene. Without the editor, writes the file directly.",
             json!({"scene_path": s("res:// path ending in .tscn"), "root_type": s("Default Node2D."), "root_name": s("Default Root."), "project_path": s("")}),
             &["scene_path"],
-        ),
+        ).additive_idempotent(),
         tool(
             "godot_attach_script",
             "Attaches a script to a node in the edited scene (undoable). The script must exist in the project. Pass an empty script_path to detach.",
             json!({"node_path": s(""), "script_path": s("res:// path, or empty to detach."), "make_editable": super::make_editable_param()}),
             &["node_path"],
-        ),
+        ).destructive_idempotent(),
         tool(
             "godot_connect_signal",
             "Connects a signal inside the edited scene with CONNECT_PERSIST (undoable). The target must already have the method (attach its script first); a connection that exists is refused.",
             json!({"node_path": s(""), "signal_name": s(""), "target_path": s("Default: the same node."), "method": s(""), "make_editable": super::make_editable_param()}),
             &["node_path", "signal_name", "method"],
-        ),
+        ).additive_idempotent(),
         tool(
             "godot_list_signals",
             "Lists signals of a node in the edited scene.",
             json!({"node_path": s("")}),
             &[],
-        ),
+        ).read_only(),
         tool(
             "godot_create_resource",
             "Creates a Resource .tres of a built-in class. Never replaces an existing file. Uses the editor when connected; without it, writes an empty resource as text (with a uid and an empty [resource] section, as Godot saves one), loads it in a headless Godot to check it, and removes it again with an error when Godot cannot load it.",
             json!({"resource_path": s(""), "class_name": s("For example StandardMaterial3D."), "project_path": s("")}),
             &["resource_path", "class_name"],
-        ),
+        ).additive_idempotent(),
         tool(
             "godot_get_project_settings",
             "Reads project settings. Uses the live editor when connected, otherwise the keys stored in project.godot.",
             json!({"prefix": s("Optional key prefix."), "project_path": s("")}),
             &[],
-        ),
+        ).read_only(),
         tool(
             "godot_set_project_setting",
             "Sets one project setting and saves it, or removes it. Uses the live editor when connected. Pass exactly one of value, value_text and remove: true. value is a string, number, boolean, array or object, of the type the setting has: the stored one, else the engine's definition of the setting (a feature override such as name.mobile has the type of name); importer_defaults/<importer> (the Import dock's defaults) is a Dictionary of import options, such as {\"detect_3d/compress_to\": 0} for importer_defaults/texture. A JSON object becomes a Dictionary and an array an Array or a packed array; nested values keep their JSON type (a nested string stays a String, never a Vector4 or a Color) except that a whole number becomes an int. A setting of another type takes a string, with and without the editor: an HTML color or color name (\"#102b38\", \"white\") for a Color, otherwise the text project.godot stores (\"Vector2i(1152, 648)\"). A setting that is neither stored nor defined by the engine takes the type of value, so a string is stored as a String. value_text is a value as project.godot stores it, parsed as Godot reads project.godot, with and without the editor: {\"type\": \"vec4\", \"value\": Vector4(0, -1000, 0, 0)} becomes a Dictionary holding a Vector4 (a global shader uniform under shader_globals/<name>), \"text\" a String; only built-in types are built, an Object or Resource never. A value of another type than the setting's is refused; replace_type: true lets a setting the engine does not define (a project's own, such as shader_globals/<name>) take it. remove: true removes the setting from project.godot (one the engine defines returns to its default). Without the editor, project.godot is written and the engine is asked for the type of a setting and to read value_text. InputMap actions (input/...) are changed with godot_edit_input_action.",
@@ -84,7 +70,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": s("")
             }),
             &["key"],
-        ),
+        ).destructive_idempotent(),
     ]
 }
 
@@ -96,7 +82,7 @@ fn s(description: &str) -> Value {
     }
 }
 
-fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Tool {
+fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> super::ToolDraft {
     super::tool(name, description, properties, required)
 }
 
