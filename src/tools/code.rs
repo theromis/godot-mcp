@@ -25,7 +25,7 @@ pub fn catalog() -> Vec<Tool> {
     vec![
         tool(
             "godot_code_diagnostics",
-            "GDScript errors and warnings (1-based lines) from Godot's language server, analyzer warnings included (for addons/ only with debug/gdscript/warnings/exclude_addons=false; warnings_hidden says so). Uses an editor on GODOT_MCP_LSP_PORT (default 6005) with this project, else a private headless one. Never reports clean when the server does not answer. godot_validate_script gives these only while this server runs.",
+            "GDScript errors and warnings (1-based lines) from Godot's language server, analyzer warnings included (for addons/ only with debug/gdscript/warnings/exclude_addons=false; warnings_hidden says so). Uses an editor on GODOT_MCP_LSP_PORT (default 6005) with this project, else a private headless one. Never reports clean when the server does not answer. godot_validate_script gives these only while a language server is already running.",
             json!({"script_path": s("res:// path of a .gd file."), "project_path": s("")}),
             &["script_path"],
         ),

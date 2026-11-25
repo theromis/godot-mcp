@@ -76,7 +76,7 @@ pub fn catalog() -> Vec<Tool> {
         ),
         super::tool(
             "godot_validate_shader",
-            "Compiles a saved .gdshader (preprocessed, includes too) with Godot's shader compiler, headless (needs GODOT_PATH), and lists errors with file and line. Not checked: GPU driver compile, editor warnings, unsaved editor text (save first). A .gdshaderinc is not compiled alone: validate a shader including it. A preprocessor failure shows as an unknown '#' character.",
+            "Compiles a saved .gdshader (preprocessed, includes too) with Godot's shader compiler, headless (needs GODOT_PATH), and lists errors with file and line. Not checked: GPU driver compile, editor warnings, unsaved editor text (save first). A .gdshaderinc is not compiled alone: validate a shader including it. A preprocessor failure shows at the directive's line as an unknown '#' character.",
             json!({
                 "shader_path": {"type": "string", "description": "res:// .gdshader."},
                 "project_path": {"type": "string"}

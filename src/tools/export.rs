@@ -78,7 +78,7 @@ pub fn catalog() -> Vec<Tool> {
         ),
         super::tool(
             SET,
-            "Creates (create true, with platform) or changes an export preset in export_presets.cfg. Only given fields and options change; options keep their stored type. Godot ignores an option its platform lacks: check new_options in the answer for typos. Refused while the editor has the project open: godot_close_editor first. Platforms: Linux, Windows Desktop, macOS, Android, iOS, Web, visionOS.",
+            "Creates (create true, with platform) or changes an export preset in export_presets.cfg. Only given fields and options change; options keep their stored type. Godot ignores an option its platform lacks: check new_options in the answer for typos. Refused while the editor has the project open: godot_close_editor first. Platforms: Linux, Windows Desktop, macOS, Android, iOS, Web, visionOS, or one an export plugin adds. A new preset exports all_resources.",
             json!({
                 "name": {"type": "string", "description": "Preset name."},
                 "create": {"type": "boolean", "description": "Create if missing. Default false: an unknown name is refused."},
@@ -86,12 +86,12 @@ pub fn catalog() -> Vec<Tool> {
                 "export_path": {"type": "string", "description": "Project-relative output path."},
                 "export_filter": {"type": "string", "enum": EXPORT_FILTERS, "description": "all_resources, scenes / resources (listed + dependencies), exclude (all but listed), customized (not settable). include/exclude_filter apply on top."},
                 "export_files": {"type": "array", "items": {"type": "string"}, "description": "res:// paths for the filter; replaces the list. missing_files names absent ones."},
-                "include_filter": {"type": "string", "description": "Globs of non-resource files to add (*.json)."},
-                "exclude_filter": {"type": "string", "description": "Globs to leave out."},
+                "include_filter": {"type": "string", "description": "Comma-separated globs of non-resource files to add (*.json)."},
+                "exclude_filter": {"type": "string", "description": "Comma-separated globs to leave out."},
                 "custom_features": {"type": "string", "description": "Comma-separated feature tags."},
                 "options": {
                     "type": "object",
-                    "description": "Options by name, e.g. {\"binary_format/architecture\": \"arm32\"}.",
+                    "description": "Options by name, each a string, number or boolean, e.g. {\"binary_format/architecture\": \"arm32\"}.",
                     "additionalProperties": {"type": ["string", "number", "boolean"]}
                 },
                 "project_path": project_path

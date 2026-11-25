@@ -961,7 +961,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
         ),
         tool(
             "godot_run_project",
-            "Runs the main or a given scene: in editor Play when the bridge is connected (mode auto), else or with mode process as a managed debugger-attached process (godot_stop_project stops it). held, user_args and movie need mode process. held starts it held at the first physics tick at a fixed frame rate, for exact godot_game_physics steps. movie records with Movie Maker, not in real time (each frame advances game time 1/fps); not with held or headless. The file is finished when the game quits (quit_after_frames, itself, godot_stop_project); godot_get_run_status reports movie. Stale imports are reimported first when the editor has this project, else warned. A process run waits for an import or export running in the project.",
+            "Runs the main or a given scene: in editor Play when the bridge is connected (mode auto), else or with mode process as a managed debugger-attached process (godot_stop_project stops it). held, user_args and movie need mode process. held starts it held at the first physics tick at a fixed frame rate, for exact godot_game_physics steps. movie records with Movie Maker, not in real time (each frame advances game time 1/fps); not with held or headless. Quality, mix rate and vsync are editor/movie_writer/* project settings. The file is finished when the game quits (quit_after_frames, itself, godot_stop_project); godot_get_run_status reports movie. Stale imports are reimported first when the editor has this project, else warned. A process run waits for an import or export running in the project.",
             json!({
                 "project_path": {
                     "type": "string",
@@ -1101,7 +1101,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
         ),
         tool(
             "godot_set_node_properties",
-            "Sets node properties in the active scene in one undo action, all or nothing. Values convert to the property's type: arrays or {x, y} for vectors and colors, '#rrggbb' for colors, res:// paths for resources, Godot literals ('Vector2(1, 2)'). A node reference (@export var target: Node3D) takes a path relative to the edited node to a node of its type ('../King', null clears). 'metadata/<name>' keeps an existing entry's type, else takes the JSON value's type; not null. ':' steps through a resource built into this scene (material_override:shader_parameter/glow_amount); a shared one (a .tres, another scene's) is refused: use godot_set_resource_properties. script and private segments after ':' are refused. An unknown property, an unconvertible value or one that reads back differently (a clamping setter) rejects the call. applied lists the values as read back. A node in a non-editable instance is refused unless make_editable.",
+            "Sets node properties in the active scene in one undo action, all or nothing. Values convert to the property's type: arrays or {x, y} for vectors and colors, '#rrggbb' or names for colors, res:// paths for resources, Godot literals ('Vector2(1, 2)'). A node reference (@export var target: Node3D) takes a path relative to the edited node to a node of its type ('../King', '..' for the parent, null clears). 'metadata/<name>' (name an identifier) keeps an existing entry's type, else takes the JSON value's type; not null. ':' steps through a resource built into this scene (material_override:shader_parameter/glow_amount); a shared one (a .tres, another scene's) is refused: use godot_set_resource_properties. script and private segments after ':' are refused. An unknown property, an unconvertible value or one that reads back differently (a clamping setter, an audio bus missing from the layout) rejects the call. applied lists the values as read back. A node in a non-editable instance is refused unless make_editable.",
             json!({
                 "node_path": {
                     "type": "string",
@@ -1193,7 +1193,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
         ),
         tool(
             "godot_validate_script",
-            "Checks a GDScript file. With a running language server (the editor's, or one godot_code_diagnostics started) returns errors and warnings (file:line:col, 1-based; code; message); a warning does not fail the check, an error does. A class it calls unknown that the project declares is registered through the editor and rechecked. Without a server, runs godot --headless --check-only: parse errors only, no warnings. A class missing from .godot/global_script_class_cache.cfg fails the check (runs cannot find it until godot_resave_resources or the editor registers it).",
+            "Checks a GDScript file. With a running language server (the editor's, or one godot_code_diagnostics started) returns errors and warnings (file:line:col, 1-based; code; message); a warning does not fail the check, an error does. A class it calls unknown that the project declares is registered through the editor and rechecked. Without a server, runs godot --headless --check-only: parse errors only, no warnings. A script using a class missing from .godot/global_script_class_cache.cfg fails the check (runs cannot find it until godot_resave_resources or the editor registers it).",
             json!({
                 "script_path": {
                     "type": "string",
@@ -1208,7 +1208,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
         ),
         tool(
             "godot_run_script",
-            "Runs a SceneTree or MainLoop script in headless Godot (-s <script> -- user_args); another base or a path outside the project is refused. Returns the exit code, stdout and stderr (last 64 KiB each; the whole stream is in stdout_log/stderr_log) and script_errors (file, line). An unloadable script is an error with load_error, even if Godot exits 0. A SCRIPT ERROR that leaves the main loop idle ends the run. Repeated exit leak lines are shown once with xN (exit_leaks, hint). On timeout the process tree is killed and the output so far returned, so print as you go (stdout_buffered true: unflushed print() was lost). Progress notifications carry the newest line. Stale imports are reimported first when the editor has this project, else import_warning names godot_resave_resources. Dropped uid:// references are restored (resource_repairs; binary_uid_error, resource_damage: what is still missing), uids recorded in the uid cache (uid_cache_stale if not), and an open editor reloads what was written (editor_refresh). Lists stop at 20 (<list>_total). Parallel calls each get their own Godot (overlapped: repairs waited).",
+            "Runs a SceneTree or MainLoop script in headless Godot (-s <script> -- user_args); another base or a path outside the project is refused. Returns the exit code, stdout and stderr (last 64 KiB each; the whole stream is in stdout_log/stderr_log, overwritten by the next run) and script_errors (file, line). An unloadable script is an error with load_error, even if Godot exits 0. A SCRIPT ERROR that leaves the main loop idle ends the run. Repeated exit leak lines are shown once with xN (exit_leaks, hint). On timeout the process tree is killed and the output so far returned, so print as you go (stdout_buffered true: unflushed print() was lost; use printerr()). Progress notifications carry the newest line. Stale imports are reimported first when the editor has this project; else the script runs on the old import data and import_warning names godot_resave_resources. Dropped uid:// references are restored (resource_repairs; binary_uid_error, resource_damage: what is still missing), uids recorded in the uid cache (uid_cache_stale if not), and an open editor reloads what was written (editor_refresh). Lists stop at 20 (<list>_total). Parallel calls each get their own Godot and must write different files (overlapped: repairs waited).",
             json!({
                 "script": {
                     "type": "string",
@@ -1227,7 +1227,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 },
                 "fixed_fps": {
                     "type": "integer",
-                    "description": "Run unthrottled at this many frames per game second (--fixed-fps), e.g. 60. Threads and background loads follow the wall clock: wait on their status, not frames. Omit for real time.",
+                    "description": "Run unthrottled at this many frames per game second (--fixed-fps), e.g. 60. Wall-clock time (Time.get_ticks_msec), threads and background loads no longer match game time: wait on their status, not frames. Omit for real time.",
                     "minimum": 1,
                     "maximum": 1000
                 },
@@ -1240,7 +1240,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
         ),
         tool(
             "godot_resave_resources",
-            "Refreshes files changed outside the editor. With the editor: known importable files reimport synchronously, others are re-scanned; clean script tabs reload (reloaded_tabs), ones with unsaved changes are kept (unsaved_tabs); loaded shaders, resources and tabless scripts reload in place (reloaded_resources). A never-scanned path without a resulting .import is listed under not_scanned. Without paths, rescans the whole project in the background. Without the editor, runs `godot --headless --path <project> --import` and lists imported sources. A requested path whose .godot/imported data still differs from its source is listed in still_stale with a reason and makes the call an error (force true reimports it headless). The headless import waits for godot_run_script calls in the project and runs alone.",
+            "Refreshes files changed outside the editor. With the editor: known importable files reimport synchronously, others are re-scanned; clean script tabs reload (reloaded_tabs), ones with unsaved changes are kept (unsaved_tabs); loaded shaders, resources and tabless scripts reload in place (reloaded_resources). A never-scanned path without a resulting .import is listed under not_scanned. Open scenes are not reloaded: use godot_open_scene reload. Without paths, rescans the whole project in the background. Without the editor, runs `godot --headless --path <project> --import` and lists imported sources. A requested path whose .godot/imported data still differs from its source is listed in still_stale with a reason and makes the call an error (force true reimports it headless). The headless import waits for godot_run_script calls in the project and runs alone.",
             json!({
                 "paths": {
                     "type": "array",
@@ -1249,7 +1249,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 },
                 "wait": {
                     "type": "boolean",
-                    "description": "Full editor scan only: return when scanning and importing finish (up to 60s), with imported (count) and timed_out. Default false. The headless import always waits."
+                    "description": "Full editor scan only: return when scanning and importing finish (up to 60s), with imported (count) and timed_out. Ignored with paths. Default false. The headless import always waits."
                 },
                 "force": {
                     "type": "boolean",

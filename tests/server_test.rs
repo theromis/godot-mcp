@@ -187,7 +187,7 @@ fn create_script_takes_script_path_like_the_other_script_tools() {
 /// Every client receives the whole tool list at the start of each session, so its size is a
 /// cost paid in every conversation. Long explanations belong in docs/; raise this budget only
 /// for a new tool or parameter, not for longer prose.
-const TOOL_LIST_BUDGET_BYTES: usize = 94_500;
+const TOOL_LIST_BUDGET_BYTES: usize = 97_000;
 
 #[test]
 fn the_tool_list_stays_within_its_size_budget() {

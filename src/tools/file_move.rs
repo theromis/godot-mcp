@@ -45,7 +45,7 @@ pub fn handles(name: &str) -> bool {
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         MOVE,
-        "Moves or renames project files and folders like the FileSystem dock: .uid, .import and .godot/imported data move along, res:// mentions in text files are rewritten, uid:// stays valid. With the editor, files open with unsaved changes are refused, binary .scn/.res naming an old path are resaved (resaved), and it rescans. Without it, binary_references lists binary files still naming an old path; rescan_needed is true. Refuses a missing source, project.godot, .godot/, the MCP addon, a lone .uid/.import, a destination in .godot/ or that already exists, a folder into itself, overlapping moves; all or nothing. dry_run previews. Relative and run-time-built paths are not rewritten.",
+        "Moves or renames project files and folders like the FileSystem dock: .uid, .import and .godot/imported data move along, res:// mentions in text files are rewritten, uid:// stays valid. With the editor, files open with unsaved changes are refused, binary .scn/.res naming an old path are resaved (resaved), and it rescans. Without it, the uid and class caches are updated, binary_references lists binary files still naming an old path (they load by uid; move again with the editor or resave them), and rescan_needed is true. Refuses a missing source, project.godot, .godot/, the MCP addon, a lone .uid/.import, a destination in .godot/ or that already exists, a folder into itself, overlapping moves; all or nothing. dry_run previews. Relative and run-time-built paths are not rewritten.",
         json!({
             "moves": {
                 "type": "array",

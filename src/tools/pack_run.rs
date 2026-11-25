@@ -38,7 +38,7 @@ pub fn handles(name: &str) -> bool {
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         RUN_PACK,
-        "Smoke-runs an exported .pck/.zip with godot --main-pack (headless by default) from an empty temp folder for seconds, to find files a trimmed export lacks. Returns ok, ran_full_time, exit code, duration, missing_resources (failed res:// or uid:// loads), ERROR/WARNING lines and the output tail. ok is false (an error answer) on a missing file, a logged error, or an early non-zero exit or crash. Not a managed run: godot_get_run_status does not list it. Waits for an export running in the same project.",
+        "Smoke-runs an exported .pck/.zip with godot --main-pack (headless by default) from an empty temp folder for seconds, to find files a trimmed export lacks. Returns ok, ran_full_time, exit code, duration, missing_resources (failed res:// or uid:// loads), ERROR/WARNING lines and the output tail. ok is false (an error answer) on a missing file, a logged error, or an early non-zero exit or crash. An early exit 0 is ok. Uses the game's real user:// folder. Not a managed run: godot_get_run_status does not list it. Waits for an export running in the same project.",
         json!({
             "pack_path": {"type": "string", "description": "res:// or project-relative .pck or .zip inside the project."},
             "scene": {"type": "string", "description": "Scene to start instead of the main one."},

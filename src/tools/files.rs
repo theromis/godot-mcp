@@ -49,7 +49,7 @@ pub fn handles(name: &str) -> bool {
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         DELETE,
-        "Deletes project files with their .uid, .import and .godot/imported data. Refuses a file still referenced by res:// path or uid:// unless force; each reference has kind used, or written (a .gd only writes the file: does not refuse). Refuses project.godot, .godot/, the MCP addon, a .uid/.import whose file exists, and directories (empty ones with allow_empty_dir); all or nothing. With the editor, its tabs close (unsaved ones refuse) and files go to the trash unless trash is false. Without it deletion is permanent and the editor needs a rescan. dry_run previews. class_name and run-time paths are not searched.",
+        "Deletes project files with their .uid, .import and .godot/imported data. Refuses a file still referenced by res:// path or uid:// unless force; each reference has kind used, or written (a .gd only writes the file: does not refuse). Refuses project.godot, .godot/, the MCP addon, a .uid/.import whose file exists, and directories (empty ones with allow_empty_dir); all or nothing. With the editor, its tabs close (unsaved ones refuse) and files go to the trash unless trash is false. Without it deletion is permanent and the editor needs a rescan. dry_run previews. class_name and run-time paths are not searched; without the editor, neither are binary .scn/.res.",
         json!({
             "paths": {
                 "type": "array",

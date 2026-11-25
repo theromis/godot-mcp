@@ -30,7 +30,7 @@ pub fn catalog() -> Vec<Tool> {
     let color = json!({"description": "\"#rrggbb[aa]\" or [r, g, b(, a)] in 0..1."});
     vec![super::tool(
         NAME,
-        "Renders project scenes together in one PNG, writing no scene, in a temporary windowed Godot. Without positions, assets stand in a row along X, gap apart. Light: environment.scene's lights, an Environment resource, or a default sun (light replaces it). Camera fitted to the assets unless size/distance is set. Returns the PNG and JSON: per asset placement, bounds, triangles, surfaces, rendered (draw_calls etc. of that asset alone); totals; camera. Stale imports are reimported via the editor when it has the project, else warned. Needs GODOT_PATH and a display.",
+        "Renders project scenes together in one PNG, writing no scene, in a temporary windowed Godot. Without positions, assets stand in a row along X, gap apart. Light: environment.scene's first WorldEnvironment and suns (scripts dropped), an Environment resource, or a default sun (light replaces the suns). Camera: orthogonal by default, fitted to the assets unless size/distance is set. Returns the PNG and JSON: per asset placement, bounds, triangles, surfaces, rendered (draw_calls etc. of that asset alone); totals; camera. Stale imports are reimported via the editor when it has the project, else warned. Needs GODOT_PATH and a display.",
         json!({
             "assets": {
                 "type": "array",
@@ -73,11 +73,11 @@ pub fn catalog() -> Vec<Tool> {
                 "type": "object",
                 "description": "Optional view settings.",
                 "properties": {
-                    "projection": {"type": "string", "enum": ["orthogonal", "perspective"]},
+                    "projection": {"type": "string", "enum": ["orthogonal", "perspective"], "description": "orthogonal (default) or perspective; fov and distance apply to perspective."},
                     "yaw": {"type": "number", "description": "Degrees. Default -35."},
                     "pitch": {"type": "number", "description": "Degrees, negative looks down. Default -30."},
                     "size": {"type": "number", "description": "Orthogonal height in metres; turns fitting off."},
-                    "fov": {"type": "number", "description": "Vertical degrees, 1-179. Default 75."},
+                    "fov": {"type": "number", "description": "Perspective vertical degrees, 1-179. Default 75."},
                     "distance": {"type": "number", "description": "Metres to the target; turns perspective fitting off."},
                     "target": {"description": "[x, y, z]. Default: centre of the assets' bounds.", "type": "array", "items": {"type": "number"}},
                     "fit": {"type": "boolean", "description": "Default true unless size, distance or a copied orthogonal camera sets it."},

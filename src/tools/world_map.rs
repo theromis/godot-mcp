@@ -35,7 +35,7 @@ pub fn handles(name: &str) -> bool {
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         NAME,
-        "Draws a top-down map of a world split into many scene files without running the game and flags scenes lacking collision or geometry. Scenes (dir+glob and/or scenes) stand at their saved transforms, rendered in orthographic tiles by a temporary windowed Godot. Returns JSON, and without output_path a JPEG preview (max 1024 px). Map top is -Z; pixel (px, py) is world (rect[0] + px/pixels_per_metre, rect[1] + py/pixels_per_metre). JSON: totals, problems, image (size, rect, pixels_per_metre), files, warnings, and per detail each scene's bounds, collision_bounds, counts, has_geometry, has_collision. Stale imports are warned. Needs GODOT_PATH and a display.",
+        "Draws a top-down map of a world split into many scene files without running the game and flags scenes lacking collision or geometry. Scenes (dir+glob and/or scenes) stand at their saved transforms, rendered in orthographic tiles by a temporary windowed Godot (their _ready runs; WorldEnvironments dropped, neutral sun). Returns JSON, and without output_path a JPEG preview (max 1024 px). Map top is -Z; pixel (px, py) is world (rect[0] + px/pixels_per_metre, rect[1] + py/pixels_per_metre). JSON: totals, problems, image (size, rect, pixels_per_metre), files, warnings, and per detail each scene's bounds, collision_bounds, counts, has_geometry, has_collision. Stale imports are warned. Needs GODOT_PATH and a display.",
         json!({
             "dir": {"type": "string", "description": "res:// directory of scenes."},
             "glob": {"type": "string", "description": "Name pattern (* ?). Default *.tscn."},
@@ -55,7 +55,7 @@ pub fn catalog() -> Vec<Tool> {
             "labels": {"type": "boolean", "description": "Draw bounds and names (red when collision or geometry is missing). Default true."},
             "tile_metres": {"type": "number", "minimum": 1, "maximum": 100000, "description": "Metres. Default: at most 9 scenes and 1024 px per tile."},
             "detail": {"type": "string", "enum": ["summary", "problems", "scenes"], "description": "Per-scene entries: summary (default) none, problems (those in problems), scenes (all). The reply stays under ~60000 chars (scenes_left_out); output_path's JSON has all."},
-            "output_path": {"type": "string", "description": ".png in the project for the full map, with the full JSON beside it, replacing old files; the reply names the paths instead of a picture."},
+            "output_path": {"type": "string", "description": ".png in the project for the full map, with the full JSON beside it, replacing old files; the reply names the paths instead of a picture. A .gdignore or dot folder keeps the editor from importing it."},
             "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": MAX_TIMEOUT, "description": "Default 300."},
             "project_path": {"type": "string"}
         }),
