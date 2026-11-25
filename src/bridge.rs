@@ -41,6 +41,9 @@ pub struct BridgeResponse {
     pub status: String,
     pub result: Option<Value>,
     pub error: Option<String>,
+    /// What kind of failure `error` is, from addons that send codes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
 }
 
 type Pending = Arc<StdMutex<HashMap<String, oneshot::Sender<Result<Value>>>>>;
@@ -318,11 +321,13 @@ fn deliver(pending: &Pending, events: &EventSubs, text: &str) {
     let outcome = if response.status == "success" {
         Ok(response.result.unwrap_or(Value::Null))
     } else {
-        Err(McpError::ToolExecution(
-            response
-                .error
-                .unwrap_or_else(|| "Unknown engine error".into()),
-        ))
+        let message = response
+            .error
+            .unwrap_or_else(|| "Unknown engine error".into());
+        match response.code.filter(|code| !code.is_empty()) {
+            Some(code) => Err(McpError::CodedToolExecution { code, message }),
+            None => Err(McpError::ToolExecution(message)),
+        }
     };
     let _ = reply.send(outcome);
 }

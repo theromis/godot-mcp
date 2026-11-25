@@ -309,7 +309,9 @@ fn prefixed(mut result: ToolResult, prefix: &str) -> ToolResult {
 /// The command an addon refused as unknown in `error`.
 pub(super) fn unknown_command(error: &McpError) -> Option<String> {
     match error {
-        McpError::ToolExecution(message) | McpError::Bridge(message) => command_in(message),
+        McpError::ToolExecution(message)
+        | McpError::Bridge(message)
+        | McpError::CodedToolExecution { message, .. } => command_in(message),
         _ => None,
     }
 }
@@ -377,13 +379,14 @@ pub(super) async fn explain_unknown_command(
         )
     };
     ToolResult::error(
-        what,
+        what.clone(),
         &[
             &update_hint(dir.as_deref()),
             "Or disable and enable Godot MCP Bridge in Project → Project Settings → Plugins once the addon on disk is this server's version",
             "Or close the editor: tools that work without it then use the project files",
         ],
     )
+    .with_error_code("UNKNOWN_COMMAND", &what, None)
 }
 
 /// Tools whose failures say nothing about the addon's behaviour, or that manage the addon or

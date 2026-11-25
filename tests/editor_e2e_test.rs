@@ -345,10 +345,12 @@ async fn an_editor_told_not_to_open_a_bridge_opens_none() {
 
 fn expect_error(result: Result<Value, McpError>, needle: &str) {
     match result {
-        Err(McpError::ToolExecution(message)) => assert!(
-            message.contains(needle),
-            "error {message:?} should mention {needle:?}"
-        ),
+        Err(McpError::ToolExecution(message) | McpError::CodedToolExecution { message, .. }) => {
+            assert!(
+                message.contains(needle),
+                "error {message:?} should mention {needle:?}"
+            )
+        }
         other => panic!("expected an editor error mentioning {needle:?}, got {other:?}"),
     }
 }
@@ -417,6 +419,7 @@ async fn bridge_is_loopback_only_and_requires_the_token() {
                 .contains("Unauthorized"),
             "{reply}"
         );
+        assert_eq!(reply["code"], "UNAUTHORIZED", "{reply}");
     }
 
     // The authenticated client works.
@@ -465,6 +468,79 @@ async fn bridge_is_loopback_only_and_requires_the_token() {
             "bridge accepted a connection on {ip}"
         );
     }
+}
+
+/// The code an editor error carries, or a panic naming what came back instead.
+fn error_code(result: Result<Value, McpError>) -> String {
+    match result {
+        Err(McpError::CodedToolExecution { code, .. }) => code,
+        other => panic!("expected an editor error with a code, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn editor_errors_carry_a_code_for_each_kind_of_failure() {
+    let editor = start_editor(false).await;
+    let bridge = &editor.bridge;
+    let call = |command: &'static str, params: Value| async move {
+        bridge.send_command(command, params).await
+    };
+
+    assert_eq!(
+        error_code(call("no_such_command", json!({})).await),
+        "UNKNOWN_COMMAND"
+    );
+    assert_eq!(
+        error_code(call("get_node_properties", json!({"node_path": 7})).await),
+        "BAD_PARAMS"
+    );
+    assert_eq!(
+        error_code(call("open_scene", json!({"scene_path": "res://missing.tscn"})).await),
+        "NOT_FOUND"
+    );
+    call("open_scene", json!({"scene_path": "res://main.tscn"}))
+        .await
+        .expect("open main");
+    assert_eq!(
+        error_code(call("get_node_properties", json!({"node_path": "NoSuchNode"})).await),
+        "NOT_FOUND"
+    );
+    assert_eq!(
+        error_code(call("create_scene", json!({"scene_path": "res://main.tscn"})).await),
+        "EXISTS"
+    );
+    // A failure without a code keeps the reply older servers know.
+    match call("remove_node", json!({"node_path": "."})).await {
+        Err(McpError::ToolExecution(message)) => {
+            assert!(message.contains("scene root"), "{message}")
+        }
+        other => panic!("expected an uncoded editor error, got {other:?}"),
+    }
+
+    // The tool result gives the code in structuredContent and keeps its text.
+    use godot_mcp::cli_runner::CliRunner;
+    use godot_mcp::tools::ToolManager;
+    use std::sync::Arc;
+    let (godot, _) = godot_binaries();
+    let tools = Arc::new(
+        ToolManager::new(BridgeClient::new(editor.port), CliRunner::new(godot))
+            .with_working_dir(editor.project.clone()),
+    );
+    let result = Arc::clone(&tools)
+        .call_tool(
+            "godot_get_node_properties",
+            json!({"node_path": "NoSuchNode"}),
+        )
+        .await;
+    assert!(result.is_error);
+    assert_eq!(result.error_code(), Some("NOT_FOUND"), "{result:?}");
+    let text = tool_text(&result);
+    assert!(
+        text.starts_with("Error: Node not found at path: NoSuchNode"),
+        "{text}"
+    );
+    assert!(text.contains("godot_get_scene_tree"), "{text}");
 }
 
 #[tokio::test]

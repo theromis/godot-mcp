@@ -247,6 +247,7 @@ fn runtime_error(error: &McpError) -> ToolResult {
         McpError::BridgeUnavailable(_)
         | McpError::Bridge(_)
         | McpError::ToolExecution(_)
+        | McpError::CodedToolExecution { .. }
         | McpError::RunEnded(_) => super::bridge_error_result(error),
         McpError::Process(detail) if detail.contains("is still alive") => ToolResult::error(
             error.to_string(),

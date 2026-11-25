@@ -439,6 +439,8 @@ pub enum Reply {
     Ok(Value),
     OkWithEvent(Value, Value),
     Err(String),
+    /// An error with a code, as addons that send error codes answer: (code, message).
+    ErrCode(&'static str, String),
     After(Duration, Value),
     Never,
 }
@@ -556,6 +558,12 @@ where
             Reply::Err(message) => {
                 let _ = out_tx.send(
                     json!({"commandId": id, "status": "error", "error": message}).to_string(),
+                );
+            }
+            Reply::ErrCode(code, message) => {
+                let _ = out_tx.send(
+                    json!({"commandId": id, "status": "error", "error": message, "code": code})
+                        .to_string(),
                 );
             }
             Reply::After(delay, result) => {

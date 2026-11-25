@@ -201,7 +201,9 @@ impl ToolManager {
                 ));
             }
             // An editor that answers with an error (e.g. a token problem) must not be hidden.
-            Err(error @ McpError::ToolExecution(_)) => return bridge_error_result(&error),
+            Err(error @ (McpError::ToolExecution(_) | McpError::CodedToolExecution { .. })) => {
+                return bridge_error_result(&error);
+            }
             Err(_) => {}
         }
 
@@ -692,27 +694,40 @@ const RUN_ENDED_HINTS: &[&str] = &[
 ];
 
 /// Turns a bridge failure into a tool error whose recovery hints match what actually failed.
+/// Its kind is also given machine-readably in `structuredContent.error.code` (docs/tools.md,
+/// "Error codes").
 fn bridge_error_result(error: &McpError) -> ToolResult {
     match error {
-        McpError::BridgeUnavailable(detail) => ToolResult::error(
-            format!("The Godot Editor bridge is not reachable ({detail})"),
-            &[
-                "Launch Godot Editor with your project (godot_launch_editor can do it)",
-                "Ensure 'Godot MCP Bridge' plugin is enabled in Project Settings -> Plugins",
-                "Start this server in the editor's project directory so both derive the same port, or set the addon's project setting godot_mcp/bridge_port to the port named in the error (the editor's Output panel shows the port it listens on)",
-            ],
-        ),
+        McpError::BridgeUnavailable(detail) => {
+            let message = format!("The Godot Editor bridge is not reachable ({detail})");
+            ToolResult::error(
+                message.clone(),
+                &[
+                    "Launch Godot Editor with your project (godot_launch_editor can do it)",
+                    "Ensure 'Godot MCP Bridge' plugin is enabled in Project Settings -> Plugins",
+                    "Start this server in the editor's project directory so both derive the same port, or set the addon's project setting godot_mcp/bridge_port to the port named in the error (the editor's Output panel shows the port it listens on)",
+                ],
+            )
+            .with_error_code("BRIDGE_UNAVAILABLE", &message, None)
+        }
         McpError::Bridge(detail) => ToolResult::error(
             detail.clone(),
             &[
                 "The editor may be busy (importing, modal dialog) or restarting; retry in a moment",
                 "Look for [Godot MCP] messages in the editor's Output panel",
             ],
-        ),
-        McpError::ToolExecution(message) => {
-            ToolResult::error(message.clone(), editor_error_hints(message))
+        )
+        .with_error_code("BRIDGE_ERROR", detail, None),
+        McpError::CodedToolExecution { code, message } => {
+            let hints = editor_code_hints(code).unwrap_or_else(|| editor_error_hints(message));
+            ToolResult::error(message.clone(), hints).with_error_code(code, message, None)
         }
-        McpError::RunEnded(report) => ToolResult::error(report.clone(), RUN_ENDED_HINTS),
+        McpError::ToolExecution(message) => with_runtime_code(
+            ToolResult::error(message.clone(), editor_error_hints(message)),
+            error,
+        ),
+        McpError::RunEnded(report) => ToolResult::error(report.clone(), RUN_ENDED_HINTS)
+            .with_error_code("RUN_ENDED", report, None),
         McpError::Process(detail) => ToolResult::error(
             format!("Engine process error: {detail}"),
             &["Verify GODOT_PATH points to a working Godot executable"],
@@ -724,12 +739,78 @@ fn bridge_error_result(error: &McpError) -> ToolResult {
     }
 }
 
-/// The `code` of a failure the running game reported, which arrives as a JSON object.
-fn runtime_code(message: &str) -> Option<String> {
+/// A failure the running game reported, which arrives as a JSON object with a `code`.
+fn runtime_report(message: &str) -> Option<(String, Value)> {
     let value: Value = serde_json::from_str(message).ok()?;
-    value.get("code")?.as_str().map(str::to_string)
+    let code = value.get("code")?.as_str()?.to_string();
+    Some((code, value))
 }
 
+/// The `code` of a failure the running game reported.
+fn runtime_code(message: &str) -> Option<String> {
+    runtime_report(message).map(|(code, _)| code)
+}
+
+/// Gives an error result built from a running game's failure that failure's code in
+/// `structuredContent`, with the game's `message` and `data`. Other results are returned as
+/// they are.
+pub(crate) fn with_runtime_code(result: ToolResult, error: &McpError) -> ToolResult {
+    let McpError::ToolExecution(raw) = error else {
+        return result;
+    };
+    if result.structured_content.is_some() {
+        return result;
+    }
+    let Some((code, report)) = runtime_report(raw) else {
+        return result;
+    };
+    let message = report
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or(raw)
+        .to_string();
+    let extra = report.get("data").map(|data| json!({ "data": data }));
+    result.with_error_code(&code, &message, extra)
+}
+
+/// Recovery hints for an error code the editor's addon sent. `None` for a code this server does
+/// not know, whose hints then come from the message.
+fn editor_code_hints(code: &str) -> Option<&'static [&'static str]> {
+    Some(match code {
+        "UNAUTHORIZED" => &[
+            "Restart the MCP client so the server re-reads the bridge token",
+            "Run the MCP server and the Godot editor as the same OS user, or set the same GODOT_MCP_TOKEN for both",
+        ],
+        "NO_SCENE" => &["Open a scene first with godot_open_scene"],
+        "UNSAVED_CHANGES" => &[
+            "Save the script in the editor (Ctrl+S) or discard its changes, then call godot_read_script again and repeat the edit",
+        ],
+        "STALE_TAB" => &[
+            "Save or reload the script in the editor so that it matches the file, then call godot_read_script again",
+        ],
+        "EDITOR_STATE_UNMATCHED" => &[
+            "Close the extra tabs in the script editor (help pages, text files), or save the script, then read it again",
+        ],
+        "EXISTS" => &["Choose another path; an existing file is never replaced"],
+        "WRITE_FAILED" => &[
+            "Check that the folder exists or can be created inside the project and that it is writable, then retry",
+        ],
+        "SETTING_TYPE" => &[
+            "Send a value of the type the setting already has, or change it in the editor's Project Settings",
+        ],
+        "NOT_FOUND" => &["Verify the path with godot_get_scene_tree or godot_get_open_scenes"],
+        "BAD_PARAMS" => &[
+            "Fix the parameter the message names; its type is in the tool's inputSchema from tools/list",
+        ],
+        "UNKNOWN_COMMAND" => &[
+            "The editor's addon is older than this server: update it with godot_update_addon (restart_editor: true while the editor has the project open)",
+        ],
+        _ => return None,
+    })
+}
+
+/// Recovery hints chosen from the message, for running-game codes and for addons that send no
+/// code (older than the codes, or a failure without one).
 fn editor_error_hints(message: &str) -> &'static [&'static str] {
     if let Some(code) = runtime_code(message) {
         return match code.as_str() {
@@ -750,44 +831,37 @@ fn editor_error_hints(message: &str) -> &'static [&'static str] {
             _ => &["Read the message; the running game refused the request"],
         };
     }
+    message_code(message)
+        .and_then(editor_code_hints)
+        .unwrap_or(&["Correct the arguments according to the message above and retry"])
+}
+
+/// The code an addon without error codes means, read from the words of its message. Used only
+/// to choose hints: such an error gets no `structuredContent`.
+fn message_code(message: &str) -> Option<&'static str> {
     let lower = message.to_lowercase();
-    if lower.contains("unauthorized") {
-        &[
-            "Restart the MCP client so the server re-reads the bridge token",
-            "Run the MCP server and the Godot editor as the same OS user, or set the same GODOT_MCP_TOKEN for both",
-        ]
-    } else if lower.contains("no active scene") {
-        &["Open a scene first with godot_open_scene"]
-    } else if lower.contains("unsaved changes") {
-        &[
-            "Save the script in the editor (Ctrl+S) or discard its changes, then call godot_read_script again and repeat the edit",
-        ]
-    } else if lower.contains("differs from the file") {
-        &[
-            "Save or reload the script in the editor so that it matches the file, then call godot_read_script again",
-        ]
-    } else if lower.contains("cannot be matched") {
-        &[
-            "Close the extra tabs in the script editor (help pages, text files), or save the script, then read it again",
-        ]
-    } else if lower.contains("already exists") {
-        &["Choose another path; an existing file is never replaced"]
-    } else if lower.contains("can't open") || lower.contains("failed to save") {
-        &[
-            "Check that the folder exists or can be created inside the project and that it is writable, then retry",
-        ]
-    } else if lower.contains("expects a") {
-        &[
-            "Send a value of the type the setting already has, or change it in the editor's Project Settings",
-        ]
-    } else if lower.contains("not found")
-        || lower.contains("does not exist")
-        || lower.contains("not currently open")
-    {
-        &["Verify the path with godot_get_scene_tree or godot_get_open_scenes"]
+    let has = |words: &str| lower.contains(words);
+    Some(if has("unauthorized") {
+        "UNAUTHORIZED"
+    } else if has("no active scene") {
+        "NO_SCENE"
+    } else if has("unsaved changes") {
+        "UNSAVED_CHANGES"
+    } else if has("differs from the file") {
+        "STALE_TAB"
+    } else if has("cannot be matched") {
+        "EDITOR_STATE_UNMATCHED"
+    } else if has("already exists") {
+        "EXISTS"
+    } else if has("can't open") || has("failed to save") {
+        "WRITE_FAILED"
+    } else if has("expects a") {
+        "SETTING_TYPE"
+    } else if has("not found") || has("does not exist") || has("not currently open") {
+        "NOT_FOUND"
     } else {
-        &["Correct the arguments according to the message above and retry"]
-    }
+        return None;
+    })
 }
 
 /// Which feedback tools the catalog holds; set once at start-up by `configure_catalog`.
