@@ -872,7 +872,7 @@ impl Run {
             let Some(text) = message.data.first().and_then(Value::as_str) else {
                 continue;
             };
-            let parsed: Value = serde_json::from_str(text)?;
+            let parsed: Value = crate::godot::json_text::parse(text)?;
             if !json_id_eq(parsed.get("id"), id) {
                 continue;
             }
@@ -1017,7 +1017,7 @@ fn ingest(run: &Run, message: &GameMessage) {
     match message.message.as_str() {
         "mcp:hello" => {
             if let Some(text) = message.data.first().and_then(Value::as_str)
-                && let Ok(payload) = serde_json::from_str::<Value>(text)
+                && let Ok(payload) = crate::godot::json_text::parse::<Value>(text)
             {
                 run.note_hello(payload);
             }

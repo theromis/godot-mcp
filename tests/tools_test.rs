@@ -1392,6 +1392,45 @@ async fn editor_runtime_waits_for_hello_and_targets_the_ready_session() {
     assert!(polls.load(Ordering::SeqCst) >= 3);
 }
 
+/// The game's runtime writes its replies with Godot's `JSON.stringify`, which leaves U+0001
+/// raw inside a string; a node name carrying one must not turn the reply into an error.
+#[tokio::test]
+async fn editor_runtime_reply_with_a_raw_control_character_is_read() {
+    use common::{MockBridge, Reply};
+    let bridge = MockBridge::start(move |command| {
+        match command["type"].as_str().unwrap_or_default() {
+            "get_run_status" => Reply::Ok(json!({"running": true})),
+            "game_status" => Reply::Ok(json!({"sessions": [{"session": 7, "hello": "{}"}]})),
+            "game_send" => {
+                let request: Value = serde_json::from_str(command["params"]["data"][0].as_str().expect("request")).expect("JSON");
+                let reply = format!(
+                    "{{\"id\":{},\"result\":{{\"count\":1,\"nodes\":[{{\"name\":\"Bad\u{1}Name\\v\"}}]}}}}",
+                    request["id"]
+                );
+                Reply::OkWithEvent(json!({"sent": true}), json!({
+                    "type": "event", "event": "game.message", "data": {
+                        "session": 7, "message": "mcp:reply", "data": [reply]
+                    }
+                }))
+            }
+            _ => Reply::Err("unexpected command".into())
+        }
+    }).await;
+    let manager = ToolManager::new(
+        BridgeClient::new(bridge.port),
+        CliRunner::new(PathBuf::from("unused-godot")),
+    );
+    let result = Arc::new(manager)
+        .call_tool("godot_game_tree", json!({"run_id": "editor"}))
+        .await;
+    assert!(!result.is_error, "{}", text(&result));
+    assert!(
+        text(&result).contains("Bad\\u0001Name\\u000b"),
+        "{}",
+        text(&result)
+    );
+}
+
 #[tokio::test]
 async fn editor_runtime_without_a_running_game_does_not_send_input() {
     use common::{MockBridge, Reply};

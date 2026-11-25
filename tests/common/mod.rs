@@ -440,6 +440,9 @@ pub enum Reply {
     OkWithEvent(Value, Value),
     Err(String),
     After(Duration, Value),
+    /// Sends this text as it is, with `$ID` replaced by the command id: a reply that is not
+    /// necessarily valid JSON, written the way Godot's `JSON.stringify` writes it.
+    Raw(String),
     Never,
 }
 
@@ -564,6 +567,10 @@ where
                     tokio::time::sleep(delay).await;
                     let _ = tx.send(success(&id, result));
                 });
+            }
+            Reply::Raw(text) => {
+                let id = id.as_str().unwrap_or_default();
+                let _ = out_tx.send(text.replace("$ID", id));
             }
             Reply::Never => {}
         }
