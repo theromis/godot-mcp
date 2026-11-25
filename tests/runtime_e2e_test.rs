@@ -5188,6 +5188,80 @@ async fn created_resource_without_an_editor_loads_and_takes_properties() {
     );
 }
 
+/// godot_create_scene without an editor writes a root name with characters the scene format
+/// quotes (a backslash, a newline, brackets) so that Godot loads it, and the name it reports is
+/// the one Godot itself keeps when the editor sets `Node.name` to the same text.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn created_scene_without_an_editor_loads_with_the_name_godot_keeps() {
+    let _ = IGNORE;
+    let project = project_dir_with_scripts();
+    let root = project.path();
+    let names = [
+        "Root\\",
+        "Q\\\"R",
+        "C[D]E",
+        "new\nline",
+        "tab\tctl\u{1}",
+        "a.b:c@d/e%f",
+        "S\\nT",
+    ];
+    std::fs::write(
+        root.join("names.json"),
+        serde_json::to_string(&names).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("scripts/load_names.gd"),
+        "extends SceneTree\n\nfunc _initialize() -> void:\n\tvar names: Array = JSON.parse_string(FileAccess.get_file_as_string(\"res://names.json\"))\n\tvar found: Array = []\n\tfor index in names.size():\n\t\tvar packed: PackedScene = ResourceLoader.load(\"res://n_%d.tscn\" % index, \"\", ResourceLoader.CACHE_MODE_IGNORE)\n\t\tvar loaded: String = \"<not loaded>\"\n\t\tif packed != null:\n\t\t\tvar scene: Node = packed.instantiate()\n\t\t\tloaded = String(scene.name)\n\t\t\tscene.free()\n\t\tvar named := Node.new()\n\t\tnamed.name = names[index]\n\t\tfound.append({\"loaded\": Array(loaded.to_utf8_buffer()), \"editor\": Array(String(named.name).to_utf8_buffer())})\n\t\tnamed.free()\n\tvar out := FileAccess.open(\"res://names_out.json\", FileAccess.WRITE)\n\tout.store_string(JSON.stringify(found))\n\tout.close()\n\tquit(0)\n",
+    )
+    .unwrap();
+    let tools = manager(root);
+
+    let mut reported = Vec::new();
+    for (index, name) in names.iter().enumerate() {
+        let created = call(
+            &tools,
+            "godot_create_scene",
+            json!({"scene_path": format!("res://n_{index}.tscn"), "root_name": name, "project_path": root}),
+        )
+        .await;
+        let created_text = text_of(&created);
+        assert!(!created.is_error, "{name:?}: {created_text}");
+        let quoted = created_text
+            .split("root node named ")
+            .nth(1)
+            .and_then(|rest| rest.split(") in ").next())
+            .unwrap_or_else(|| panic!("no name reported: {created_text}"));
+        reported.push(serde_json::from_str::<String>(quoted).expect("reported name"));
+    }
+
+    let loaded = call(
+        &tools,
+        "godot_run_script",
+        json!({"script": "res://scripts/load_names.gd", "project_path": root, "timeout_seconds": 30}),
+    )
+    .await;
+    let loaded_text = text_of(&loaded);
+    assert!(!loaded.is_error, "{loaded_text}");
+    assert!(
+        !loaded_text.contains("Parse Error"),
+        "a created scene has a parse error: {loaded_text}"
+    );
+    let written = std::fs::read_to_string(root.join("names_out.json")).expect("names written");
+    // The names travel as UTF-8 bytes: Godot's JSON.stringify leaves U+0001 raw in a string.
+    let found: Vec<Value> = serde_json::from_str(&written).expect("names JSON");
+    let text = |bytes: &Value| -> String {
+        let bytes: Vec<u8> = serde_json::from_value(bytes.clone()).expect("bytes");
+        String::from_utf8(bytes).expect("UTF-8")
+    };
+    for (index, name) in names.iter().enumerate() {
+        let loaded = text(&found[index]["loaded"]);
+        assert_eq!(loaded, text(&found[index]["editor"]), "{name:?}");
+        assert_eq!(loaded, reported[index], "{name:?}");
+    }
+}
+
 fn project_dir_with_scripts() -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("script project");
     let root = dir.path();
