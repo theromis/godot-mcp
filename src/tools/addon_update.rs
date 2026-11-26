@@ -16,10 +16,6 @@ pub const UPDATE: &str = "godot_update_addon";
 /// What an addon answers for a command it does not have.
 const UNKNOWN_COMMAND: &str = "Unknown command type: ";
 
-pub fn handles(name: &str) -> bool {
-    name == UPDATE
-}
-
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         UPDATE,
@@ -39,7 +35,7 @@ pub fn catalog() -> Vec<Tool> {
             }
         }),
         &[],
-    )]
+    ).destructive_idempotent()]
 }
 
 pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {

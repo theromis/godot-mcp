@@ -22,10 +22,6 @@ const MAX_SIDE: i64 = 4096;
 const MAX_PIXELS: i64 = 4096 * 2304;
 const DEFAULT_TIMEOUT: u64 = 120;
 
-pub fn handles(name: &str) -> bool {
-    name == NAME
-}
-
 pub fn catalog() -> Vec<Tool> {
     let color = json!({"description": "\"#rrggbb\", \"#rrggbbaa\" or [r, g, b] / [r, g, b, a] from 0 to 1."});
     vec![super::tool(
@@ -110,7 +106,7 @@ pub fn catalog() -> Vec<Tool> {
             "project_path": {"type": "string"}
         }),
         &["assets"],
-    )]
+    ).additive_idempotent()]
 }
 
 pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {

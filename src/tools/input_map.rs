@@ -31,10 +31,6 @@ const MOUSE_BUTTON_RANGE: std::ops::RangeInclusive<i64> = 1..=9;
 const JOY_BUTTON_RANGE: std::ops::RangeInclusive<i64> = 0..=127;
 const JOY_AXIS_RANGE: std::ops::RangeInclusive<i64> = 0..=9;
 
-pub fn handles(name: &str) -> bool {
-    name == GET || name == EDIT
-}
-
 pub fn catalog() -> Vec<Tool> {
     let event = json!({
         "type": "object",
@@ -53,7 +49,7 @@ pub fn catalog() -> Vec<Tool> {
                 "include_builtin": {"type": "boolean", "description": "Also list the built-in ui_ actions. Default false."}
             }),
             &[],
-        ),
+        ).read_only(),
         super::tool(
             EDIT,
             "Adds or removes events of one InputMap action, sets its deadzone, creates it (create true) or deletes it (delete true), and saves project.godot through the editor. An event is a key, a mouse button, a joypad button or a joypad axis. The change is one step in the editor's undo history (Edit > Undo). All or nothing: an event to remove that the action does not have, or a key name Godot does not know, changes nothing. An event the action already has is not added twice and is listed under already_present. Key events use the physical key by default. Built-in ui_ actions can be edited but not deleted. Requires the editor bridge; never edit the [input] section of project.godot by hand.",
@@ -66,7 +62,7 @@ pub fn catalog() -> Vec<Tool> {
                 "delete": {"type": "boolean", "description": "Delete the action. Cannot be combined with other changes."}
             }),
             &["action"],
-        ),
+        ).destructive_idempotent(),
     ]
 }
 
