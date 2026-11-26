@@ -1,5 +1,6 @@
 use crate::error::{McpError, Result};
 use crate::godot::json_text;
+use crate::replies::{ReplyRouter, ReplyWait, route_reply};
 use crate::util::lock;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -84,6 +85,8 @@ pub struct BridgeClient {
     command_timeout: Duration,
     state: Arc<Mutex<State>>,
     events: EventSubs,
+    /// Calls waiting for a reply from a game the editor runs, by debugger session and request id.
+    game_replies: ReplyRouter<(i64, i64)>,
 }
 
 impl BridgeClient {
@@ -98,6 +101,7 @@ impl BridgeClient {
             command_timeout: DEFAULT_COMMAND_TIMEOUT,
             state: Arc::default(),
             events: EventSubs::default(),
+            game_replies: ReplyRouter::default(),
         }
     }
 
@@ -106,6 +110,13 @@ impl BridgeClient {
         let (tx, rx) = mpsc::unbounded_channel();
         lock(&self.events).push(tx);
         rx
+    }
+
+    /// Waits for the `mcp:reply` to request `id` from the editor's game debugger session
+    /// `session`. Call it before sending the request. The editor relays the reply as a
+    /// `game.message` event, which is then not passed to `subscribe_events`.
+    pub fn expect_game_reply(&self, session: i64, id: i64) -> ReplyWait<(i64, i64)> {
+        self.game_replies.expect((session, id))
     }
 
     /// Overrides how long a command may wait for the editor's answer.
@@ -230,6 +241,7 @@ impl BridgeClient {
             queue,
             pending.clone(),
             self.events.clone(),
+            self.game_replies.clone(),
             alive.clone(),
         ));
 
@@ -274,6 +286,7 @@ async fn run_connection(
     mut queue: mpsc::UnboundedReceiver<String>,
     pending: Pending,
     events: EventSubs,
+    game_replies: ReplyRouter<(i64, i64)>,
     alive: Arc<AtomicBool>,
 ) {
     let (mut sink, mut stream) = websocket.split();
@@ -292,7 +305,7 @@ async fn run_connection(
                 }
             },
             incoming = stream.next() => match incoming {
-                Some(Ok(Message::Text(text))) => deliver(&pending, &events, text.as_str()),
+                Some(Ok(Message::Text(text))) => deliver(&pending, &events, &game_replies, text.as_str()),
                 Some(Ok(Message::Ping(data))) => {
                     let _ = sink.send(Message::Pong(data)).await;
                 }
@@ -318,18 +331,42 @@ async fn run_connection(
         };
         let _ = reply.send(Err(error));
     }
+    // A game call relayed by the editor cannot be answered once the editor is gone.
+    game_replies.close_all();
     debug!("Godot Editor bridge connection closed");
 }
 
-fn deliver(pending: &Pending, events: &EventSubs, text: &str) {
+/// Parses an editor message once, then hands it to the command, the game call or the event
+/// subscribers it is for.
+fn deliver(
+    pending: &Pending,
+    events: &EventSubs,
+    game_replies: &ReplyRouter<(i64, i64)>,
+    text: &str,
+) {
     let text = json_text::repair(text);
-    if let Ok(value) = serde_json::from_str::<Value>(&text)
-        && value.get("type").and_then(Value::as_str) == Some("event")
-    {
+    let value = match serde_json::from_str::<Value>(&text) {
+        Ok(value) => value,
+        Err(err) => {
+            warn!(
+                "Ignoring malformed bridge message ({err}): {}",
+                json_text::head(&text)
+            );
+            fail_unreadable_reply(pending, &text, &err);
+            return;
+        }
+    };
+    if value.get("type").and_then(Value::as_str) == Some("event") {
+        if let Some((session, reply)) = game_reply(&value) {
+            if let Err(why) = route_reply(game_replies, reply, |id| (session, id)) {
+                debug!("Dropped a reply from the editor's game: {why}");
+            }
+            return;
+        }
         lock(events).retain(|subscriber| subscriber.send(value.clone()).is_ok());
         return;
     }
-    let response: BridgeResponse = match serde_json::from_str(&text) {
+    let response: BridgeResponse = match serde_json::from_value(value) {
         Ok(response) => response,
         Err(err) => {
             warn!(
@@ -354,6 +391,20 @@ fn deliver(pending: &Pending, events: &EventSubs, text: &str) {
         ))
     };
     let _ = reply.send(outcome);
+}
+
+/// The debugger session and the reply text of a relayed `mcp:reply` from the editor's game.
+fn game_reply(event: &Value) -> Option<(i64, &str)> {
+    if event.get("event").and_then(Value::as_str) != Some("game.message") {
+        return None;
+    }
+    let data = event.get("data")?;
+    if data.get("message").and_then(Value::as_str) != Some("mcp:reply") {
+        return None;
+    }
+    let session = data.get("session").and_then(Value::as_i64)?;
+    let text = data.pointer("/data/0").and_then(Value::as_str)?;
+    Some((session, text))
 }
 
 /// Fails the command an unreadable reply names, so its caller learns at once instead of

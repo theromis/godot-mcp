@@ -26,6 +26,6 @@ pub use resource_audit::{
     BinaryUidFix, ChangedText, ProjectChanges, ResourceDamage, ResourceRepair,
     TextResourceSnapshot, written_in,
 };
-pub use runs::{GameHub, ProcessStart, Run, RunInfo, json_id_eq};
+pub use runs::{GameHub, ProcessStart, Run, RunInfo};
 pub use uid_cache::{UidCacheUpdate, record as record_uids, uid_cache_file};
 pub use variant::{PacketReader, decode_variant, encode_variant, frame_packet};

@@ -102,6 +102,86 @@ async fn unanswered_commands_time_out_with_a_bridge_error() {
     assert!(matches!(err, McpError::Bridge(_)), "{err:?}");
 }
 
+fn game_reply_event(session: i64, id: i64, result: &str) -> Value {
+    json!({
+        "type": "event", "event": "game.message", "data": {
+            "session": session, "message": "mcp:reply",
+            "data": [json!({"id": id as f64, "result": result}).to_string()]
+        }
+    })
+}
+
+/// A reply from the editor's game reaches the call waiting for that session and request id,
+/// and only that call; other events still reach the event subscribers.
+#[tokio::test]
+async fn game_replies_relayed_by_the_editor_reach_their_own_caller() {
+    let bridge = MockBridge::start(|cmd| match cmd["type"].as_str() {
+        Some("second") => Reply::OkWithEvent(json!({}), game_reply_event(7, 2, "two")),
+        Some("other_session") => Reply::OkWithEvent(json!({}), game_reply_event(8, 1, "wrong")),
+        Some("unknown_id") => Reply::OkWithEvent(json!({}), game_reply_event(7, 99, "nobody")),
+        Some("first") => Reply::OkWithEvent(json!({}), game_reply_event(7, 1, "one")),
+        _ => Reply::OkWithEvent(
+            json!({}),
+            json!({"type": "event", "event": "game.started", "data": {"session": 7}}),
+        ),
+    })
+    .await;
+    let client = BridgeClient::new(bridge.port);
+    let mut events = client.subscribe_events();
+    let first = client.expect_game_reply(7, 1);
+    let second = client.expect_game_reply(7, 2);
+
+    for command in ["second", "other_session", "unknown_id", "first", "started"] {
+        client
+            .send_command(command, json!({}))
+            .await
+            .expect(command);
+    }
+    let wait = Duration::from_secs(2);
+    let second = tokio::time::timeout(wait, second)
+        .await
+        .expect("second")
+        .expect("open");
+    let first = tokio::time::timeout(wait, first)
+        .await
+        .expect("first")
+        .expect("open");
+    assert_eq!(second["result"], "two");
+    assert_eq!(first["result"], "one");
+
+    let event = tokio::time::timeout(wait, events.recv())
+        .await
+        .expect("event")
+        .expect("open");
+    assert_eq!(
+        event["event"], "game.started",
+        "replies are not events: {event}"
+    );
+    assert!(
+        events.try_recv().is_err(),
+        "no reply was passed on as an event"
+    );
+}
+
+/// A game call relayed by the editor ends as soon as the editor's connection closes, instead of
+/// waiting for its timeout.
+#[tokio::test]
+async fn a_relayed_game_wait_ends_when_the_editor_connection_closes() {
+    let bridge = MockBridge::start(|_| Reply::Ok(json!({}))).await;
+    let client = BridgeClient::new(bridge.port);
+    client
+        .send_command("ping", json!({}))
+        .await
+        .expect("connected");
+    let wait = client.expect_game_reply(7, 1);
+
+    bridge.shutdown();
+    let outcome = tokio::time::timeout(Duration::from_secs(2), wait)
+        .await
+        .expect("the wait ends when the connection closes");
+    assert!(outcome.is_err(), "no reply arrived: {outcome:?}");
+}
+
 /// Godot's `JSON.stringify` leaves U+0001..U+001F (other than \b \t \n \f \r) raw inside a
 /// string and writes U+000B as `\v`; JSON allows neither. A reply that echoes such text must
 /// still reach its caller instead of being dropped until the call times out.

@@ -201,9 +201,9 @@ async fn editor_runtime(
     params: Value,
     wait: Duration,
 ) -> Result<Value, McpError> {
-    let mut events = tools.bridge.subscribe_events();
     let session = ready_editor_session(tools).await?;
     let id = NEXT_EDITOR.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let reply = tools.bridge.expect_game_reply(session, id);
     let payload = serde_json::to_string(&json!({"id": id, "method": method, "params": params}))?;
     tools
         .bridge
@@ -212,48 +212,26 @@ async fn editor_runtime(
             json!({"command": "mcp:request", "data": [payload], "session": session}),
         )
         .await?;
-    let deadline = tokio::time::Instant::now() + wait;
-    loop {
-        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
-        if left.is_zero() {
+    let mut parsed = match tokio::time::timeout(wait, reply).await {
+        Ok(Ok(parsed)) => parsed,
+        Ok(Err(_)) => {
+            return Err(McpError::Process(
+                "the editor bridge closed while waiting for the game".to_string(),
+            ));
+        }
+        Err(_) => {
             return Err(McpError::Process(
                 "timed out waiting for the editor's running game".to_string(),
             ));
         }
-        let event = match tokio::time::timeout(left, events.recv()).await {
-            Ok(Some(event)) => event,
-            Ok(None) => {
-                return Err(McpError::Process(
-                    "the editor bridge closed while waiting for the game".to_string(),
-                ));
-            }
-            Err(_) => {
-                return Err(McpError::Process(
-                    "timed out waiting for the editor's running game".to_string(),
-                ));
-            }
-        };
-        if event.get("event").and_then(Value::as_str) != Some("game.message") {
-            continue;
-        }
-        if event.pointer("/data/session").and_then(Value::as_i64) != Some(session) {
-            continue;
-        }
-        if event.pointer("/data/message").and_then(Value::as_str) != Some("mcp:reply") {
-            continue;
-        }
-        let Some(text) = event.pointer("/data/data/0").and_then(Value::as_str) else {
-            continue;
-        };
-        let parsed: Value = crate::godot::json_text::parse(text)?;
-        if !crate::godot::json_id_eq(parsed.get("id"), id) {
-            continue;
-        }
-        if let Some(err) = parsed.get("error") {
-            return Err(McpError::ToolExecution(err.to_string()));
-        }
-        return Ok(parsed.get("result").cloned().unwrap_or(Value::Null));
+    };
+    if let Some(err) = parsed.get("error") {
+        return Err(McpError::ToolExecution(err.to_string()));
     }
+    Ok(parsed
+        .get_mut("result")
+        .map(Value::take)
+        .unwrap_or(Value::Null))
 }
 
 static NEXT_EDITOR: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);

@@ -12,6 +12,7 @@ pub mod lsp;
 pub mod paths;
 pub mod progress;
 pub mod protocol;
+pub mod replies;
 pub mod server;
 pub mod tools;
 pub mod util;
