@@ -162,3 +162,22 @@ async fn game_replies_relayed_by_the_editor_reach_their_own_caller() {
         "no reply was passed on as an event"
     );
 }
+
+/// A game call relayed by the editor ends as soon as the editor's connection closes, instead of
+/// waiting for its timeout.
+#[tokio::test]
+async fn a_relayed_game_wait_ends_when_the_editor_connection_closes() {
+    let bridge = MockBridge::start(|_| Reply::Ok(json!({}))).await;
+    let client = BridgeClient::new(bridge.port);
+    client
+        .send_command("ping", json!({}))
+        .await
+        .expect("connected");
+    let wait = client.expect_game_reply(7, 1);
+
+    bridge.shutdown();
+    let outcome = tokio::time::timeout(Duration::from_secs(2), wait)
+        .await
+        .expect("the wait ends when the connection closes");
+    assert!(outcome.is_err(), "no reply arrived: {outcome:?}");
+}

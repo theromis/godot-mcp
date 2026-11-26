@@ -307,6 +307,8 @@ async fn run_connection(
     for (_, reply) in lock(&pending).drain() {
         let _ = reply.send(Err(connection_closed()));
     }
+    // A game call relayed by the editor cannot be answered once the editor is gone.
+    game_replies.close_all();
     debug!("Godot Editor bridge connection closed");
 }
 
