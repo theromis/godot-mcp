@@ -1044,6 +1044,38 @@ async fn project_setting_without_an_editor_stores_the_engine_type() {
     );
 }
 
+// `JSON.stringify` leaves a control character other than `\b \t \n \f \r` raw inside a string,
+// so the engine's answer about a text holding one is not strict JSON and must still be read.
+// The stand-in is a shell script: a raw control character does not pass through a batch file.
+#[cfg(unix)]
+#[tokio::test]
+async fn project_setting_without_an_editor_reads_an_answer_with_a_raw_control_character() {
+    let project = project_dir();
+    let project_file = project.path().join("project.godot");
+    std::fs::write(&project_file, FROG_PROJECT).expect("project.godot");
+    let engine = tempfile::tempdir().expect("engine dir");
+    let (godot, _) = common::setting_godot(
+        engine.path(),
+        "{\"type\":\"String\",\"text\":\"\\\"bell\u{7}\\\"\"}",
+    );
+
+    let result = set_with_engine(
+        godot,
+        json!({"key": "application/config/description", "value": "bell\u{7}",
+               "project_path": project.path()}),
+    )
+    .await;
+
+    assert!(!result.is_error, "{}", text(&result));
+    assert_eq!(
+        std::fs::read_to_string(&project_file).expect("project.godot"),
+        FROG_PROJECT.replace(
+            "run/main_scene=\"res://main.tscn\"\n",
+            "run/main_scene=\"res://main.tscn\"\nconfig/description=\"bell\\u0007\"\n",
+        )
+    );
+}
+
 #[tokio::test]
 async fn project_setting_without_an_editor_asks_about_a_stored_structured_value() {
     let project = project_dir();

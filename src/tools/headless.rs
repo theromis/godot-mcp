@@ -1314,11 +1314,8 @@ impl ToolManager {
             let _alone = turn.exclusive().await;
             damage_since(turn.snapshot(), project).await
         };
-        let answer = run
-            .stdout
-            .lines()
-            .find_map(|line| line.trim().strip_prefix(SET_RESOURCE_MARKER))
-            .and_then(|text| serde_json::from_str::<Value>(text).ok());
+        let answer: Option<Value> =
+            crate::godot::json_text::marked(&run.stdout, SET_RESOURCE_MARKER);
         let Some(mut answer) = answer else {
             let tail = last_output_lines(&run.stdout, &run.stderr, 20)
                 .unwrap_or_else(|| "(no output)".to_string());
