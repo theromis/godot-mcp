@@ -5114,6 +5114,77 @@ async fn set_resource_properties_without_an_editor_keeps_uids_and_unset_uniforms
     );
 }
 
+/// godot_set_resource_properties without an editor sets a count and the entry it adds in one
+/// call (an AudioStreamRandomizer's streams_count and stream_0/stream), and a name no property in
+/// the call adds is still refused with the file left as it was.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn set_resource_properties_without_an_editor_sets_a_count_and_its_entries_in_one_call() {
+    let _ = IGNORE;
+    let project = project_dir_with_scripts();
+    let root = project.path();
+    let original = "[gd_resource type=\"AudioStreamRandomizer\" format=3]\n\n[resource]\n";
+    std::fs::write(root.join("croak.tres"), original).unwrap();
+    std::fs::write(
+        root.join("beep.tres"),
+        "[gd_resource type=\"AudioStreamGenerator\" format=3]\n\n[resource]\n",
+    )
+    .unwrap();
+    let tools = manager(root);
+    let set = |properties: Value| {
+        let tools = Arc::clone(&tools);
+        async move {
+            call(
+                &tools,
+                "godot_set_resource_properties",
+                json!({"resource_path": "res://croak.tres", "properties": properties, "project_path": root}),
+            )
+            .await
+        }
+    };
+
+    let refused = set(json!({"streams_count": 1, "stream_1/stream": "res://beep.tres"})).await;
+    let refused_text = text_of(&refused);
+    assert!(refused.is_error, "{refused_text}");
+    assert!(
+        refused_text.contains("Unknown property 'stream_1/stream' on AudioStreamRandomizer"),
+        "{refused_text}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("croak.tres")).unwrap(),
+        original,
+        "a refused call changed the file"
+    );
+
+    let result = set(json!({
+        "streams_count": 1,
+        "stream_0/stream": "res://beep.tres",
+        "random_pitch": 1.08
+    }))
+    .await;
+    let answer_text = text_of(&result);
+    assert!(!result.is_error, "{answer_text}");
+    let answer: Value = serde_json::from_str(&answer_text).expect("json answer");
+    assert_eq!(
+        answer["changed"]["streams_count"],
+        json!({"before": "0", "after": "1"}),
+        "{answer}"
+    );
+    assert_eq!(
+        answer["changed"]["stream_0/stream"],
+        json!({"before": "null", "after": "Resource(\"res://beep.tres\")"}),
+        "{answer}"
+    );
+    let saved = std::fs::read_to_string(root.join("croak.tres")).unwrap();
+    assert!(
+        saved.contains("streams_count = 1")
+            && saved.contains("path=\"res://beep.tres\"")
+            && saved.contains("stream_0/stream = ExtResource(")
+            && saved.contains("random_pitch = 1.08"),
+        "the count, its stream or the pitch was not saved:\n{saved}\n{answer}"
+    );
+}
+
 /// godot_create_resource without an editor writes a file Godot loads as the class it was asked
 /// for, and godot_set_resource_properties can change that file right after.
 #[tokio::test]
