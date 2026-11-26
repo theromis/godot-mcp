@@ -9,6 +9,7 @@ use crate::paths::{is_valid_identifier, res_display, resolve_in_project};
 use crate::protocol::{Tool, ToolAnnotations, ToolContent, ToolResult};
 use crate::validation::validate_arguments;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
@@ -113,16 +114,16 @@ impl ToolManager {
 
     /// Return the list of all registered tools with their input schemas
     pub fn list_tools() -> Vec<Tool> {
-        tool_catalog().to_vec()
+        registry().tools.clone()
     }
 
     pub fn has_tool(name: &str) -> bool {
-        tool_catalog().iter().any(|tool| tool.name == name)
+        registry().find(name).is_some()
     }
 
     /// Dispatch tool calls to live bridge or CLI runner
     pub async fn call_tool(self: Arc<Self>, name: &str, args: Value) -> ToolResult {
-        let Some(tool) = tool_catalog().iter().find(|tool| tool.name == name) else {
+        let Some((tool, module)) = registry().find(name) else {
             return ToolResult::error(
                 format!("Tool '{name}' is not recognized"),
                 &["Check tool name spelling against tools/list"],
@@ -137,7 +138,33 @@ impl ToolManager {
             return result;
         }
 
-        let result = match name {
+        let result = match module {
+            Module::Manager => self.call_manager(name, args).await,
+            Module::Authoring => authoring::call(&self, name, args).await,
+            Module::InputMap => input_map::call(&self, name, args).await,
+            Module::Files => files::call(&self, args).await,
+            Module::FileMove => file_move::call(&self, args).await,
+            Module::Scripts => scripts::call(&self, name, args).await,
+            Module::Shaders => shaders::call(&self, name, args).await,
+            Module::Game => game::call(&self, name, args).await,
+            Module::Code => code::call(&self, name, args).await,
+            Module::Export => export::call(&self, name, args).await,
+            Module::PackRun => pack_run::call(&self, args).await,
+            Module::AddonUpdate => addon_update::call(&self, args).await,
+            Module::ImportParams => import_params::call(&self, name, args).await,
+            Module::Review => review::call(&self, args).await,
+            Module::ResourceProps => resource_props::call(&self, args).await,
+            Module::WorldMap => world_map::call(&self, args).await,
+        };
+        let result = addon_update::explain_unknown_command(&self, name, result).await;
+        let result = addon_update::flag_other_build(&self, name, result).await;
+        self.observe(name, &result, EvidenceKind::Error);
+        result
+    }
+
+    /// The tools this file and the feedback channel declare, handled by the manager itself.
+    async fn call_manager(self: &Arc<Self>, name: &str, args: Value) -> ToolResult {
+        match name {
             "godot_get_version" => self.handle_get_version().await,
             "godot_get_project_info" => self.handle_bridge_call("get_project_info", args).await,
             "godot_launch_editor" => self.handle_launch_editor(args).await,
@@ -162,21 +189,6 @@ impl ToolManager {
             "godot_validate_script" => self.handle_validate_script(args).await,
             "godot_run_script" => self.handle_run_script(args).await,
             "godot_resave_resources" => self.handle_resave_resources(args).await,
-            name if authoring::handles(name) => authoring::call(&self, name, args).await,
-            name if input_map::handles(name) => input_map::call(&self, name, args).await,
-            name if files::handles(name) => files::call(&self, args).await,
-            name if file_move::handles(name) => file_move::call(&self, args).await,
-            name if scripts::handles(name) => scripts::call(&self, name, args).await,
-            name if shaders::handles(name) => shaders::call(&self, name, args).await,
-            name if game::handles(name) => game::call(&self, name, args).await,
-            name if code::handles(name) => code::call(&self, name, args).await,
-            name if export::handles(name) => export::call(&self, name, args).await,
-            name if pack_run::handles(name) => pack_run::call(&self, args).await,
-            name if addon_update::handles(name) => addon_update::call(&self, args).await,
-            name if import_params::handles(name) => import_params::call(&self, name, args).await,
-            name if review::handles(name) => review::call(&self, args).await,
-            name if resource_props::handles(name) => resource_props::call(&self, args).await,
-            name if world_map::handles(name) => world_map::call(&self, args).await,
             feedback::NOTE => self.handle_note_feedback(args).await,
             feedback::DRAFT => self.handle_draft_feedback(args).await,
             feedback::SUBMIT => self.handle_submit_feedback(args).await,
@@ -184,11 +196,7 @@ impl ToolManager {
                 format!("Tool '{name}' has no handler"),
                 &["This is a server bug; report it with the tool name"],
             ),
-        };
-        let result = addon_update::explain_unknown_command(&self, name, result).await;
-        let result = addon_update::flag_other_build(&self, name, result).await;
-        self.observe(name, &result, EvidenceKind::Error);
-        result
+        }
     }
 
     async fn handle_get_version(&self) -> ToolResult {
@@ -793,12 +801,62 @@ fn editor_error_hints(message: &str) -> &'static [&'static str] {
 /// Which feedback tools the catalog holds; set once at start-up by `configure_catalog`.
 static CATALOG_MODE: OnceLock<FeedbackMode> = OnceLock::new();
 
-fn tool_catalog() -> &'static [Tool] {
-    static CATALOG: OnceLock<Vec<Tool>> = OnceLock::new();
-    CATALOG.get_or_init(|| build_catalog(CATALOG_MODE.get().copied().unwrap_or_default()))
+/// The module whose `call` handles a tool; `Manager` is `ToolManager::call_manager`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Module {
+    Manager,
+    Authoring,
+    ResourceProps,
+    InputMap,
+    Files,
+    FileMove,
+    Scripts,
+    Shaders,
+    AddonUpdate,
+    Game,
+    Code,
+    Export,
+    PackRun,
+    ImportParams,
+    Review,
+    WorldMap,
 }
 
-fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Tool {
+/// The listed tools, in `tools/list` order, and the module that handles each one by name.
+struct Registry {
+    tools: Vec<Tool>,
+    owners: HashMap<String, (usize, Module)>,
+}
+
+impl Registry {
+    fn new(catalog: Vec<(Module, Vec<Tool>)>) -> Self {
+        let mut tools = Vec::new();
+        let mut owners = HashMap::new();
+        for (module, declared) in catalog {
+            for tool in declared {
+                owners.insert(tool.name.clone(), (tools.len(), module));
+                tools.push(tool);
+            }
+        }
+        Self { tools, owners }
+    }
+
+    fn find(&self, name: &str) -> Option<(&Tool, Module)> {
+        let &(index, module) = self.owners.get(name)?;
+        Some((self.tools.get(index)?, module))
+    }
+}
+
+fn registry() -> &'static Registry {
+    static REGISTRY: OnceLock<Registry> = OnceLock::new();
+    REGISTRY.get_or_init(|| {
+        Registry::new(build_catalog(
+            CATALOG_MODE.get().copied().unwrap_or_default(),
+        ))
+    })
+}
+
+fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> ToolDraft {
     // Closed, so a misspelled or invented key is refused instead of silently ignored.
     let mut input_schema = json!({
         "type": "object",
@@ -808,125 +866,85 @@ fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> 
     if !required.is_empty() {
         input_schema["required"] = json!(required);
     }
-    Tool {
-        name: name.into(),
-        description: description.into(),
-        input_schema,
-        annotations: annotations(name),
+    ToolDraft {
+        tool: Tool {
+            name: name.into(),
+            description: description.into(),
+            input_schema,
+            annotations: None,
+        },
+        open_world: false,
     }
 }
 
-/// Hints for a listed tool. Read-only means it changes nothing in the project,
-/// the editor, a running game or files on disk; scratch state kept by this
-/// server (screenshot baselines) does not count. Destructive means it may
-/// overwrite or remove something there, or run code that can. Idempotent means
-/// repeating the call with the same arguments changes nothing more. Only
-/// godot_submit_feedback reaches outside this machine. A tool missing here is
-/// listed without hints, which hosts read as the most cautious defaults.
-fn annotations(name: &str) -> Option<ToolAnnotations> {
-    let [read_only, destructive, idempotent] = match name {
-        "godot_get_version"
-        | "godot_get_project_info"
-        | "godot_get_run_status"
-        | "godot_get_scene_tree"
-        | "godot_get_open_scenes"
-        | "godot_get_node_properties"
-        | "godot_validate_script"
-        | "godot_list_signals"
-        | "godot_get_project_settings"
-        | "godot_get_input_map"
-        | "godot_read_script"
-        | "godot_read_shader"
-        | "godot_validate_shader"
-        | "godot_run_output"
-        | "godot_game_tree"
-        | "godot_game_get"
-        | "godot_game_signals"
-        | "godot_game_observe"
-        | "godot_game_snapshot"
-        | "godot_game_state"
-        | "godot_game_screenshot"
-        | "godot_game_probe"
-        | "godot_debug_state"
-        | "godot_code_diagnostics"
-        | "godot_code_complete"
-        | "godot_code_symbols"
-        | "godot_code_definition"
-        | "godot_code_references"
-        | "godot_list_export_presets"
-        | "godot_get_import_params" => [true, false, true],
-        "godot_capture_viewport"
-        | "godot_review_assets"
-        | "godot_world_map"
-        | "godot_resave_resources"
-        | "godot_create_project"
-        | "godot_create_scene"
-        | "godot_connect_signal"
-        | "godot_create_resource"
-        | "godot_game_input_release"
-        | "godot_game_wait"
-        | "godot_debug_breakpoints" => [false, false, true],
-        "godot_launch_editor"
-        | "godot_run_project"
-        | "godot_run_pack"
-        | "godot_add_node"
-        | "godot_game_input"
-        | "godot_game_physics"
-        | "godot_game_scenario"
-        | "godot_game_record"
-        | "godot_debug_control"
-        | "godot_note_feedback"
-        | "godot_draft_feedback"
-        | "godot_submit_feedback" => [false, false, false],
-        "godot_stop_project"
-        | "godot_remove_node"
-        | "godot_set_node_properties"
-        | "godot_set_resource_properties"
-        | "godot_open_scene"
-        | "godot_save_scene"
-        | "godot_create_script"
-        | "godot_create_shader"
-        | "godot_attach_script"
-        | "godot_set_project_setting"
-        | "godot_edit_input_action"
-        | "godot_set_export_preset"
-        | "godot_set_import_params"
-        | "godot_delete_file"
-        | "godot_update_addon"
-        | "godot_game_set" => [false, true, true],
-        "godot_run_script"
-        | "godot_edit_script"
-        | "godot_edit_shader"
-        | "godot_game_call"
-        | "godot_game_command"
-        | "godot_game_run_script"
-        | "godot_close_editor"
-        | "godot_move_file"
-        | "godot_export_project" => [false, true, false],
-        _ => return None,
-    };
-    Some(ToolAnnotations {
-        read_only_hint: read_only,
-        destructive_hint: destructive,
-        idempotent_hint: idempotent,
-        open_world_hint: name == "godot_submit_feedback",
-    })
+/// A tool that does not yet say what it does to the project: only one of the hint methods turns
+/// it into a listed `Tool`, so every tool states its hints where it is declared.
+///
+/// Read-only means it changes nothing in the project, the editor, a running game or files on
+/// disk; scratch state kept by this server (screenshot baselines) does not count. Destructive
+/// means it may overwrite or remove something there, or run code that can. Idempotent means
+/// repeating the call with the same arguments changes nothing more. Only godot_submit_feedback
+/// reaches outside this machine.
+#[must_use = "a tool is listed only once its hints are set"]
+struct ToolDraft {
+    tool: Tool,
+    open_world: bool,
 }
 
-fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
-    let mut tools = vec![
+impl ToolDraft {
+    /// Reaches a service outside this machine.
+    fn open_world(mut self) -> Self {
+        self.open_world = true;
+        self
+    }
+
+    fn read_only(self) -> Tool {
+        self.hints(true, false, true)
+    }
+
+    fn additive_idempotent(self) -> Tool {
+        self.hints(false, false, true)
+    }
+
+    fn additive(self) -> Tool {
+        self.hints(false, false, false)
+    }
+
+    fn destructive_idempotent(self) -> Tool {
+        self.hints(false, true, true)
+    }
+
+    fn destructive(self) -> Tool {
+        self.hints(false, true, false)
+    }
+
+    fn hints(self, read_only: bool, destructive: bool, idempotent: bool) -> Tool {
+        Tool {
+            annotations: Some(ToolAnnotations {
+                read_only_hint: read_only,
+                destructive_hint: destructive,
+                idempotent_hint: idempotent,
+                open_world_hint: self.open_world,
+            }),
+            ..self.tool
+        }
+    }
+}
+
+fn build_catalog(feedback_mode: FeedbackMode) -> Vec<(Module, Vec<Tool>)> {
+    let tools = vec![
         tool(
             "godot_get_version",
             "Godot Engine version and build information.",
             json!({}),
             &[],
-        ),
+        ).read_only(),
         tool(
             "godot_get_project_info",
             "Name, main scene, enabled features and directory of the project open in the editor. Requires the editor bridge.",
             json!({}),
             &[],
-        ),
+        ).read_only(),
         tool(
             "godot_launch_editor",
             "Launches the Godot Editor for a project. Without project_path, opens the project the server was started in (its working directory or a parent, or the only subfolder with project.godot).",
@@ -937,7 +955,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &[],
-        ),
+        ).additive(),
         tool(
             "godot_close_editor",
             "Closes a project's editor (project_path, else the server's project, else the connected editor's) and waits for its process to exit. A connected editor quits without saving: with unsaved scenes or scripts it stays open and the answer lists them, unless discard is true. An editor that has another project open is never closed. Without a connected editor, only an editor godot_launch_editor started can be stopped, by its PID, and only with discard true.",
@@ -958,7 +976,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &[],
-        ),
+        ).destructive(),
         tool(
             "godot_run_project",
             "Runs the main or a given scene: in editor Play when the bridge is connected (mode auto), else or with mode process as a managed debugger-attached process (godot_stop_project stops it). held, user_args and movie need mode process. held starts it held at the first physics tick at a fixed frame rate, for exact godot_game_physics steps. movie records with Movie Maker, not in real time (each frame advances game time 1/fps); not with held or headless. Quality, mix rate and vsync are editor/movie_writer/* project settings. The file is finished when the game quits (quit_after_frames, itself, godot_stop_project); godot_get_run_status reports movie. Stale imports are reimported first when the editor has this project, else warned. A process run waits for an import or export running in the project.",
@@ -1012,7 +1030,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &[],
-        ),
+        ).additive(),
         tool(
             "godot_stop_project",
             "Without run_id, stops the editor's Play mode and every running managed process run, and lists what it stopped (or that nothing ran). run_id stops one process run.",
@@ -1020,13 +1038,13 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 "run_id": {"type": "string", "description": "Managed process run id. Omit to stop everything."}
             }),
             &[],
-        ),
+        ).destructive_idempotent(),
         tool(
             "godot_get_run_status",
             "Whether the editor plays a scene, and the managed process runs with their user_args and, for a Movie Maker run, movie (path, size_bytes, frames, duration_seconds, finished).",
             json!({}),
             &[],
-        ),
+        ).read_only(),
         tool(
             "godot_get_scene_tree",
             "Node hierarchy of an open scene; paths are relative to the root ('.'). Does not reload: stale is true when the file on disk differs. An instance node has instance (res:// path) and editable_children; inside a non-editable instance the editing tools refuse changes unless make_editable is passed.",
@@ -1037,13 +1055,13 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &[],
-        ),
+        ).read_only(),
         tool(
             "godot_get_open_scenes",
             "res:// paths of the open scene tabs, and the active one.",
             json!({}),
             &[],
-        ),
+        ).read_only(),
         tool(
             "godot_add_node",
             "Adds a node to the active scene (undoable). Pass exactly one of node_type (an instantiable Node class or global class_name; a non-@tool script class gets its native base with the script attached) or scene (a saved .tscn/.scn added as an instance that keeps its uid). A scene that is missing, not a PackedScene, or contains the edited scene is refused. properties are converted and checked as in godot_set_node_properties; a bad value, or one Godot does not keep, rejects the call. applied lists the values as read back.",
@@ -1071,7 +1089,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 "make_editable": make_editable_param()
             }),
             &[],
-        ),
+        ).additive(),
         tool(
             "godot_remove_node",
             "Removes a node from the active scene (undoable). Refuses the scene root and a node an instanced scene brings (Godot cannot save that deletion): hide it with godot_set_node_properties or remove it in its own scene.",
@@ -1082,7 +1100,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &["node_path"],
-        ),
+        ).destructive_idempotent(),
         tool(
             "godot_get_node_properties",
             "Reads a node's editor-visible properties as {type, value} in Godot's text format. properties reads only those names; ':' steps through a resource (material_override:shader_parameter/glow_amount). A name that cannot be read goes to property_errors; the rest are returned.",
@@ -1098,7 +1116,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &["node_path"],
-        ),
+        ).read_only(),
         tool(
             "godot_set_node_properties",
             "Sets node properties in the active scene in one undo action, all or nothing. Values convert to the property's type: arrays or {x, y} for vectors and colors, '#rrggbb' or names for colors, res:// paths for resources, Godot literals ('Vector2(1, 2)'). A node reference (@export var target: Node3D) takes a path relative to the edited node to a node of its type ('../King', '..' for the parent, null clears). 'metadata/<name>' (name an identifier) keeps an existing entry's type, else takes the JSON value's type; not null. ':' steps through a resource built into this scene (material_override:shader_parameter/glow_amount); a shared one (a .tres, another scene's) is refused: use godot_set_resource_properties. script and private segments after ':' are refused. An unknown property, an unconvertible value or one that reads back differently (a clamping setter, an audio bus missing from the layout) rejects the call. applied lists the values as read back. A node in a non-editable instance is refused unless make_editable.",
@@ -1114,7 +1132,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 "make_editable": make_editable_param()
             }),
             &["node_path", "properties"],
-        ),
+        ).destructive_idempotent(),
         tool(
             "godot_capture_viewport",
             "PNG screenshot of the editor's 2D or 3D viewport (scene content, no gizmos or grid). Switches the editor's main screen; needs a windowed editor with a scene open.",
@@ -1130,7 +1148,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &[],
-        ),
+        ).additive_idempotent(),
         tool(
             "godot_open_scene",
             "Opens a scene by res:// path (or absolute inside the project) as the active tab (active_scene). Reloading an open scene drops its undo history. load_errors lists what Godot reported while loading; unsaved (Godot 4.7+) says whether the load left unsaved changes.",
@@ -1149,13 +1167,13 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &["scene_path"],
-        ),
+        ).destructive_idempotent(),
         tool(
             "godot_save_scene",
             "Saves the active scene and returns scene_path. Open script tabs with unsaved typing are saved too (scripts_saved); clean scripts are not rewritten.",
             json!({}),
             &[],
-        ),
+        ).destructive_idempotent(),
         tool(
             "godot_create_script",
             "Creates a .gd file from content, or a header (extends_class, class_name, an empty _ready). Validated after writing: an invalid script is an error but stays for godot_edit_script. Refuses an existing file unless overwrite is true; an overwrite is refused while the editor tab has unsaved changes, else the tab reloads. Without the editor, a class_name is added to .godot/global_script_class_cache.cfg so runs know it at once.",
@@ -1190,7 +1208,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &[],
-        ),
+        ).destructive_idempotent(),
         tool(
             "godot_validate_script",
             "Checks a GDScript file. With a running language server (the editor's, or one godot_code_diagnostics started) returns errors and warnings (file:line:col, 1-based; code; message); a warning does not fail the check, an error does. A class it calls unknown that the project declares is registered through the editor and rechecked. Without a server, runs godot --headless --check-only: parse errors only, no warnings. A script using a class missing from .godot/global_script_class_cache.cfg fails the check (runs cannot find it until godot_resave_resources or the editor registers it).",
@@ -1205,7 +1223,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &["script_path"],
-        ),
+        ).read_only(),
         tool(
             "godot_run_script",
             "Runs a SceneTree or MainLoop script in headless Godot (-s <script> -- user_args); another base or a path outside the project is refused. Returns the exit code, stdout and stderr (last 64 KiB each; a longer stream is kept whole in stdout_log/stderr_log, else null, overwritten by the next run) and script_errors (file, line). An unloadable script is an error with load_error, even if Godot exits 0. A SCRIPT ERROR that leaves the main loop idle ends the run. Repeated exit leak lines are shown once with xN (exit_leaks, hint). On timeout the process tree is killed and the output so far returned, so print as you go (stdout_buffered true: unflushed print() was lost; use printerr()). Progress notifications carry the newest line. Stale imports are reimported first when the editor has this project; else the script runs on the old import data and import_warning names godot_resave_resources. Dropped uid:// references are restored (resource_repairs; binary_uid_error, resource_damage: what is still missing), uids recorded in the uid cache (uid_cache_stale if not), and an open editor reloads what was written (editor_refresh). Lists stop at 20 (<list>_total). Parallel calls each get their own Godot and must write different files (overlapped: repairs waited).",
@@ -1237,7 +1255,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &["script"],
-        ),
+        ).destructive(),
         tool(
             "godot_resave_resources",
             "Refreshes files changed outside the editor. With the editor: known importable files reimport synchronously, others are re-scanned; clean script tabs reload (reloaded_tabs), ones with unsaved changes are kept (unsaved_tabs); loaded shaders, resources and tabless scripts reload in place (reloaded_resources). A never-scanned path without a resulting .import is listed under not_scanned. Open scenes are not reloaded: use godot_open_scene reload. Without paths, rescans the whole project in the background. Without the editor, runs `godot --headless --path <project> --import` and lists imported sources. A requested path whose .godot/imported data still differs from its source is listed in still_stale with a reason and makes the call an error (force true reimports it headless). The headless import waits for godot_run_script calls in the project and runs alone.",
@@ -1261,23 +1279,74 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &[],
-        ),
+        ).additive_idempotent(),
     ];
-    tools.extend(authoring::catalog());
-    tools.extend(resource_props::catalog());
-    tools.extend(input_map::catalog());
-    tools.extend(files::catalog());
-    tools.extend(file_move::catalog());
-    tools.extend(scripts::catalog());
-    tools.extend(shaders::catalog());
-    tools.extend(addon_update::catalog());
-    tools.extend(game::catalog());
-    tools.extend(code::catalog());
-    tools.extend(export::catalog());
-    tools.extend(pack_run::catalog());
-    tools.extend(import_params::catalog());
-    tools.extend(review::catalog());
-    tools.extend(world_map::catalog());
-    tools.extend(feedback::catalog(feedback_mode));
-    tools
+    vec![
+        (Module::Manager, tools),
+        (Module::Authoring, authoring::catalog()),
+        (Module::ResourceProps, resource_props::catalog()),
+        (Module::InputMap, input_map::catalog()),
+        (Module::Files, files::catalog()),
+        (Module::FileMove, file_move::catalog()),
+        (Module::Scripts, scripts::catalog()),
+        (Module::Shaders, shaders::catalog()),
+        (Module::AddonUpdate, addon_update::catalog()),
+        (Module::Game, game::catalog()),
+        (Module::Code, code::catalog()),
+        (Module::Export, export::catalog()),
+        (Module::PackRun, pack_run::catalog()),
+        (Module::ImportParams, import_params::catalog()),
+        (Module::Review, review::catalog()),
+        (Module::WorldMap, world_map::catalog()),
+        (Module::Manager, feedback::catalog(feedback_mode)),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every listed tool is routed to the module that declared it, whatever the feedback mode.
+    #[test]
+    fn every_listed_tool_has_one_owner_that_handles_it() {
+        // These modules' `call` ignores the tool name, so each may declare one tool only.
+        let single = [
+            Module::Files,
+            Module::FileMove,
+            Module::PackRun,
+            Module::AddonUpdate,
+            Module::Review,
+            Module::ResourceProps,
+            Module::WorldMap,
+        ];
+        for mode in [FeedbackMode::Off, FeedbackMode::Draft, FeedbackMode::Full] {
+            let catalog = build_catalog(mode);
+            let declared: Vec<(Module, String)> = catalog
+                .iter()
+                .flat_map(|(module, tools)| tools.iter().map(|tool| (*module, tool.name.clone())))
+                .collect();
+            for module in single {
+                let count = declared
+                    .iter()
+                    .filter(|(owner, _)| *owner == module)
+                    .count();
+                assert_eq!(count, 1, "{module:?} declares {count} tools in {mode:?}");
+            }
+            let registry = Registry::new(catalog);
+            assert_eq!(
+                registry.owners.len(),
+                registry.tools.len(),
+                "two tools share a name in {mode:?}"
+            );
+            for (index, (module, name)) in declared.iter().enumerate() {
+                let (tool, owner) = registry
+                    .find(name)
+                    .unwrap_or_else(|| panic!("{name} is listed but not found"));
+                assert_eq!(&tool.name, name);
+                assert_eq!(owner, *module, "{name} is routed to another module");
+                assert_eq!(registry.tools[index].name, *name, "listing order changed");
+                assert!(tool.annotations.is_some(), "{name} has no hints");
+            }
+        }
+    }
 }

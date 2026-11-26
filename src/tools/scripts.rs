@@ -55,10 +55,6 @@ const GDSCRIPT: TextKind = TextKind {
     create_tool: "godot_create_script",
 };
 
-pub fn handles(name: &str) -> bool {
-    matches!(name, "godot_read_script" | "godot_edit_script")
-}
-
 pub fn catalog() -> Vec<Tool> {
     vec![
         super::tool(
@@ -69,7 +65,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": {"type": "string"}
             }),
             &["script_path"],
-        ),
+        ).read_only(),
         super::tool(
             "godot_edit_script",
             "Replaces one fragment of an existing .gd: old_text must occur exactly once. With the editor: one undoable action, saved; refused while the script has unsaved editor changes. Without: the file is rewritten and the class cache updated (class_cache, class_cache_warning). version from godot_read_script refuses the edit if the script changed. Never creates files (godot_create_script); run godot_validate_script after. A @tool script runs once saved.",
@@ -81,7 +77,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": {"type": "string"}
             }),
             &["script_path", "old_text", "new_text"],
-        ),
+        ).destructive(),
     ]
 }
 

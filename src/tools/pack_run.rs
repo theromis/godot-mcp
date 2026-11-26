@@ -31,10 +31,6 @@ const MISSING_PHRASES: &[&str] = &[
 /// How many missing files an answer names.
 const MAX_LISTED_MISSING: usize = 200;
 
-pub fn handles(name: &str) -> bool {
-    name == RUN_PACK
-}
-
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         RUN_PACK,
@@ -48,7 +44,7 @@ pub fn catalog() -> Vec<Tool> {
             "project_path": {"type": "string", "description": "Default: editor's, else server's project."}
         }),
         &["pack_path"],
-    )]
+    ).additive()]
 }
 
 pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {

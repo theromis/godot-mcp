@@ -33,13 +33,6 @@ const SHADER: TextKind = TextKind {
 /// What a clean check covered, for the answer and the tool description.
 const CHECKED: &str = "The saved file was preprocessed (#include, #define, #if) and compiled by Godot's shader compiler for its shader_type: syntax, types, unknown identifiers, built-ins and render modes of that type, and the includes it pulls in. Not checked: the GPU driver's own compile of the generated code, and warnings the shader editor shows (such as unused uniforms).";
 
-pub fn handles(name: &str) -> bool {
-    matches!(
-        name,
-        "godot_create_shader" | "godot_read_shader" | "godot_edit_shader" | "godot_validate_shader"
-    )
-}
-
 pub fn catalog() -> Vec<Tool> {
     vec![
         super::tool(
@@ -52,7 +45,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": {"type": "string"}
             }),
             &["shader_path", "code"],
-        ),
+        ).destructive_idempotent(),
         super::tool(
             "godot_read_shader",
             "Reads a .gdshader/.gdshaderinc as the editor would save it: unsaved editor text when dirty (source: editor), else the file. Returns {path, text, source, dirty, version}. stale_tab: an open tab shows older text; godot_edit_shader refuses until it is reloaded.",
@@ -61,7 +54,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": {"type": "string"}
             }),
             &["shader_path"],
-        ),
+        ).read_only(),
         super::tool(
             "godot_edit_shader",
             "Replaces one fragment of an existing .gdshader/.gdshaderinc: old_text must occur exactly once (else refused with the count). With the editor it is one undo step in the shader tab, saved; refused while the shader has unsaved editor changes. Without an editor the file is rewritten. version (from godot_read_shader) refuses if it changed since. Never creates a file; run godot_validate_shader after.",
@@ -73,7 +66,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": {"type": "string"}
             }),
             &["shader_path", "old_text", "new_text"],
-        ),
+        ).destructive(),
         super::tool(
             "godot_validate_shader",
             "Compiles a saved .gdshader (preprocessed, includes too) with Godot's shader compiler, headless (needs GODOT_PATH), and lists errors with file and line. Not checked: GPU driver compile, editor warnings, unsaved editor text (save first). A .gdshaderinc is not compiled alone: validate a shader including it. A preprocessor failure shows at the directive's line as an unknown '#' character.",
@@ -82,7 +75,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": {"type": "string"}
             }),
             &["shader_path"],
-        ),
+        ).read_only(),
     ]
 }
 

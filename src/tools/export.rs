@@ -60,10 +60,6 @@ const SOURCE_EXTENSIONS: &[&str] = &[
     "gd", "tscn", "scn", "tres", "res", "godot", "cfg", "import", "uid", "gdshader", "cs",
 ];
 
-pub fn handles(name: &str) -> bool {
-    matches!(name, LIST | SET | EXPORT)
-}
-
 pub fn catalog() -> Vec<Tool> {
     let project_path = json!({
         "type": "string",
@@ -75,7 +71,7 @@ pub fn catalog() -> Vec<Tool> {
             "Lists export presets: index, name, platform, export_path, export_filter, export_files, include/exclude_filter, custom_features and stored options (an unstored option takes the platform default). Needs the Godot binary only.",
             json!({ "project_path": project_path }),
             &[],
-        ),
+        ).read_only(),
         super::tool(
             SET,
             "Creates (create true, with platform) or changes an export preset in export_presets.cfg. Only given fields and options change; options keep their stored type. Godot ignores an option its platform lacks: check new_options in the answer for typos. Refused while the editor has the project open: godot_close_editor first. Platforms: Linux, Windows Desktop, macOS, Android, iOS, Web, visionOS, or one an export plugin adds. A new preset exports all_resources.",
@@ -97,7 +93,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": project_path
             }),
             &["name"],
-        ),
+        ).destructive_idempotent(),
         super::tool(
             EXPORT,
             "Exports headless with a preset: pack (.pck/.zip data, no template), release or debug (need export templates or custom_template options). Imports first unless import is false or the editor has the project open. Returns ok, path, size_bytes, exit code, duration, ERROR/WARNING lines, log tail; a missing preset or template, failed import, no file or timeout is an error. output_path must be in the project (folder created, file replaced). Runs alone in the project: waits for godot_run_script calls there.",
@@ -110,7 +106,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": project_path
             }),
             &["preset"],
-        ),
+        ).destructive(),
     ]
 }
 

@@ -15,10 +15,6 @@ use serde_json::{Value, json};
 
 pub const NAME: &str = "godot_set_resource_properties";
 
-pub fn handles(name: &str) -> bool {
-    name == NAME
-}
-
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         NAME,
@@ -38,7 +34,7 @@ pub fn catalog() -> Vec<Tool> {
             }
         }),
         &["resource_path", "properties"],
-    )]
+    ).destructive_idempotent()]
 }
 
 pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {

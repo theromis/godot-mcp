@@ -42,10 +42,6 @@ const MAX_LISTED_REFERENCES: usize = 50;
 const BRIDGE_ADDON: &str = "res://addons/godot_mcp/";
 const IMPORTED_PREFIX: &str = "res://.godot/imported/";
 
-pub fn handles(name: &str) -> bool {
-    name == DELETE
-}
-
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         DELETE,
@@ -63,7 +59,7 @@ pub fn catalog() -> Vec<Tool> {
             "project_path": {"type": "string", "description": "Default: editor's, else server's project."}
         }),
         &["paths"],
-    )]
+    ).destructive_idempotent()]
 }
 
 pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {

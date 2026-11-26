@@ -62,10 +62,6 @@ const IMPORTERS: &[(&str, &[&str], &str)] = &[
     ("glsl", &["glsl"], "RDShaderFile"),
 ];
 
-pub fn handles(name: &str) -> bool {
-    name == GET || name == SET
-}
-
 pub fn catalog() -> Vec<Tool> {
     let project_path = json!({
         "type": "string",
@@ -81,7 +77,7 @@ pub fn catalog() -> Vec<Tool> {
             "Reads a file's import parameters ([params] of its .import): importer, type (imported class), params, and each option's Godot type in types; non-JSON values in Godot's text form. Refused for a file with no .import yet: import it with godot_resave_resources first.",
             json!({ "path": path, "project_path": project_path }),
             &["path"],
-        ),
+        ).read_only(),
         super::tool(
             SET,
             "Changes a file's import parameters (with importer, also the dock's \"Import As\") and reimports it. copy_from's parameters (same importer only) are copied first, then params. Options keep their type; strings such as \"Vector2(1, 1)\" are parsed. Uses the editor when it holds the project, else headless (waits for running godot_run_script calls). ignored_options: names the importer dropped (typo or other importer's); new_options: names new to the file. A new importer starts from its defaults; the answer gives importer, previous_importer and type. Refused for a file with no .import yet: run godot_resave_resources first.",
@@ -99,7 +95,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": project_path
             }),
             &["path"],
-        ),
+        ).destructive_idempotent(),
     ]
 }
 

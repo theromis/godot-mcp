@@ -145,7 +145,7 @@ pub fn definition() -> Tool {
             "coordinate_space": {"type": "string", "enum": ["viewport", "window"], "description": "viewport (default): root viewport pixels after content scale, as _input sees. window: window pixels."}
         }),
         &["steps"],
-    )
+    ).additive()
 }
 
 struct Step {
