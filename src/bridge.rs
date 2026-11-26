@@ -1,4 +1,5 @@
 use crate::error::{McpError, Result};
+use crate::godot::json_text;
 use crate::util::lock;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -12,7 +13,8 @@ use tokio::net::TcpStream;
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{WebSocketStream, client_async};
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+use tokio_tungstenite::{WebSocketStream, client_async_with_config};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
@@ -22,6 +24,11 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 /// After a failed connect, further attempts within this window fail immediately.
 const RETRY_AFTER_FAILURE: Duration = Duration::from_millis(500);
+/// The largest message (and frame: the editor sends each message as one frame) taken from the
+/// editor. It equals the addon's `OUTBOUND_BUFFER_SIZE` in `bridge_server.gd`, the most the
+/// editor can send at once, so every reply it can make fits (a screenshot is a base64 PNG well
+/// below it). The library defaults would take 64 MiB messages but only 16 MiB frames.
+pub const MAX_EDITOR_MESSAGE: usize = 32 << 20;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BridgeCommand {
@@ -205,7 +212,11 @@ impl BridgeClient {
             Err(_) => return Err(self.unavailable("connection timed out")),
         };
         let url = format!("ws://{address}");
-        let websocket = match timeout(HANDSHAKE_TIMEOUT, client_async(url.as_str(), tcp)).await {
+        let config = WebSocketConfig::default()
+            .max_message_size(Some(MAX_EDITOR_MESSAGE))
+            .max_frame_size(Some(MAX_EDITOR_MESSAGE));
+        let handshake = client_async_with_config(url.as_str(), tcp, Some(config));
+        let websocket = match timeout(HANDSHAKE_TIMEOUT, handshake).await {
             Ok(Ok((websocket, _))) => websocket,
             Ok(Err(err)) => return Err(self.unavailable(&format!("handshake failed: {err}"))),
             Err(_) => return Err(self.unavailable("handshake timed out")),
@@ -266,6 +277,7 @@ async fn run_connection(
     alive: Arc<AtomicBool>,
 ) {
     let (mut sink, mut stream) = websocket.split();
+    let mut closed_by: Option<String> = None;
     loop {
         tokio::select! {
             queued = queue.recv() => match queued {
@@ -284,7 +296,12 @@ async fn run_connection(
                 Some(Ok(Message::Ping(data))) => {
                     let _ = sink.send(Message::Pong(data)).await;
                 }
-                Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
+                Some(Err(err)) => {
+                    warn!("Godot Editor bridge connection failed: {err}");
+                    closed_by = Some(err.to_string());
+                    break;
+                }
+                Some(Ok(Message::Close(_))) | None => break,
                 Some(Ok(_)) => {}
             },
         }
@@ -292,22 +309,34 @@ async fn run_connection(
 
     alive.store(false, Ordering::Release);
     for (_, reply) in lock(&pending).drain() {
-        let _ = reply.send(Err(connection_closed()));
+        let error = match &closed_by {
+            Some(reason) => McpError::Bridge(format!(
+                "The connection to the Godot Editor bridge failed: {reason}. The next call reconnects. When the reason names a size, the editor's reply was larger than the {} MiB a reply may have: ask for less (a smaller max_dimension, a narrower query) and retry",
+                MAX_EDITOR_MESSAGE >> 20
+            )),
+            None => connection_closed(),
+        };
+        let _ = reply.send(Err(error));
     }
     debug!("Godot Editor bridge connection closed");
 }
 
 fn deliver(pending: &Pending, events: &EventSubs, text: &str) {
-    if let Ok(value) = serde_json::from_str::<Value>(text)
+    let text = json_text::repair(text);
+    if let Ok(value) = serde_json::from_str::<Value>(&text)
         && value.get("type").and_then(Value::as_str) == Some("event")
     {
         lock(events).retain(|subscriber| subscriber.send(value.clone()).is_ok());
         return;
     }
-    let response: BridgeResponse = match serde_json::from_str(text) {
+    let response: BridgeResponse = match serde_json::from_str(&text) {
         Ok(response) => response,
         Err(err) => {
-            warn!("Ignoring malformed bridge message: {err}");
+            warn!(
+                "Ignoring malformed bridge message ({err}): {}",
+                json_text::head(&text)
+            );
+            fail_unreadable_reply(pending, &text, &err);
             return;
         }
     };
@@ -325,6 +354,29 @@ fn deliver(pending: &Pending, events: &EventSubs, text: &str) {
         ))
     };
     let _ = reply.send(outcome);
+}
+
+/// Fails the command an unreadable reply names, so its caller learns at once instead of
+/// waiting for the timeout. The id is found by a plain scan for `"commandId":"..."`.
+fn fail_unreadable_reply(pending: &Pending, text: &str, err: &serde_json::Error) {
+    let Some(command_id) = scan_command_id(text) else {
+        return;
+    };
+    let Some(reply) = lock(pending).remove(command_id) else {
+        return;
+    };
+    let _ = reply.send(Err(McpError::Bridge(format!(
+        "The editor's reply to this command could not be read as JSON ({err}). Retry the command; if it fails again, update the editor's addon with godot_update_addon, and if the reply echoes unusual text (control characters in a name or a file), try the command with other input"
+    ))));
+}
+
+fn scan_command_id(text: &str) -> Option<&str> {
+    let key = "\"commandId\"";
+    let rest = &text[text.find(key)? + key.len()..];
+    let rest = rest.trim_start().strip_prefix(':')?.trim_start();
+    let rest = rest.strip_prefix('"')?;
+    let end = rest.find(['"', '\\'])?;
+    Some(&rest[..end])
 }
 
 /// Where the editor plugin publishes its per-port bridge token.

@@ -245,7 +245,7 @@ async fn editor_runtime(
         let Some(text) = event.pointer("/data/data/0").and_then(Value::as_str) else {
             continue;
         };
-        let parsed: Value = serde_json::from_str(text)?;
+        let parsed: Value = crate::godot::json_text::parse(text)?;
         if !crate::godot::json_id_eq(parsed.get("id"), id) {
             continue;
         }
