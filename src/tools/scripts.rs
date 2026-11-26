@@ -60,21 +60,21 @@ pub fn catalog() -> Vec<Tool> {
     vec![
         super::tool(
             "godot_read_script",
-            "Reads an existing .gd script as the editor would save it: the editor's unsaved text when the script is open with unsaved changes (dirty: true, source: editor), otherwise the file. Returns {path, text, source, dirty, version}; the version label identifies the returned text. stale_tab: true means the script is open in a tab without unsaved changes that still shows older text than the file; godot_edit_script refuses until godot_resave_resources with the path reloads the tab. Without an editor it reads the file.",
+            "Reads a .gd as the editor would save it: unsaved editor text (dirty: true, source: editor) or the file. Returns path, text, source, dirty, version (for godot_edit_script). stale_tab: true: an open tab shows older text; godot_edit_script refuses until godot_resave_resources reloads it.",
             json!({
-                "script_path": {"type": "string", "description": "res:// path to a .gd file in the project."},
+                "script_path": {"type": "string", "description": "res:// path of a .gd file."},
                 "project_path": {"type": "string"}
             }),
             &["script_path"],
         ).read_only(),
         super::tool(
             "godot_edit_script",
-            "Replaces one fragment of an existing .gd script: old_text must occur exactly once (any other count is refused with the count), and new_text takes its place. With the editor connected the change is one undoable editor action and the script is saved; it is refused while the script has unsaved changes in the editor. Without an editor the file is replaced as a whole, and a class_name the edit adds, renames or removes is updated in the project's class cache (.godot/global_script_class_cache.cfg) as the editor's scan would (class_cache in the answer; class_cache_warning when it could not be). Pass the version from godot_read_script to refuse the edit if the script changed since. Never creates a file (use godot_create_script); run godot_validate_script after an edit. The text is data to this tool, but a script is code: Godot runs a @tool script in the editor as soon as it is saved.",
+            "Replaces one fragment of an existing .gd: old_text must occur exactly once. With the editor: one undoable action, saved; refused while the script has unsaved editor changes. Without: the file is rewritten and the class cache updated (class_cache, class_cache_warning). version from godot_read_script refuses the edit if the script changed. Never creates files (godot_create_script); run godot_validate_script after. A @tool script runs once saved.",
             json!({
-                "script_path": {"type": "string", "description": "res:// path to an existing .gd file."},
-                "old_text": {"type": "string", "description": "The exact fragment to replace; it must occur once."},
+                "script_path": {"type": "string", "description": "res:// path of an existing .gd file."},
+                "old_text": {"type": "string", "description": "Exact fragment; must occur once."},
                 "new_text": {"type": "string", "description": "The replacement text."},
-                "version": {"type": "string", "description": "Optional version label from godot_read_script."},
+                "version": {"type": "string", "description": "From godot_read_script."},
                 "project_path": {"type": "string"}
             }),
             &["script_path", "old_text", "new_text"],

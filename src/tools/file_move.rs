@@ -42,22 +42,22 @@ const CLASS_CACHE: &str = ".godot/global_script_class_cache.cfg";
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         MOVE,
-        "Moves or renames files and whole folders of a Godot project the way the editor's FileSystem dock does, keeping the project working. Each file moves with its .uid and .import files, and its imported data in .godot/imported is renamed to match the new path, so nothing is imported again. Every res:// mention of an old path in the project's text files (.tscn, .tres, .gd, shaders, project.godot, .cfg, .import, .cs, .json, the moved files included) is rewritten to the new path; a folder move rewrites every path inside it. uid:// references stay valid because the uid moves with the file. With the editor connected the move goes through it: a file that is open with unsaved changes (a scene, or a script in the script editor) is refused, and afterwards the editor's cached resources, uids, open scene tabs and in-memory project settings follow the new paths, binary .scn/.res files that named an old path are saved again by the editor so they name the new one (resaved), open scenes and scripts whose text changed are reloaded, and the editor rescans. Without an editor the files are changed on disk, the uid cache and global class cache in .godot are updated so a game run finds the files, binary_references lists the .scn/.res files that still hold an old path (they still load through their uids; open the project in the editor and move again or resave them), and rescan_needed is true. Pass moves: a list of {from, to} res:// paths (at most 64); a to ending in / moves the file or folder into that folder under its own name. Refuses a missing source, project.godot, anything in .godot/ or the Godot MCP addon, a lone .uid or .import file, a destination in .godot/, a destination that already exists (or whose .uid/.import does), a folder moved into itself, and moves that overlap each other. All or nothing: while any move is refused nothing changes, and the answer lists each refusal with its reason. dry_run lists the files that would move and every file whose references would be rewritten, without changing anything. Not rewritten: relative paths (preload(\"enemy.gd\")) and paths built at run time (\"res://levels/level_%d.tscn\" % n); check scripts that build paths.",
+        "Moves or renames project files and folders like the FileSystem dock: .uid, .import and .godot/imported data move along, res:// mentions in text files are rewritten, uid:// stays valid. With the editor, files open with unsaved changes are refused, binary .scn/.res naming an old path are resaved (resaved), and it rescans. Without it, the uid and class caches are updated, binary_references lists binary files still naming an old path (they load by uid; move again with the editor or resave them), and rescan_needed is true. Refuses a missing source, project.godot, .godot/, the MCP addon, a lone .uid/.import, a destination in .godot/ or that already exists, a folder into itself, overlapping moves; all or nothing. dry_run previews. Relative and run-time-built paths are not rewritten.",
         json!({
             "moves": {
                 "type": "array",
-                "description": "Files or folders to move, at most 64.",
+                "description": "At most 64.",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "from": {"type": "string", "description": "res:// path of the file or folder to move."},
-                        "to": {"type": "string", "description": "Its new res:// path; ending in / moves it into that folder under its own name. Missing folders are created."}
+                        "from": {"type": "string", "description": "res:// file or folder."},
+                        "to": {"type": "string", "description": "Ending in / moves into that folder; missing folders are created."}
                     },
                     "required": ["from", "to"]
                 }
             },
-            "dry_run": {"type": "boolean", "description": "Only report what would move, the references that would be rewritten and the refusals. Default false."},
-            "project_path": {"type": "string", "description": "Project directory. Optional: defaults to the project open in the editor, else the one the server was started in."}
+            "dry_run": {"type": "boolean", "description": "Only report moves, rewrites and refusals. Default false."},
+            "project_path": {"type": "string", "description": "Default: editor's, else server's project."}
         }),
         &["moves"],
     ).destructive()]

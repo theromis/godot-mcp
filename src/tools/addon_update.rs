@@ -17,19 +17,19 @@ pub const UPDATE: &str = "godot_update_addon";
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         UPDATE,
-        "Installs or updates the Godot MCP Bridge addon (res://addons/godot_mcp) in a project with the addon of this server's own build, so both have the same version, and keeps the plugin enabled in project.godot. The old addon folder is replaced as a whole (files the new addon no longer has are removed; nothing outside addons/godot_mcp is touched). An editor that has the project open runs the old addon until it loads the plugin again, so while one is connected the files are replaced only with restart_editor: true, which closes it (refused while scenes or scripts are unsaved, unless discard: true), installs, and opens it again. The answer gives previous_version, version, the added, updated and removed files and what the editor needs. Nothing is written when the addon is already this version. Use it when a tool says the editor's addon is older than the server.",
+        "Installs or updates res://addons/godot_mcp to this server's build (folder replaced whole), plugin kept enabled. With the project's editor connected it needs restart_editor: true (closes, installs, reopens; refused on unsaved scenes or scripts unless discard: true). Answers previous_version, version, changed files and what the editor needs; no-op when versions match. Use it when a tool says the addon is older than the server.",
         json!({
             "project_path": {
                 "type": "string",
-                "description": "Project directory containing project.godot. Optional: defaults to the project open in the connected editor, else the project the server was started in."
+                "description": "Default: editor's, else server's project."
             },
             "discard": {
                 "type": "boolean",
-                "description": "With restart_editor: close the editor even when it has unsaved scenes or scripts, losing those changes, as godot_close_editor's discard does. Default false: the call is refused and lists them."
+                "description": "With restart_editor: close despite unsaved changes, losing them. Default false."
             },
             "restart_editor": {
                 "type": "boolean",
-                "description": "Close the connected editor of this project before installing and open it again after. Default false: with the editor connected the call is refused and says so."
+                "description": "Close and reopen the connected editor around the install. Default false."
             }
         }),
         &[],
