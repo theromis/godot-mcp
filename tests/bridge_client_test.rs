@@ -153,6 +153,7 @@ async fn an_unreadable_reply_fails_its_command_at_once() {
         }
         other => panic!("unexpected error class: {other:?}"),
     }
+}
 
 /// The editor sends a big reply (a screenshot of a large viewport) as one frame. It must fit as
 /// long as the editor could send it; the library's default frame limit (16 MiB) refused it.
