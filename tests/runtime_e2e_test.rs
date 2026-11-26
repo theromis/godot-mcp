@@ -6994,6 +6994,46 @@ fn copy_tree(from: &Path, to: &Path) {
     }
 }
 
+/// A tool script that fills a MultiMesh and saves it headless: the dummy rendering server keeps
+/// no instance data, so the file has no buffer, and the answer says so.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn run_script_names_a_multimesh_saved_without_its_instances() {
+    let dir = tempfile::tempdir().expect("project dir");
+    let root = dir.path();
+    std::fs::write(
+        root.join("project.godot"),
+        "config_version=5\n\n[application]\n\nconfig/name=\"MultiMesh loss\"\n",
+    )
+    .expect("project.godot");
+    std::fs::write(
+        root.join("grass.gd"),
+        "extends SceneTree\n\nfunc _init() -> void:\n\tvar mm := MultiMesh.new()\n\tmm.transform_format = MultiMesh.TRANSFORM_3D\n\tmm.use_colors = true\n\tmm.instance_count = 12\n\tfor i in 12:\n\t\tmm.set_instance_transform(i, Transform3D(Basis(), Vector3(i, 0, 0)))\n\t\tmm.set_instance_color(i, Color.RED)\n\tResourceSaver.save(mm, \"res://grass.tres\")\n\tquit()\n",
+    )
+    .expect("script");
+    let tools = manager(root);
+    let result = call(
+        &tools,
+        "godot_run_script",
+        json!({"script": "res://grass.gd", "project_path": root, "timeout_seconds": 60}),
+    )
+    .await;
+    let text = text_of(&result);
+    let saved = std::fs::read_to_string(root.join("grass.tres")).expect("grass.tres");
+    assert!(saved.contains("instance_count = 12"), "{saved}");
+    assert!(!saved.contains("buffer"), "{saved}");
+    assert!(text.starts_with("WARNING"), "{text}");
+    let body: Value = serde_json::from_str(&text[text.find('{').expect("json")..]).expect("JSON");
+    assert_eq!(
+        body["headless_data_loss"],
+        json!([{
+            "path": "res://grass.tres",
+            "multimeshes_without_buffer": [{"id": "resource", "instance_count": 12}],
+        }]),
+        "{text}"
+    );
+}
+
 /// A tool script that re-saves an existing compressed binary scene, as a level builder does.
 /// Headless Godot writes it without its uid; the server writes the old uid back, and a new binary
 /// scene gets one.
