@@ -116,8 +116,8 @@ pub fn route_reply<K: Eq + Hash + Clone>(
     if !router.is_waiting() {
         return Err("no call is waiting for a reply".into());
     }
-    let reply: Value =
-        serde_json::from_str(text).map_err(|err| format!("the reply is not JSON: {err}"))?;
+    let reply: Value = crate::godot::json_text::parse(text)
+        .map_err(|err| format!("the reply is not JSON: {err}"))?;
     let Some(id) = reply_id(&reply) else {
         return Err("the reply has no request id".into());
     };

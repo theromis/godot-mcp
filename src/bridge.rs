@@ -1,4 +1,5 @@
 use crate::error::{McpError, Result};
+use crate::godot::json_text;
 use crate::replies::{ReplyRouter, ReplyWait, route_reply};
 use crate::util::lock;
 use futures_util::{SinkExt, StreamExt};
@@ -343,10 +344,15 @@ fn deliver(
     game_replies: &ReplyRouter<(i64, i64)>,
     text: &str,
 ) {
-    let value = match serde_json::from_str::<Value>(text) {
+    let text = json_text::repair(text);
+    let value = match serde_json::from_str::<Value>(&text) {
         Ok(value) => value,
         Err(err) => {
-            warn!("Ignoring malformed bridge message: {err}");
+            warn!(
+                "Ignoring malformed bridge message ({err}): {}",
+                json_text::head(&text)
+            );
+            fail_unreadable_reply(pending, &text, &err);
             return;
         }
     };
@@ -363,7 +369,11 @@ fn deliver(
     let response: BridgeResponse = match serde_json::from_value(value) {
         Ok(response) => response,
         Err(err) => {
-            warn!("Ignoring malformed bridge message: {err}");
+            warn!(
+                "Ignoring malformed bridge message ({err}): {}",
+                json_text::head(&text)
+            );
+            fail_unreadable_reply(pending, &text, &err);
             return;
         }
     };
@@ -395,6 +405,29 @@ fn game_reply(event: &Value) -> Option<(i64, &str)> {
     let session = data.get("session").and_then(Value::as_i64)?;
     let text = data.pointer("/data/0").and_then(Value::as_str)?;
     Some((session, text))
+}
+
+/// Fails the command an unreadable reply names, so its caller learns at once instead of
+/// waiting for the timeout. The id is found by a plain scan for `"commandId":"..."`.
+fn fail_unreadable_reply(pending: &Pending, text: &str, err: &serde_json::Error) {
+    let Some(command_id) = scan_command_id(text) else {
+        return;
+    };
+    let Some(reply) = lock(pending).remove(command_id) else {
+        return;
+    };
+    let _ = reply.send(Err(McpError::Bridge(format!(
+        "The editor's reply to this command could not be read as JSON ({err}). Retry the command; if it fails again, update the editor's addon with godot_update_addon, and if the reply echoes unusual text (control characters in a name or a file), try the command with other input"
+    ))));
+}
+
+fn scan_command_id(text: &str) -> Option<&str> {
+    let key = "\"commandId\"";
+    let rest = &text[text.find(key)? + key.len()..];
+    let rest = rest.trim_start().strip_prefix(':')?.trim_start();
+    let rest = rest.strip_prefix('"')?;
+    let end = rest.find(['"', '\\'])?;
+    Some(&rest[..end])
 }
 
 /// Where the editor plugin publishes its per-port bridge token.
