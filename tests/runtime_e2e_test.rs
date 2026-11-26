@@ -5896,10 +5896,19 @@ func diff_report() -> Dictionary:
     var line := before.duplicate() as Image
     for y in 432:
         line.set_pixel(401, y, Color(1.0 - before.get_pixel(401, y).r, 0.0, 0.0, 1.0))
+    var wide := _noise(1920, 1080)
+    var wide_line := wide.duplicate() as Image
+    for y in range(10, 1000):
+        wide_line.set_pixel(1333, y, Color(1.0 - wide.get_pixel(1333, y).r, 0.0, 0.0, 1.0))
     var started := Time.get_ticks_usec()
+    var wide_diff: Dictionary = view._diff_against(wide_line, wide)
+    var wide_usec := Time.get_ticks_usec() - started
+    started = Time.get_ticks_usec()
     var everything: Dictionary = view._diff_against(_noise(768, 432), before)
     var everything_usec := Time.get_ticks_usec() - started
     return {
+        "wide_line": wide_diff,
+        "wide_line_usec": wide_usec,
         "same": view._diff_against(before.duplicate(), before),
         "one": view._diff_against(one, before),
         "line": view._diff_against(line, before),
@@ -6156,12 +6165,24 @@ async fn screenshot_diff_is_exact_for_small_changes_and_sampled_for_large_ones()
         "{report}"
     );
 
+    // A thin line the sampling grid misses is located row by row: changed counts the rows that
+    // differ (a lower bound), and the rectangle holds the whole line.
     assert_eq!(report["line"]["changed"], 432, "{report}");
-    assert_eq!(report["line"]["exact"], true, "{report}");
+    assert_eq!(report["line"]["exact"], false, "{report}");
     assert_eq!(
         report["line"]["rect"],
         json!({"x": 401, "y": 0, "w": 1, "h": 432}),
         "{report}"
+    );
+    assert_eq!(report["wide_line"]["changed"], 990, "{report}");
+    assert_eq!(
+        report["wide_line"]["rect"],
+        json!({"x": 1333, "y": 10, "w": 1, "h": 990}),
+        "{report}"
+    );
+    eprintln!(
+        "a 1920x1080 diff of a thin line took {} us",
+        report["wide_line_usec"]
     );
 
     let everything = &report["everything"];

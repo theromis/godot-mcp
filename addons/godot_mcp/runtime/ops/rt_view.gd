@@ -326,8 +326,8 @@ static func _diff_against(image: Image, previous: Image) -> Dictionary:
 ## found with one native comparison each and are not looped. When the rows that differ hold at
 ## most MEASURE_PIXELS pixels every pixel of them is compared (exact); otherwise a uniform grid of
 ## at most MEASURE_PIXELS samples is compared (sampled). A grid that misses a change at tolerance 0
-## (a thin line across many rows) is followed by the exact count, so a changed pixel is never
-## reported as no change.
+## (a thin line across many rows) is followed by _locate, so a changed pixel is never reported as
+## no change and the cost stays one native search per differing row.
 static func _measure(current: Image, previous: Image, tolerance: int, roi: Rect2i) -> Dictionary:
     var image_width := current.get_width()
     var width := roi.size.x
@@ -355,10 +355,68 @@ static func _measure(current: Image, previous: Image, tolerance: int, roi: Rect2
         images["previous_words"] = previous_bytes.to_int32_array()
     var counted := _count(images, dirty, tolerance, roi, stride)
     if stride > 1 and tolerance == 0 and int(counted["changed"]) == 0 and dirty_rows > 0:
-        counted = _count(images, dirty, tolerance, roi, 1)
+        counted = _locate(images, dirty, roi, int(counted["sampled"]))
     var answer := {"compared": true}
     answer.merge(counted)
     return answer
+
+
+## Finds, with native comparisons only, the first and the last differing pixel of every row
+## marked in dirty, for a tolerance of 0. changed is then the number of differing rows: a lower
+## bound of the changed pixels (each such row holds at least one), reported as not exact. The
+## bounds hold every change.
+static func _locate(images: Dictionary, dirty: PackedByteArray, roi: Rect2i, sampled: int) -> Dictionary:
+    var current_bytes: PackedByteArray = images["current"]
+    var previous_bytes: PackedByteArray = images["previous"]
+    var image_width := int(images["width"])
+    var width := roi.size.x
+    var rows := 0
+    var min_x := image_width
+    var max_x := -1
+    var min_y := -1
+    var max_y := -1
+    for y in roi.size.y:
+        if dirty[y] == 0:
+            continue
+        var start := ((roi.position.y + y) * image_width + roi.position.x) * 4
+        # First differing pixel: the smallest prefix that differs.
+        var low := 0
+        var high := width
+        while high - low > 1:
+            var middle := (low + high) >> 1
+            if current_bytes.slice(start, start + middle * 4) != previous_bytes.slice(start, start + middle * 4):
+                high = middle
+            else:
+                low = middle
+        var first := high - 1
+        # Last differing pixel: the smallest suffix that differs.
+        var end := start + width * 4
+        low = 0
+        high = width
+        while high - low > 1:
+            var middle := (low + high) >> 1
+            if current_bytes.slice(end - middle * 4, end) != previous_bytes.slice(end - middle * 4, end):
+                high = middle
+            else:
+                low = middle
+        var last := width - high
+        rows += 1
+        min_x = mini(min_x, roi.position.x + first)
+        max_x = maxi(max_x, roi.position.x + last)
+        if min_y < 0:
+            min_y = roi.position.y + y
+        max_y = roi.position.y + y
+    var bounds = null
+    if rows > 0:
+        bounds = {"x": min_x, "y": min_y, "w": max_x - min_x + 1, "h": max_y - min_y + 1}
+    var ratio := 0.0 if sampled == 0 else minf(1.0, float(rows) / float(sampled))
+    return {
+        "changed": rows,
+        "sampled": sampled,
+        "ratio": snappedf(ratio, 0.0001),
+        "bounds": bounds,
+        "exact": false,
+    }
 
 
 ## Counts the pixels on a grid of the given stride inside roi that differ by more than tolerance
