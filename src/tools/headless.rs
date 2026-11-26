@@ -6,6 +6,7 @@ use super::main_loop::main_loop_problem;
 use super::project_gate::ScriptTurn;
 use super::run::StaleImports;
 use super::{ToolManager, bridge_error_result, code, missing_argument, str_arg, user_args_of};
+use crate::bridge_protocol::for_editor;
 use crate::cli_runner::{
     SET_RESOURCE_MARKER, ScriptErrorLoc, ScriptRun, binary_uid_limit, script_load_failure,
 };
@@ -692,6 +693,7 @@ fn with_cache_report(result: ToolResult, report: Option<&CacheReport>) -> ToolRe
     ToolResult {
         content: vec![crate::protocol::ToolContent::Text { text }],
         is_error: true,
+        structured_content: None,
     }
 }
 
@@ -954,7 +956,10 @@ impl ToolManager {
             return self.import_headless(&args).await;
         }
         let bridge = self.bridge.clone().with_timeout(Self::RESAVE_BRIDGE_WAIT);
-        match bridge.send_command("resave_resources", args.clone()).await {
+        match bridge
+            .send_command("resave_resources", for_editor(&args, &["force"]))
+            .await
+        {
             Ok(result) => {
                 let text = serde_json::to_string_pretty(&result).unwrap_or_default();
                 if result.get("timed_out").and_then(Value::as_bool) == Some(true) {

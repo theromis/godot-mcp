@@ -192,9 +192,10 @@ fn text_result(result: Result<Value, McpError>) -> ToolResult {
 
 fn runtime_error(error: &McpError) -> ToolResult {
     match error {
-        McpError::BridgeUnavailable(_) | McpError::Bridge(_) | McpError::ToolExecution(_) => {
-            super::bridge_error_result(error)
-        }
+        McpError::BridgeUnavailable(_)
+        | McpError::Bridge(_)
+        | McpError::ToolExecution(_)
+        | McpError::CodedToolExecution { .. } => super::bridge_error_result(error),
         other => ToolResult::error(
             other.to_string(),
             &[

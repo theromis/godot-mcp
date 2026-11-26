@@ -8,12 +8,12 @@ Every tool takes only the parameters its schema lists (`additionalProperties: fa
 
 | Tool | Needs | What it does |
 | --- | --- | --- |
-| `godot_get_version` | — | Engine version, from the editor or the Godot binary. |
+| `godot_get_version` | — | Engine version, from the editor or the Godot binary; from the editor also the addon's bridge `protocol`. |
 | `godot_get_project_info` | Editor | Name, main scene, features and directory of the open project. |
 | `godot_create_project` | — | Creates a minimal Godot 4 project at an absolute `project_path` with a display `name`, without needing an engine or editor. Preserves existing files and refuses to replace `project.godot`. Uses the Compatibility renderer; no main scene or bridge is installed. |
 | `godot_launch_editor` | — | Launches the editor for `project_path`, or for the project the server runs in. |
 | `godot_close_editor` | — | Closes the editor of `project_path` (else the project the server runs in) and answers once its process has exited. A connected editor quits without saving anything; when it has unsaved scenes or scripts it stays open and the answer lists them, unless `discard: true`. An editor that has another project open is never closed. Without a connected editor, only an editor this server started with `godot_launch_editor` can be stopped, by its PID, and only with `discard: true`. `timeout_seconds` (1–120, default 30) bounds the wait. |
-| `godot_update_addon` | — | Installs or updates `res://addons/godot_mcp` in a project with the addon of this server's own build (it is built into the server), so both have the same version, and keeps the plugin enabled in `project.godot`. The old folder is replaced as a whole; files the new addon no longer has are removed. A connected editor of the project runs the old addon until it loads the plugin again, so the files are replaced under it only with `restart_editor: true`, which closes it (refused while scenes or scripts are unsaved, unless `discard: true`), installs and opens it again. Answers with `previous_version`, `version`, the added, updated and removed files and what the editor needs; nothing is written when the addon is already this version. An editor that runs another build of the same version (a `-dev` version stays the same while the addon changes; `addon_build` in `godot_get_project_info` tells them apart) counts as older: a failed call says so with this call, and the update restarts it. When the editor's addon lacks a command a tool needs, the error names both versions and this call, and `godot_read_shader` / `godot_edit_shader` work on the shader file instead and say so. |
+| `godot_update_addon` | — | Installs or updates `res://addons/godot_mcp` in a project with the addon of this server's own build (it is built into the server), so both have the same version, and keeps the plugin enabled in `project.godot`. The old folder is replaced as a whole; files the new addon no longer has are removed. A connected editor of the project runs the old addon until it loads the plugin again, so the files are replaced under it only with `restart_editor: true`, which closes it (refused while scenes or scripts are unsaved, unless `discard: true`), installs and opens it again. Answers with `previous_version`, `version`, the added, updated and removed files and what the editor needs; nothing is written when the addon is already this version. An editor that runs another build of the same version (a `-dev` version stays the same while the addon changes; `addon_build` in `godot_get_project_info` tells them apart) counts as older: a failed call says so with this call, and the update restarts it. When the editor's addon lacks a command a tool needs, or a parameter the tool sends (the server reads the addon's commands and their parameters once per editor connection, and the addon refuses a parameter it does not have instead of ignoring it), the error names both versions and this call and nothing is run, and `godot_read_shader` / `godot_edit_shader` work on the shader file instead of a missing command and say so. A game started with the editor's Play button runs the runtime of the project's addon: when its runtime protocol differs from the server's, game tools refuse it and point to this call. |
 | `godot_run_project` | — | Plays the main scene or a given `res://` scene. With the editor, uses its Play mode. Without it (or with `mode: "process"`), starts a managed game with the remote debugger attached; `held: true` (process runs only) starts it held, for exact steps. `user_args` (process only) are strings the game reads with `OS.get_cmdline_user_args()`; they are placed after `--` and refused for editor Play and `mode: "auto"`. `movie` (process only) records the run with Godot's Movie Maker to an `.avi` or a `.png` sequence, see [Recording a video with Movie Maker](running-game.md#recording-a-video-with-movie-maker). A source newer than its `.godot/imported` cache is reimported first when the editor has this project open, and otherwise the result names the paths and `godot_resave_resources`. `godot_stop_project` stops either one. |
 | `godot_stop_project` | — | Stops what runs: the editor's Play mode when it plays and every managed process run, and lists what it stopped. With nothing running it says so and names the run that ended last; `recently_ended` lists how each earlier run ended. Pass `run_id` to stop one process run. |
 | `godot_get_run_status` | — | Whether a scene is playing, and the managed process runs, each with its `user_args`, its Movie Maker recording (`movie`: path, `size_bytes`, `frames`, `finished`) and, once it has ended, its exit code, `signal`, `ended_by` (`server`, or `game` for anything else), `ended_at`, `how_ended` and `last_stderr`. Says that nothing is running when that is so, and how the last run ended. |
@@ -86,6 +86,39 @@ Every tool takes only the parameters its schema lists (`additionalProperties: fa
 | `godot_note_feedback` | — | The AI records something missing, broken or misleading in godot-mcp itself. Kept in memory only. |
 | `godot_draft_feedback` | — | Turns the notes into one report for the maintainers and shows it to you. Sends nothing. |
 | `godot_submit_feedback` | — | Publishes a draft as a GitHub issue, only after you said yes. Not available in `draft` mode. |
+
+## Error codes
+
+A failed call has `isError: true` and a text that starts with `Error:`, followed by recovery suggestions. When the kind of failure is known, the result also carries it machine-readably, so a client can act on it without reading the English text:
+
+```json
+{
+  "content": [{"type": "text", "text": "Error: Node not found at path: Player\n\nActionable recovery suggestions:\n- ..."}],
+  "isError": true,
+  "structuredContent": {"error": {"code": "NOT_FOUND", "message": "Node not found at path: Player"}}
+}
+```
+
+The text stays as it is; clients that do not read `structuredContent` see no change. A failure without a code has no `structuredContent`; an editor addon older than the codes sends none. A code is part of the API: its meaning does not change when a message is reworded.
+
+| Code | From | Meaning |
+| --- | --- | --- |
+| `BRIDGE_UNAVAILABLE` | Server | The editor bridge cannot be reached: the editor is closed, the plugin is disabled, or the port differs. |
+| `BRIDGE_ERROR` | Server | The connection to the editor broke or stalled while the command was in flight. |
+| `RUN_ENDED` | Server | The managed game run the call needs has ended. |
+| `UNAUTHORIZED` | Editor | The bridge token is missing or wrong. |
+| `UNKNOWN_COMMAND` | Editor | The editor's addon has no such command: it is older than the server. |
+| `BAD_PARAMS` | Editor, game | A parameter has the wrong type or shape. |
+| `NOT_FOUND` | Editor, game | A node, scene, file, input action or (in a game) adapter command or script function does not exist, or the scene is not open. |
+| `NO_SCENE` | Editor | No scene is open in the editor. |
+| `EXISTS` | Editor | The file to create already exists; it is never replaced. |
+| `WRITE_FAILED` | Editor | Saving a scene, resource or the project settings failed. |
+| `SETTING_TYPE` | Editor | A project setting was given a value of another type than it holds. |
+| `DENIED` | Game | The running game refuses this by design (the `script` property, private names, methods that quit, evaluate code, call other methods or free nodes). |
+| `UNSUPPORTED` | Game | The running game cannot do this: it has no window, or no adapter is configured. |
+| `GODOT_ERROR` | Game | An adapter command or state failed with a script error. |
+
+A running game's error also carries its `data`, when it has some, next to `code` and `message`. Other codes may be added; treat an unknown one as a plain failure and read its message.
 
 ## Calls at the same time
 

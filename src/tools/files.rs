@@ -10,6 +10,7 @@
 
 use super::reference_kind::{Kind, classify_script};
 use super::{EditorChoice, ToolManager};
+use crate::bridge_protocol::for_editor;
 use crate::error::McpError;
 use crate::paths::{res_display, resolve_in_project};
 use crate::protocol::{Tool, ToolResult};
@@ -81,12 +82,11 @@ pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {
     if matches!(choice, EditorChoice::Host) {
         return delete_on_host(tools, &args, paths).await;
     }
-    let mut params = args.clone();
-    if let Value::Object(map) = &mut params {
-        map.remove("project_path");
-    }
     let bridge = tools.bridge.clone().with_timeout(EDITOR_WAIT);
-    match bridge.send_command("delete_files", params).await {
+    match bridge
+        .send_command("delete_files", for_editor(&args, &[]))
+        .await
+    {
         Ok(report) => answer(choice.name_project(report)),
         Err(McpError::BridgeUnavailable(_)) => delete_on_host(tools, &args, paths).await,
         Err(error) => super::bridge_error_result(&error),

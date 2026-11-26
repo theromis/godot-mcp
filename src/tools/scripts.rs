@@ -5,6 +5,7 @@
 //! fall back to the file itself.
 
 use super::{EditorChoice, ToolManager, str_arg};
+use crate::bridge_protocol::for_editor;
 use crate::error::McpError;
 use crate::godot::class_cache::{self, Registration};
 use crate::paths::resolve_in_project;
@@ -97,7 +98,11 @@ async fn read(tools: &ToolManager, args: &Value) -> ToolResult {
     if matches!(choice, EditorChoice::Host) {
         return read_file(tools, args, &GDSCRIPT).await;
     }
-    match tools.bridge.send_command("read_script", args.clone()).await {
+    match tools
+        .bridge
+        .send_command("read_script", for_editor(args, &[]))
+        .await
+    {
         Ok(value) => ToolResult::text(
             serde_json::to_string_pretty(&choice.name_project(value)).unwrap_or_default(),
         ),
@@ -134,7 +139,11 @@ async fn edit(tools: &ToolManager, args: &Value) -> ToolResult {
     if matches!(choice, EditorChoice::Host) {
         return edit_file(tools, args, &GDSCRIPT).await;
     }
-    match tools.bridge.send_command("edit_script", args.clone()).await {
+    match tools
+        .bridge
+        .send_command("edit_script", for_editor(args, &[]))
+        .await
+    {
         Ok(value) => ToolResult::text(
             serde_json::to_string_pretty(&choice.name_project(value)).unwrap_or_default(),
         ),

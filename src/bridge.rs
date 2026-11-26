@@ -1,10 +1,11 @@
+use crate::bridge_protocol::AddonSurface;
 use crate::error::{McpError, Result};
 use crate::godot::json_text;
 use crate::replies::{ReplyRouter, ReplyWait, route_reply};
 use crate::util::lock;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -25,6 +26,11 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 /// After a failed connect, further attempts within this window fail immediately.
 const RETRY_AFTER_FAILURE: Duration = Duration::from_millis(500);
+/// The command whose answer lists the addon's protocol and commands; every addon has it.
+const SURFACE_COMMAND: &str = "get_version";
+/// How long the first call of a connection waits for that list. An editor that does not answer
+/// in time is sent the call as an addon too old to list it would be.
+const SURFACE_TIMEOUT: Duration = Duration::from_secs(2);
 /// The largest message (and frame: the editor sends each message as one frame) taken from the
 /// editor. It equals the addon's `OUTBOUND_BUFFER_SIZE` in `bridge_server.gd`, the most the
 /// editor can send at once, so every reply it can make fits (a screenshot is a base64 PNG well
@@ -49,6 +55,9 @@ pub struct BridgeResponse {
     pub status: String,
     pub result: Option<Value>,
     pub error: Option<String>,
+    /// What kind of failure `error` is, from addons that send codes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
 }
 
 type Pending = Arc<StdMutex<HashMap<String, oneshot::Sender<Result<Value>>>>>;
@@ -62,6 +71,8 @@ struct Connection {
     token: Option<String>,
     /// Tells this connection apart from the ones before it (each editor start is a new one).
     generation: u64,
+    /// What the addon said it has: `None` until read, `Some(None)` for an addon too old to say.
+    surface: StdMutex<Option<Option<Arc<AddonSurface>>>>,
 }
 
 /// Numbers the connections this process opens.
@@ -132,9 +143,54 @@ impl BridgeClient {
     }
 
     /// Sends a command to the Godot Editor and waits for its response.
+    ///
+    /// A parameter that the connected addon does not list for the command (see
+    /// `bridge_protocol`) is refused here, with the text the addon itself would answer, instead
+    /// of being sent to an addon that would do less than asked.
     pub async fn send_command(&self, cmd_type: &str, params: Value) -> Result<Value> {
         let connection = self.connection().await?;
+        if cmd_type != SURFACE_COMMAND
+            && let Some(surface) = self.surface(&connection).await?
+        {
+            surface
+                .check(cmd_type, &params)
+                .map_err(McpError::ToolExecution)?;
+        }
+        self.send_on(&connection, cmd_type, params, self.command_timeout)
+            .await
+    }
 
+    /// What the addon of `connection` lists, read once per connection; `None` for an addon too
+    /// old to list it, or one that did not answer in time. A connection that broke while the
+    /// list was read is an error, so the call reports why instead of a bare closed connection.
+    async fn surface(&self, connection: &Connection) -> Result<Option<Arc<AddonSurface>>> {
+        if let Some(known) = lock(&connection.surface).clone() {
+            return Ok(known);
+        }
+        // No lock is held while the editor answers: two first calls may both ask.
+        let wait = SURFACE_TIMEOUT.min(self.command_timeout);
+        let read = match self
+            .send_on(connection, SURFACE_COMMAND, json!({}), wait)
+            .await
+        {
+            Ok(answer) => AddonSurface::from_version(&answer).map(Arc::new),
+            Err(error) if !connection.alive.load(Ordering::Acquire) => return Err(error),
+            Err(error) => {
+                debug!("The addon's commands could not be read: {error}");
+                None
+            }
+        };
+        *lock(&connection.surface) = Some(read.clone());
+        Ok(read)
+    }
+
+    async fn send_on(
+        &self,
+        connection: &Connection,
+        cmd_type: &str,
+        params: Value,
+        wait: Duration,
+    ) -> Result<Value> {
         let command_id = Uuid::new_v4().to_string();
         let (reply_tx, reply_rx) = oneshot::channel();
         lock(&connection.pending).insert(command_id.clone(), reply_tx);
@@ -157,14 +213,14 @@ impl BridgeClient {
             .send(message)
             .map_err(|_| connection_closed())?;
 
-        match timeout(self.command_timeout, reply_rx).await {
+        match timeout(wait, reply_rx).await {
             Ok(Ok(outcome)) => outcome,
             Ok(Err(_)) => Err(McpError::Bridge(
                 "The Godot Editor bridge dropped the request".into(),
             )),
             Err(_) => Err(McpError::Bridge(format!(
                 "Timed out after {}s waiting for the Godot Editor to answer '{cmd_type}'",
-                self.command_timeout.as_secs_f32()
+                wait.as_secs_f32()
             ))),
         }
     }
@@ -252,6 +308,7 @@ impl BridgeClient {
             alive,
             token: read_token(port),
             generation: GENERATIONS.fetch_add(1, Ordering::Relaxed),
+            surface: StdMutex::default(),
         }))
     }
 }
@@ -384,11 +441,13 @@ fn deliver(
     let outcome = if response.status == "success" {
         Ok(response.result.unwrap_or(Value::Null))
     } else {
-        Err(McpError::ToolExecution(
-            response
-                .error
-                .unwrap_or_else(|| "Unknown engine error".into()),
-        ))
+        let message = response
+            .error
+            .unwrap_or_else(|| "Unknown engine error".into());
+        match response.code.filter(|code| !code.is_empty()) {
+            Some(code) => Err(McpError::CodedToolExecution { code, message }),
+            None => Err(McpError::ToolExecution(message)),
+        }
     };
     let _ = reply.send(outcome);
 }

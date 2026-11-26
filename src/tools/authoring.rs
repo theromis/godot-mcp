@@ -5,6 +5,7 @@
 
 use super::shaders::{random_uid, uid_text};
 use super::{EditorChoice, ToolManager, str_arg};
+use crate::bridge_protocol::for_editor;
 use crate::cli_runner::{ClassKind, SettingType};
 use crate::error::McpError;
 use crate::godot::{UidCacheUpdate, record_uids};
@@ -170,7 +171,7 @@ async fn create_scene(tools: &ToolManager, args: &Value) -> ToolResult {
     }
     match tools
         .bridge
-        .send_command("create_scene", args.clone())
+        .send_command("create_scene", for_editor(args, &[]))
         .await
     {
         Ok(value) => editor_answer(&choice, value),
@@ -261,7 +262,7 @@ async fn create_resource(tools: &ToolManager, args: &Value) -> ToolResult {
     } else {
         tools
             .bridge
-            .send_command("create_resource", args.clone())
+            .send_command("create_resource", for_editor(args, &[]))
             .await
     };
     match sent {
@@ -497,7 +498,7 @@ async fn set_setting(tools: &ToolManager, args: &Value) -> ToolResult {
     } else {
         tools
             .bridge
-            .send_command("set_project_setting", args.clone())
+            .send_command("set_project_setting", for_editor(args, &[]))
             .await
     };
     match sent {
@@ -548,7 +549,7 @@ async fn get_settings(tools: &ToolManager, args: &Value) -> ToolResult {
     } else {
         tools
             .bridge
-            .send_command("get_project_settings", args.clone())
+            .send_command("get_project_settings", for_editor(args, &[]))
             .await
     };
     match sent {

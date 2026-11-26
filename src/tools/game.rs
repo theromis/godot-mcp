@@ -219,7 +219,15 @@ fn runtime_error(error: &McpError) -> ToolResult {
         McpError::BridgeUnavailable(_)
         | McpError::Bridge(_)
         | McpError::ToolExecution(_)
+        | McpError::CodedToolExecution { .. }
         | McpError::RunEnded(_) => super::bridge_error_result(error),
+        McpError::Process(detail) if detail.contains("runtime protocol") => ToolResult::error(
+            error.to_string(),
+            &[
+                "Update the project's addon with godot_update_addon (restart_editor: true while the editor has the project open), then start the game again",
+                "Or start the game with godot_run_project mode \"process\": the server then gives it its own runtime",
+            ],
+        ),
         McpError::Process(detail) if detail.contains("is still alive") => ToolResult::error(
             error.to_string(),
             &[
