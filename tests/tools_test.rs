@@ -2936,6 +2936,31 @@ async fn stop_without_a_run_id_stops_every_run_and_says_what_it_stopped() {
         ids.contains(&first.as_str()) && ids.contains(&second.as_str()),
         "{answer}"
     );
+    // A stop answer names the run and how it ended, nothing more: no adapter, process details
+    // or debugger state, which godot_get_run_status has.
+    for run in answer["stopped"]["runs"].as_array().expect("runs") {
+        let mut keys: Vec<&str> = run
+            .as_object()
+            .expect("run")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            [
+                "ended_at",
+                "ended_by",
+                "exit_code",
+                "how_ended",
+                "last_stderr",
+                "run_id",
+                "scene",
+                "signal"
+            ],
+            "{run}"
+        );
+    }
     let status = status_of(&manager).await;
     for id in [&first, &second] {
         assert_eq!(run_in(&status, id)["running"], false, "{status}");

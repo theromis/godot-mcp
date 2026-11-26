@@ -982,13 +982,8 @@ async fn headless_game_waits_for_a_value_a_new_scene_and_real_physics_ticks() {
             .ends_with("observe.gd"),
         "{snap_json}"
     );
-    assert!(
-        snap_json["script_sha256_note"]
-            .as_str()
-            .unwrap_or("")
-            .contains("not a later read"),
-        "{snap_json}"
-    );
+    // The meaning of the hash is in the tool description and the docs, not in every answer.
+    assert!(snap_json.get("script_sha256_note").is_none(), "{snap_json}");
     let loaded_hash = snap_json["script_sha256"].as_str().unwrap().to_string();
     let scene_path = snap_json["scene"].as_str().unwrap_or("").to_string();
 
@@ -3644,10 +3639,11 @@ async fn pointer_input_in_a_game_without_a_window_warns_when_it_lands_outside_th
     assert!(!stopped.is_error, "{}", text_of(&stopped));
 }
 
-/// The long explanation of `script_sha256` is in an output answer once, not on every line.
+/// An output answer stamps each line with the script hash and its basis, and explains neither: the
+/// explanation is in the docs, not in every answer.
 #[tokio::test]
 #[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
-async fn an_output_answer_explains_the_script_hash_once() {
+async fn an_output_answer_stamps_the_script_hash_without_explaining_it() {
     let project = project();
     let tools = manager(project.path());
     let started = call(
@@ -3673,21 +3669,18 @@ async fn an_output_answer_explains_the_script_hash_once() {
     }
     let lines = answer["lines"].as_array().expect("lines");
     assert!(lines.len() >= 2, "{answer}");
-    let note = answer["script_sha256_note"]
-        .as_str()
-        .expect("one note per answer");
-    assert!(note.contains("not a later read"), "{note}");
-    assert_eq!(
-        text_of(&call(&tools, "godot_run_output", json!({"run_id": run_id})).await)
-            .matches("not a later read")
-            .count(),
-        1,
-        "the explanation is repeated"
-    );
+    assert!(answer.get("script_sha256_note").is_none(), "{answer}");
     for line in lines {
         assert!(line["scene"].get("script_sha256_note").is_none(), "{line}");
         assert!(line["scene"].get("script_sha256_basis").is_some(), "{line}");
     }
+    let snapshot = call(&tools, "godot_game_snapshot", json!({"run_id": run_id})).await;
+    assert!(!snapshot.is_error, "{}", text_of(&snapshot));
+    assert!(
+        !text_of(&snapshot).contains("not a later read"),
+        "{}",
+        text_of(&snapshot)
+    );
     let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
     assert!(!stopped.is_error, "{}", text_of(&stopped));
 }
@@ -6526,6 +6519,20 @@ async fn adapter_status(tools: &Arc<ToolManager>, run_id: &str) -> Value {
         .unwrap_or_else(|| panic!("no run {run_id} in {body}"))
 }
 
+/// The adapter status of a run that has ended, as the run status shows it.
+async fn adapter_status_after_end(tools: &Arc<ToolManager>, run_id: &str) -> Value {
+    let status = call(tools, "godot_get_run_status", json!({})).await;
+    assert!(!status.is_error, "{}", text_of(&status));
+    let body = json_of(&status);
+    let run = body["process_runs"]
+        .as_array()
+        .and_then(|runs| runs.iter().find(|run| run["run_id"] == run_id))
+        .unwrap_or_else(|| panic!("no run {run_id} in {body}"))
+        .clone();
+    assert_eq!(run["running"], false, "{run}");
+    run["adapter"].clone()
+}
+
 #[tokio::test]
 #[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
 async fn a_game_without_an_adapter_setting_announces_none() {
@@ -6566,6 +6573,15 @@ async fn an_adapter_named_by_path_or_by_uid_registers_what_it_offers() {
     assert_eq!(status["path"], "res://adapter.gd", "{status}");
     let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
     assert!(!stopped.is_error, "{}", text_of(&stopped));
+    // A stop answer says how the run ended; the adapter's commands are not repeated there, and
+    // the run status of the ended run keeps only whether the adapter loaded.
+    let stop_answer = json_of(&stopped);
+    assert!(stop_answer.get("adapter").is_none(), "{stop_answer}");
+    assert_eq!(stop_answer["run_id"], run_id.as_str(), "{stop_answer}");
+    let ended = adapter_status_after_end(&tools, &run_id).await;
+    assert_eq!(ended["loaded"], true, "{ended}");
+    assert!(ended.get("commands").is_none(), "{ended}");
+    assert!(ended.get("states").is_none(), "{ended}");
 
     // Project Settings stores a uid when the script is picked with the file chooser. An import
     // makes the engine write the script's uid file and register it.

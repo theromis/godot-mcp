@@ -1111,7 +1111,7 @@ fn build_catalog(feedback_mode: FeedbackMode) -> Vec<(Module, Vec<Tool>)> {
         ).additive(),
         tool(
             "godot_stop_project",
-            "Without run_id, stops the editor's Play mode and every running managed process run, and lists what it stopped (or that nothing ran). run_id stops one process run.",
+            "Without run_id, stops the editor's Play mode and every running managed process run, and lists what it stopped (run_id, scene, how it ended, last_stderr; or that nothing ran). run_id stops one process run. The adapter is in godot_get_run_status while the game runs.",
             json!({
                 "run_id": {"type": "string", "description": "Managed process run id. Omit to stop everything."}
             }),
