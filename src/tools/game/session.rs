@@ -179,7 +179,7 @@ async fn ready_editor_session(tools: &ToolManager) -> Result<i64, McpError> {
                     .and_then(Value::as_i64)
                     .filter(|id| *id >= 0)
             {
-                let hello = serde_json::from_str::<Value>(hello).unwrap_or(Value::Null);
+                let hello = crate::godot::json_text::parse::<Value>(hello).unwrap_or(Value::Null);
                 check_runtime_hello(&hello).map_err(McpError::Process)?;
                 return Ok(id);
             }
