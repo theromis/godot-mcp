@@ -30,6 +30,8 @@ impl ToolManager {
             editor_runtime(self, method, params, RECORD_WAIT)
                 .await
                 .map_err(record_timeout)
+        } else if waits_in_seconds(method, &params) {
+            editor_runtime(self, method, params, SECONDS_WAIT).await
         } else {
             editor_runtime(self, method, params, Duration::from_secs(20)).await
         };
@@ -67,6 +69,18 @@ const RECORD_WAIT: Duration = Duration::from_secs(120);
 
 const SCRIPT_METHOD: &str = "game.run_script";
 
+/// How long the server waits for a `godot_game_wait` in game seconds: the game gives up after 120
+/// real seconds when its clock does not advance, and answers then.
+const SECONDS_WAIT: Duration = Duration::from_secs(135);
+
+/// Whether the call is a wait in game seconds, which may take far longer than a frame wait.
+fn waits_in_seconds(method: &str, params: &Value) -> bool {
+    method == "input.wait"
+        && params
+            .get("seconds")
+            .is_some_and(|seconds| !seconds.is_null())
+}
+
 /// The game ends a function at its own timeout and then answers, so the server waits a little
 /// longer than that. A function that never awaits cannot be ended, and that is what this catches.
 fn script_wait(params: &Value) -> Duration {
@@ -94,6 +108,8 @@ async fn held_aware_call(
         script_wait(&params)
     } else if recording {
         RECORD_WAIT
+    } else if waits_in_seconds(method, &params) {
+        SECONDS_WAIT
     } else if was_held {
         HELD_STEP_WAIT
     } else {
@@ -263,6 +279,15 @@ mod tests {
             held_step_timeout(true, other()).to_string(),
             other().to_string()
         );
+    }
+
+    #[test]
+    fn a_wait_in_game_seconds_gets_the_long_wait() {
+        assert!(waits_in_seconds("input.wait", &json!({"seconds": 30})));
+        assert!(!waits_in_seconds("input.wait", &json!({"seconds": null})));
+        assert!(!waits_in_seconds("input.wait", &json!({"frames": 600})));
+        assert!(!waits_in_seconds("game.tree", &json!({"seconds": 30})));
+        assert!(SECONDS_WAIT > Duration::from_secs(120));
     }
 
     #[test]
