@@ -4372,8 +4372,58 @@ async fn run_script_names_the_uids_and_null_shader_parameters_it_could_not_repai
     );
 }
 
+#[tokio::test]
+async fn run_script_warns_that_a_headless_multimesh_save_lost_its_instances() {
+    let project = pond_project();
+    let root = project.path();
+    // What headless Godot writes for a MultiMesh of 12 instances: no buffer.
+    std::fs::write(
+        root.join("multimesh.txt"),
+        "[gd_resource type=\"MultiMesh\" format=3]\n\n[resource]\ntransform_format = 1\nuse_colors = true\ninstance_count = 12\n",
+    )
+    .expect("headless output");
+    write_script(root, "multimesh.gd", b"extends SceneTree\n");
+    let tools = manager_in(root, saving_godot(root));
+
+    let quiet = call_with(&tools, json!({"script": "quiet.gd", "project_path": root})).await;
+    let quiet_text = text(&quiet);
+    assert_eq!(
+        answer_body(&quiet_text)["headless_data_loss"],
+        Value::Null,
+        "{quiet_text}"
+    );
+
+    let saved = call_with(
+        &tools,
+        json!({"script": "multimesh.gd", "project_path": root}),
+    )
+    .await;
+    let saved_text = text(&saved);
+    assert!(
+        saved_text.starts_with("WARNING") && saved_text.contains("res://grass.tres"),
+        "{saved_text}"
+    );
+    let body = answer_body(&saved_text);
+    assert_eq!(
+        body["headless_data_loss"],
+        json!([{
+            "path": "res://grass.tres",
+            "multimeshes_without_buffer": [{"id": "resource", "instance_count": 12}],
+        }]),
+        "{saved_text}"
+    );
+    assert_eq!(body["resource_damage"], json!([]), "{saved_text}");
+    assert!(
+        body["summary"]
+            .as_str()
+            .is_some_and(|summary| summary.contains("no buffer")),
+        "{saved_text}"
+    );
+}
+
 /// A Godot stand-in that, for edit.gd and lock.gd, overwrites pond.tscn with headless.txt; lock.gd
-/// then makes it read-only. For shader.gd it overwrites water.gdshader with shader.txt, and for
+/// then makes it read-only. For shader.gd it overwrites water.gdshader with shader.txt, for
+/// multimesh.gd it writes multimesh.txt to grass.tres, and for
 /// many.gd it writes headless.txt to many/pond_01.tscn .. many/pond_25.tscn.
 fn saving_godot(dir: &Path) -> PathBuf {
     #[cfg(unix)]
@@ -4395,6 +4445,7 @@ case "$*" in
   *edit.gd*) cp "$proj/headless.txt" "$proj/pond.tscn" ;;
   *lock.gd*) cp "$proj/headless.txt" "$proj/pond.tscn"; chmod a-w "$proj/pond.tscn" ;;
   *shader.gd*) cp "$proj/shader.txt" "$proj/water.gdshader" ;;
+  *multimesh.gd*) cp "$proj/multimesh.txt" "$proj/grass.tres" ;;
   *many.gd*) mkdir -p "$proj/many"; for i in $(seq -w 1 25); do cp "$proj/headless.txt" "$proj/many/pond_$i.tscn"; done ;;
 esac
 exit 0
