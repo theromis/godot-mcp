@@ -28,10 +28,6 @@ const MAX_TIMEOUT: u64 = 3600;
 const REPLY_LIMIT: usize = 60_000;
 const SCENE_EXTENSIONS: &[&str] = &["tscn", "scn"];
 
-pub fn handles(name: &str) -> bool {
-    name == NAME
-}
-
 pub fn catalog() -> Vec<Tool> {
     vec![super::tool(
         NAME,
@@ -60,7 +56,7 @@ pub fn catalog() -> Vec<Tool> {
             "project_path": {"type": "string"}
         }),
         &[],
-    )]
+    ).additive_idempotent()]
 }
 
 pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {

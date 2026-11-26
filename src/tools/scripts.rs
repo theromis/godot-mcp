@@ -55,10 +55,6 @@ const GDSCRIPT: TextKind = TextKind {
     create_tool: "godot_create_script",
 };
 
-pub fn handles(name: &str) -> bool {
-    matches!(name, "godot_read_script" | "godot_edit_script")
-}
-
 pub fn catalog() -> Vec<Tool> {
     vec![
         super::tool(
@@ -69,7 +65,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": {"type": "string"}
             }),
             &["script_path"],
-        ),
+        ).read_only(),
         super::tool(
             "godot_edit_script",
             "Replaces one fragment of an existing .gd script: old_text must occur exactly once (any other count is refused with the count), and new_text takes its place. With the editor connected the change is one undoable editor action and the script is saved; it is refused while the script has unsaved changes in the editor. Without an editor the file is replaced as a whole, and a class_name the edit adds, renames or removes is updated in the project's class cache (.godot/global_script_class_cache.cfg) as the editor's scan would (class_cache in the answer; class_cache_warning when it could not be). Pass the version from godot_read_script to refuse the edit if the script changed since. Never creates a file (use godot_create_script); run godot_validate_script after an edit. The text is data to this tool, but a script is code: Godot runs a @tool script in the editor as soon as it is saved.",
@@ -81,7 +77,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": {"type": "string"}
             }),
             &["script_path", "old_text", "new_text"],
-        ),
+        ).destructive(),
     ]
 }
 

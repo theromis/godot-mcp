@@ -99,7 +99,7 @@ pub(super) fn catalog(mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &["kind", "summary", "details"],
-        ));
+        ).additive());
         let submission = if mode.submits() {
             "have it submitted with godot_submit_feedback, "
         } else {
@@ -122,7 +122,7 @@ pub(super) fn catalog(mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &[],
-        ));
+        ).additive());
     }
     if mode.submits() {
         tools.push(tool(
@@ -143,7 +143,7 @@ pub(super) fn catalog(mode: FeedbackMode) -> Vec<Tool> {
                 }
             }),
             &["draft_id", "confirmed"],
-        ));
+        ).open_world().additive());
     }
     tools
 }

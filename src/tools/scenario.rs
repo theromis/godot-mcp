@@ -145,7 +145,7 @@ pub fn definition() -> Tool {
             "coordinate_space": {"type": "string", "enum": ["viewport", "window"], "description": "The space of pointer x and y. viewport (default): pixels of the root viewport's visible rectangle after content scale, the space _input sees and Control global positions use. window: pixels of the game window, mapped into viewport space when the step is applied."}
         }),
         &["steps"],
-    )
+    ).additive()
 }
 
 struct Step {
