@@ -367,7 +367,7 @@ func validate_params(cmd_type: String, params: Dictionary) -> String:
             var accepted: PackedStringArray = []
             for accepted_key: String in spec:
                 accepted.append(accepted_key)
-            return "Unknown parameter '%s' for command '%s' (this addon accepts: %s). The server is newer than the addon: update the addon with godot_update_addon (restart_editor: true while the editor has the project open)." % [key, cmd_type, ", ".join(accepted) if not accepted.is_empty() else "none"]
+            return "Unknown parameter '%s' for command '%s' (this addon accepts: %s). The server and the addon come from different builds: install this server's addon with godot_update_addon (restart_editor: true while the editor has the project open)." % [key, cmd_type, ", ".join(accepted) if not accepted.is_empty() else "none"]
         var expected: int = spec[key]
         if expected == TYPE_NIL:
             continue
