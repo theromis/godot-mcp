@@ -227,10 +227,14 @@ struct BinaryStamp {
 }
 
 impl BinaryStamp {
-    /// The stamp of the executable `binary` starts, found on the `PATH` when it is a bare name.
+    /// The stamp of the executable `binary` starts, found on the `PATH` when it is a bare name
+    /// (only Windows starts a bare name from the working folder first, as `Command` does).
     /// `None` when it cannot be found: then nothing is kept and every call asks the engine.
+    /// A wrapper script that starts the engine is stamped itself: replacing the engine behind it
+    /// is seen only after the server restarts.
     fn of(binary: &Path) -> Option<Self> {
-        let path = if binary.components().count() == 1 && !binary.is_file() {
+        let bare = binary.components().count() == 1;
+        let path = if bare && !(cfg!(windows) && binary.is_file()) {
             find_on_path(binary)?
         } else {
             binary.to_path_buf()
