@@ -1238,7 +1238,7 @@ impl CliRunner {
                 self.godot_binary.display()
             ))
         })?;
-        let pid = child.id().unwrap_or(0);
+        let pid = child.id();
         let stdout_buf = Arc::new(Mutex::new(Vec::new()));
         let stderr_buf = Arc::new(Mutex::new(Vec::new()));
         let stdout_stream: Arc<Mutex<StreamRecord>> = Arc::default();
@@ -1745,7 +1745,7 @@ impl CliRunner {
                 self.godot_binary.display()
             ))
         })?;
-        let pid = child.id().unwrap_or(0);
+        let pid = child.id();
         let stdout_buf = Arc::new(Mutex::new(Vec::new()));
         let stderr_buf = Arc::new(Mutex::new(Vec::new()));
         let stdout_task =
@@ -2249,23 +2249,40 @@ fn error_location(line: &str) -> Option<(String, u32)> {
     Some((file.to_string(), line_no))
 }
 
-fn kill_process_tree(pid: u32) {
-    if pid == 0 {
+/// The process group id of a child started with `process_group(0)`, or `None` for an id that
+/// is no child's group: `kill(0)` would signal the server's own process group and `kill(-1)`
+/// every process of the user.
+#[cfg(unix)]
+fn child_group(pid: u32) -> Option<libc::pid_t> {
+    libc::pid_t::try_from(pid).ok().filter(|group| *group > 1)
+}
+
+/// Kills a child started in its own process group, with everything it started. `None` (a child
+/// already reaped) does nothing.
+fn kill_process_tree(pid: Option<u32>) {
+    let Some(pid) = pid else {
         return;
-    }
+    };
     #[cfg(unix)]
     {
-        // The child is its own process group (`process_group(0)`), so the id to signal is
-        // `-<pid>`. procps `kill` on Linux parses a leading `-` as an option, and
-        // `kill -KILL -<pid>` never reaches the group; a grandchild then keeps the stdout
-        // pipe open. `-s KILL --` ends options on both procps and BSD kill. Windows uses
-        // taskkill /T below.
-        let _ = std::process::Command::new("kill")
-            .args(["-s", "KILL", "--", &format!("-{pid}")])
-            .status();
+        // The child is its own process group (`process_group(0)`), so the whole group is
+        // signalled: a grandchild left alive would keep the stdout pipe open. The signal is
+        // sent directly rather than through the `kill` program, which would block an executor
+        // thread while it runs. Windows uses taskkill /T below.
+        let Some(group) = child_group(pid) else {
+            return;
+        };
+        // SAFETY: `kill` only sends a signal; a group that is already gone makes it fail with
+        // ESRCH, which is harmless here.
+        unsafe {
+            libc::kill(-group, libc::SIGKILL);
+        }
     }
     #[cfg(windows)]
     {
+        if pid == 0 {
+            return;
+        }
         let _ = std::process::Command::new("taskkill")
             .args(["/F", "/T", "/PID", &pid.to_string()])
             .status();
@@ -2374,6 +2391,53 @@ SCRIPT ERROR: Assertion failed: boom\n\
             child_group.trim(),
             process_group_of(&std::process::id().to_string())
         );
+    }
+
+    /// A timed-out script's process group is killed as a whole, grandchildren included, so none
+    /// keeps the output pipe open.
+    #[cfg(unix)]
+    #[test]
+    fn killing_a_process_tree_ends_its_grandchildren() {
+        use std::io::BufRead;
+        use std::os::unix::process::CommandExt;
+        use std::time::{Duration, Instant};
+
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", "sleep 30 & echo $!; wait"])
+            .stdout(std::process::Stdio::piped())
+            .process_group(0)
+            .spawn()
+            .expect("spawn sh");
+        let mut first = String::new();
+        std::io::BufReader::new(child.stdout.take().expect("stdout"))
+            .read_line(&mut first)
+            .expect("grandchild pid");
+        let grandchild: u32 = first.trim().parse().expect("pid");
+        assert!(crate::util::process_runs(grandchild));
+
+        super::kill_process_tree(Some(child.id()));
+        let _ = child.wait();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while crate::util::process_runs(grandchild) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(
+            !crate::util::process_runs(grandchild),
+            "the grandchild survived"
+        );
+    }
+
+    /// Ids that are not a child's own group are never signalled: 0 is the server's own group
+    /// and 1 (as `-1`) every process of the user. Checked on the id mapping, since a call that
+    /// did signal them would end the test run or the whole session.
+    #[cfg(unix)]
+    #[test]
+    fn only_a_childs_own_group_is_signalled() {
+        assert_eq!(super::child_group(0), None);
+        assert_eq!(super::child_group(1), None);
+        assert_eq!(super::child_group(u32::MAX), None);
+        assert_eq!(super::child_group(4242), Some(4242));
+        super::kill_process_tree(None);
     }
 
     #[cfg(unix)]
