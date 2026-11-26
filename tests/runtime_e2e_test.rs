@@ -7678,6 +7678,19 @@ async fn an_aimed_screenshot_looks_at_a_point_and_leaves_the_game_camera_alone()
     let both = shot(json!({"aim": {"at": [1, 2, 3], "look_at": [0, 0, 0]}})).await;
     assert!(both.is_error, "{}", text_of(&both));
 
+    // A sheet from the aim camera: the camera stays put while the game runs between the shots.
+    let sheet = shot(json!({"aim": {"at": [30, 2, 0]}, "frames": 4, "every": 2})).await;
+    assert!(!sheet.is_error, "{}", text_of(&sheet));
+    let sheet_note = text_of(&sheet);
+    assert!(sheet_note.contains("4 frames, 2 columns"), "{sheet_note}");
+    assert!(sheet_note.contains("(aim camera)"), "{sheet_note}");
+    assert_eq!(aim_of(&sheet_note)["mode"], "at", "{sheet_note}");
+    let slow = shot(json!({"aim": {"at": [30, 2, 0]}, "frames": 2, "every": 240})).await;
+    assert!(!slow.is_error, "{}", text_of(&slow));
+    let too_slow = shot(json!({"frames": 2, "every": 241})).await;
+    assert!(too_slow.is_error, "{}", text_of(&too_slow));
+    assert!(text_of(&too_slow).contains("240"), "{}", text_of(&too_slow));
+
     // The game camera is still current and where it was, and the temporary nodes are gone.
     let camera = json_of(
         &call(
@@ -7728,6 +7741,12 @@ async fn an_aimed_screenshot_looks_at_a_point_and_leaves_the_game_camera_alone()
     assert!(
         switch.is_error,
         "a camera switch is still refused while held"
+    );
+    let held_sheet = shot(json!({"aim": {"at": [30, 2, 0]}, "frames": 2})).await;
+    assert!(
+        held_sheet.is_error,
+        "a sheet needs frames to be drawn, aimed or not: {}",
+        text_of(&held_sheet)
     );
 
     let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;

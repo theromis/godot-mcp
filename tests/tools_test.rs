@@ -1995,6 +1995,10 @@ async fn probe_is_listed_read_only_and_checks_its_size_before_reaching_a_game() 
     assert_eq!(aim["properties"]["fov"]["minimum"], 1, "{aim}");
     assert_eq!(aim["properties"]["fov"]["maximum"], 179, "{aim}");
     assert_eq!(aim["additionalProperties"], false, "{aim}");
+    assert_eq!(
+        shot["inputSchema"]["properties"]["every"]["maximum"], 240,
+        "{shot}"
+    );
 }
 
 #[tokio::test]
@@ -8754,4 +8758,43 @@ async fn an_earlier_recording_is_replaced_only_when_asked() {
     assert!(!project.path().join("movies/clip00000000.png").exists());
     assert!(!project.path().join("movies/clip.wav").exists());
     wait_for_file(&record).await;
+}
+
+/// A runtime from before aimed sheets refuses aim with frames; the tool says to update the addon.
+#[tokio::test]
+async fn an_aimed_sheet_on_an_older_runtime_names_the_update() {
+    use common::{MockBridge, Reply};
+    let bridge = MockBridge::start(move |command| {
+        match command["type"].as_str().unwrap_or_default() {
+            "get_run_status" => Reply::Ok(json!({"running": true})),
+            "game_status" => Reply::Ok(json!({"sessions": [{"session": 7, "hello": "{}"}]})),
+            "game_send" => {
+                let request: Value = serde_json::from_str(command["params"]["data"][0].as_str().expect("request")).expect("JSON");
+                Reply::OkWithEvent(json!({"sent": true}), json!({
+                    "type": "event", "event": "game.message", "data": {
+                        "session": 7, "message": "mcp:reply",
+                        "data": [json!({"id": request["id"], "error": {"code": "BAD_PARAMS", "message": "aim takes one picture: leave frames at 1."}}).to_string()]
+                    }
+                }))
+            }
+            _ => Reply::Err("unexpected command".into())
+        }
+    })
+    .await;
+    let manager = Arc::new(ToolManager::new(
+        BridgeClient::new(bridge.port),
+        CliRunner::new(PathBuf::from("unused-godot")),
+    ));
+    let refused = manager
+        .call_tool(
+            "godot_game_screenshot",
+            json!({"run_id": "editor", "aim": {"at": [0, 0, 0]}, "frames": 4}),
+        )
+        .await;
+    assert!(refused.is_error, "{}", text(&refused));
+    assert!(
+        text(&refused).contains("godot_update_addon"),
+        "{}",
+        text(&refused)
+    );
 }
