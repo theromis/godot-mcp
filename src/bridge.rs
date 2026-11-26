@@ -13,7 +13,8 @@ use tokio::net::TcpStream;
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{WebSocketStream, client_async};
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+use tokio_tungstenite::{WebSocketStream, client_async_with_config};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
@@ -23,6 +24,11 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 /// After a failed connect, further attempts within this window fail immediately.
 const RETRY_AFTER_FAILURE: Duration = Duration::from_millis(500);
+/// The largest message (and frame: the editor sends each message as one frame) taken from the
+/// editor. It equals the addon's `OUTBOUND_BUFFER_SIZE` in `bridge_server.gd`, the most the
+/// editor can send at once, so every reply it can make fits (a screenshot is a base64 PNG well
+/// below it). The library defaults would take 64 MiB messages but only 16 MiB frames.
+pub const MAX_EDITOR_MESSAGE: usize = 32 << 20;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BridgeCommand {
@@ -216,7 +222,11 @@ impl BridgeClient {
             Err(_) => return Err(self.unavailable("connection timed out")),
         };
         let url = format!("ws://{address}");
-        let websocket = match timeout(HANDSHAKE_TIMEOUT, client_async(url.as_str(), tcp)).await {
+        let config = WebSocketConfig::default()
+            .max_message_size(Some(MAX_EDITOR_MESSAGE))
+            .max_frame_size(Some(MAX_EDITOR_MESSAGE));
+        let handshake = client_async_with_config(url.as_str(), tcp, Some(config));
+        let websocket = match timeout(HANDSHAKE_TIMEOUT, handshake).await {
             Ok(Ok((websocket, _))) => websocket,
             Ok(Err(err)) => return Err(self.unavailable(&format!("handshake failed: {err}"))),
             Err(_) => return Err(self.unavailable("handshake timed out")),
@@ -279,6 +289,7 @@ async fn run_connection(
     alive: Arc<AtomicBool>,
 ) {
     let (mut sink, mut stream) = websocket.split();
+    let mut closed_by: Option<String> = None;
     loop {
         tokio::select! {
             queued = queue.recv() => match queued {
@@ -297,7 +308,12 @@ async fn run_connection(
                 Some(Ok(Message::Ping(data))) => {
                     let _ = sink.send(Message::Pong(data)).await;
                 }
-                Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
+                Some(Err(err)) => {
+                    warn!("Godot Editor bridge connection failed: {err}");
+                    closed_by = Some(err.to_string());
+                    break;
+                }
+                Some(Ok(Message::Close(_))) | None => break,
                 Some(Ok(_)) => {}
             },
         }
@@ -305,7 +321,14 @@ async fn run_connection(
 
     alive.store(false, Ordering::Release);
     for (_, reply) in lock(&pending).drain() {
-        let _ = reply.send(Err(connection_closed()));
+        let error = match &closed_by {
+            Some(reason) => McpError::Bridge(format!(
+                "The connection to the Godot Editor bridge failed: {reason}. The next call reconnects. When the reason names a size, the editor's reply was larger than the {} MiB a reply may have: ask for less (a smaller max_dimension, a narrower query) and retry",
+                MAX_EDITOR_MESSAGE >> 20
+            )),
+            None => connection_closed(),
+        };
+        let _ = reply.send(Err(error));
     }
     // A game call relayed by the editor cannot be answered once the editor is gone.
     game_replies.close_all();

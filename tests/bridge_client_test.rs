@@ -181,3 +181,36 @@ async fn a_relayed_game_wait_ends_when_the_editor_connection_closes() {
         .expect("the wait ends when the connection closes");
     assert!(outcome.is_err(), "no reply arrived: {outcome:?}");
 }
+
+/// The editor sends a big reply (a screenshot of a large viewport) as one frame. It must fit as
+/// long as the editor could send it; the library's default frame limit (16 MiB) refused it.
+#[tokio::test]
+async fn a_reply_up_to_the_editor_limit_arrives_in_one_frame() {
+    let data = "A".repeat(20 << 20);
+    let bridge = MockBridge::start(move |_| Reply::Ok(json!({"data": data}))).await;
+    let client = BridgeClient::new(bridge.port).with_timeout(Duration::from_secs(30));
+
+    let reply = client
+        .send_command("capture_viewport", json!({}))
+        .await
+        .expect("a 20 MiB reply fits");
+    assert_eq!(reply["data"].as_str().map(str::len), Some(20 << 20));
+}
+
+/// A reply larger than anything the editor can send is refused at once, with a reason and a
+/// way out, instead of being buffered.
+#[tokio::test]
+async fn a_reply_over_the_limit_fails_with_the_reason() {
+    let data = "A".repeat(godot_mcp::bridge::MAX_EDITOR_MESSAGE + 1024);
+    let bridge = MockBridge::start(move |_| Reply::Ok(json!({"data": data}))).await;
+    let client = BridgeClient::new(bridge.port).with_timeout(Duration::from_secs(30));
+
+    let err = client
+        .send_command("capture_viewport", json!({}))
+        .await
+        .expect_err("an oversized reply is refused");
+    let text = err.to_string();
+    assert!(matches!(err, McpError::Bridge(_)), "{err:?}");
+    assert!(text.contains("size") || text.contains("too long"), "{text}");
+    assert!(text.contains("ask for less"), "{text}");
+}
