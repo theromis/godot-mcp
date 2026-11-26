@@ -693,6 +693,7 @@ fn with_cache_report(result: ToolResult, report: Option<&CacheReport>) -> ToolRe
     ToolResult {
         content: vec![crate::protocol::ToolContent::Text { text }],
         is_error: true,
+        structured_content: None,
     }
 }
 

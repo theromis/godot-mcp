@@ -432,7 +432,9 @@ impl ToolManager {
                     .unwrap_or_else(|| "unknown".to_string()),
                 "not reachable (editor closed or plugin disabled)".to_string(),
             ),
-            Err(McpError::ToolExecution(message)) => (
+            Err(
+                McpError::ToolExecution(message) | McpError::CodedToolExecution { message, .. },
+            ) => (
                 "unknown".to_string(),
                 format!("the editor answered with an error: {message}"),
             ),

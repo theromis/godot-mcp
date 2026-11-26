@@ -68,6 +68,30 @@ fn test_tool_result_helpers() {
     assert_eq!(err_res.content.len(), 1);
 }
 
+#[test]
+fn an_error_with_a_code_gives_it_in_structured_content_and_keeps_its_text() {
+    let plain = ToolResult::error("Node not found", &["Look it up"]);
+    let plain_json = serde_json::to_value(&plain).expect("serialize");
+    assert!(
+        plain_json.get("structuredContent").is_none(),
+        "{plain_json}"
+    );
+
+    let coded = ToolResult::error("Node not found", &["Look it up"]).with_error_code(
+        "NOT_FOUND",
+        "Node not found",
+        Some(serde_json::json!({"data": {"path": "X"}})),
+    );
+    assert_eq!(coded.error_code(), Some("NOT_FOUND"));
+    let coded_json = serde_json::to_value(&coded).expect("serialize");
+    assert_eq!(coded_json["content"], plain_json["content"]);
+    assert_eq!(coded_json["isError"], true);
+    assert_eq!(
+        coded_json["structuredContent"],
+        serde_json::json!({"error": {"code": "NOT_FOUND", "message": "Node not found", "data": {"path": "X"}}})
+    );
+}
+
 fn schema_of(name: &str) -> serde_json::Value {
     ToolManager::list_tools()
         .into_iter()

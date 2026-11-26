@@ -476,6 +476,8 @@ pub enum Reply {
     Ok(Value),
     OkWithEvent(Value, Value),
     Err(String),
+    /// An error with a code, as addons that send error codes answer: (code, message).
+    ErrCode(&'static str, String),
     After(Duration, Value),
     /// Sends this text as it is, with `$ID` replaced by the command id: a reply that is not
     /// necessarily valid JSON, written the way Godot's `JSON.stringify` writes it.
@@ -596,6 +598,12 @@ where
             Reply::Err(message) => {
                 let _ = out_tx.send(
                     json!({"commandId": id, "status": "error", "error": message}).to_string(),
+                );
+            }
+            Reply::ErrCode(code, message) => {
+                let _ = out_tx.send(
+                    json!({"commandId": id, "status": "error", "error": message, "code": code})
+                        .to_string(),
                 );
             }
             Reply::After(delay, result) => {

@@ -3125,6 +3125,151 @@ async fn each_failure_class_gets_its_own_hint_and_never_the_generic_one() {
     }
 }
 
+/// The answer of `tool` when the editor refuses every command with `reply`.
+async fn refused_by_editor(
+    tool: &str,
+    reply: impl Fn() -> common::Reply + Send + Sync + 'static,
+) -> Value {
+    let bridge = common::MockBridge::start(move |_| reply()).await;
+    let result = editor_manager(&bridge).call_tool(tool, json!({})).await;
+    assert!(result.is_error, "{}", text(&result));
+    serde_json::to_value(&result).expect("serialize result")
+}
+
+#[tokio::test]
+async fn an_editor_error_code_chooses_the_hint_whatever_the_message_says() {
+    use common::Reply;
+    // Messages reworded so that no substring of the old ones is left: the code alone decides.
+    let cases: &[(&'static str, &str, &str)] = &[
+        ("NOT_FOUND", "Kein Knoten unter X", "godot_get_scene_tree"),
+        ("UNAUTHORIZED", "Token rejected", "GODOT_MCP_TOKEN"),
+        ("NO_SCENE", "Nothing is being edited", "godot_open_scene"),
+        ("EXISTS", "res://a.tres is taken", "another path"),
+        ("WRITE_FAILED", "Disk said no", "writable"),
+        (
+            "SETTING_TYPE",
+            "Wrong kind of value",
+            "type the setting already has",
+        ),
+        (
+            "BAD_PARAMS",
+            "Parameter 'node_path' must be of type String, got int",
+            "inputSchema",
+        ),
+    ];
+    for (code, message, expected) in cases {
+        let message = message.to_string();
+        let shown = message.clone();
+        let answer = refused_by_editor("godot_get_scene_tree", move || {
+            Reply::ErrCode(code, message.clone())
+        })
+        .await;
+        let text = answer["content"][0]["text"].as_str().unwrap_or_default();
+        assert!(text.starts_with(&format!("Error: {shown}")), "{text}");
+        assert!(
+            text.contains(expected),
+            "{code}: expected {expected:?} in: {text}"
+        );
+        assert!(!text.contains("Correct the arguments"), "{code}: {text}");
+        assert_eq!(
+            answer["structuredContent"],
+            json!({"error": {"code": code, "message": shown}}),
+            "{code}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn an_editor_error_code_this_server_does_not_know_keeps_the_hint_of_its_message() {
+    let answer = refused_by_editor("godot_get_scene_tree", || {
+        common::Reply::ErrCode("SOMETHING_NEW", "File already exists: res://a.tres".into())
+    })
+    .await;
+    let text = answer["content"][0]["text"].as_str().unwrap_or_default();
+    assert!(text.contains("another path"), "{text}");
+    assert_eq!(
+        answer["structuredContent"]["error"]["code"],
+        "SOMETHING_NEW"
+    );
+}
+
+#[tokio::test]
+async fn an_older_addon_without_codes_gets_hints_from_the_message_and_no_structured_error() {
+    let answer = refused_by_editor("godot_get_scene_tree", || {
+        common::Reply::Err("Node not found at path: X".into())
+    })
+    .await;
+    let text = answer["content"][0]["text"].as_str().unwrap_or_default();
+    assert!(text.contains("godot_get_scene_tree"), "{text}");
+    // A code guessed from English words is not an API: only a code the addon sent is given.
+    assert!(answer.get("structuredContent").is_none(), "{answer}");
+}
+
+#[tokio::test]
+async fn a_running_games_failure_code_is_given_in_structured_content() {
+    let answer = refused_by_editor("godot_get_scene_tree", || {
+        common::Reply::Err(
+            r#"{"code":"DENIED","message":"Refusing to set 'script'.","data":{"property":"script"}}"#
+                .into(),
+        )
+    })
+    .await;
+    assert_eq!(
+        answer["structuredContent"],
+        json!({"error": {
+            "code": "DENIED",
+            "message": "Refusing to set 'script'.",
+            "data": {"property": "script"}
+        }})
+    );
+    let text = answer["content"][0]["text"].as_str().unwrap_or_default();
+    assert!(text.contains("by design"), "{text}");
+}
+
+#[tokio::test]
+async fn an_unreachable_editor_is_given_as_a_code() {
+    let manager = Arc::new(ToolManager::new(
+        BridgeClient::new(free_port()),
+        CliRunner::new(PathBuf::from("unused-godot")),
+    ));
+    let result = manager.call_tool("godot_get_scene_tree", json!({})).await;
+    assert!(result.is_error);
+    assert_eq!(
+        result.error_code(),
+        Some("BRIDGE_UNAVAILABLE"),
+        "{}",
+        text(&result)
+    );
+}
+
+#[tokio::test]
+async fn a_coded_unknown_command_still_names_the_addon_update() {
+    let project = project_dir();
+    let addon = project.path().join("addons/godot_mcp");
+    std::fs::create_dir_all(&addon).expect("addon dir");
+    std::fs::write(
+        addon.join("plugin.cfg"),
+        "[plugin]\n\nname=\"Godot MCP Bridge\"\nversion=\"0.11.1-dev+godot.4.8\"\nscript=\"plugin.gd\"\n",
+    )
+    .expect("old manifest");
+    let dir = project.path().to_string_lossy().replace('\\', "/");
+    let bridge = common::MockBridge::start(move |command| match command["type"].as_str() {
+        Some("get_project_info") => common::Reply::Ok(json!({"project_dir": dir})),
+        Some(other) => {
+            common::Reply::ErrCode("UNKNOWN_COMMAND", format!("Unknown command type: {other}"))
+        }
+        None => common::Reply::Ok(json!({})),
+    })
+    .await;
+    let result = editor_manager(&bridge)
+        .call_tool("godot_get_scene_tree", json!({}))
+        .await;
+    let message = text(&result);
+    assert!(message.contains("0.11.1-dev+godot.4.8"), "{message}");
+    assert!(message.contains("godot_update_addon"), "{message}");
+    assert_eq!(result.error_code(), Some("UNKNOWN_COMMAND"));
+}
+
 #[tokio::test]
 async fn a_godot_executable_that_cannot_run_names_godot_path_not_syntax() {
     let project = project_dir();

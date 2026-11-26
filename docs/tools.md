@@ -87,6 +87,39 @@ Every tool takes only the parameters its schema lists (`additionalProperties: fa
 | `godot_draft_feedback` | — | Turns the notes into one report for the maintainers and shows it to you. Sends nothing. |
 | `godot_submit_feedback` | — | Publishes a draft as a GitHub issue, only after you said yes. Not available in `draft` mode. |
 
+## Error codes
+
+A failed call has `isError: true` and a text that starts with `Error:`, followed by recovery suggestions. When the kind of failure is known, the result also carries it machine-readably, so a client can act on it without reading the English text:
+
+```json
+{
+  "content": [{"type": "text", "text": "Error: Node not found at path: Player\n\nActionable recovery suggestions:\n- ..."}],
+  "isError": true,
+  "structuredContent": {"error": {"code": "NOT_FOUND", "message": "Node not found at path: Player"}}
+}
+```
+
+The text stays as it is; clients that do not read `structuredContent` see no change. A failure without a code has no `structuredContent`; an editor addon older than the codes sends none. A code is part of the API: its meaning does not change when a message is reworded.
+
+| Code | From | Meaning |
+| --- | --- | --- |
+| `BRIDGE_UNAVAILABLE` | Server | The editor bridge cannot be reached: the editor is closed, the plugin is disabled, or the port differs. |
+| `BRIDGE_ERROR` | Server | The connection to the editor broke or stalled while the command was in flight. |
+| `RUN_ENDED` | Server | The managed game run the call needs has ended. |
+| `UNAUTHORIZED` | Editor | The bridge token is missing or wrong. |
+| `UNKNOWN_COMMAND` | Editor | The editor's addon has no such command: it is older than the server. |
+| `BAD_PARAMS` | Editor, game | A parameter has the wrong type or shape. |
+| `NOT_FOUND` | Editor, game | A node, scene, file, input action or (in a game) adapter command or script function does not exist, or the scene is not open. |
+| `NO_SCENE` | Editor | No scene is open in the editor. |
+| `EXISTS` | Editor | The file to create already exists; it is never replaced. |
+| `WRITE_FAILED` | Editor | Saving a scene, resource or the project settings failed. |
+| `SETTING_TYPE` | Editor | A project setting was given a value of another type than it holds. |
+| `DENIED` | Game | The running game refuses this by design (the `script` property, private names, methods that quit, evaluate code, call other methods or free nodes). |
+| `UNSUPPORTED` | Game | The running game cannot do this: it has no window, or no adapter is configured. |
+| `GODOT_ERROR` | Game | An adapter command or state failed with a script error. |
+
+A running game's error also carries its `data`, when it has some, next to `code` and `message`. Other codes may be added; treat an unknown one as a plain failure and read its message.
+
 ## Calls at the same time
 
 The server runs every tool call as its own task, so calls a client sends together work at the same time. Each `godot_run_script` starts its own headless Godot, so a long job split into parts (`user_args` naming the part, each part writing its own files) takes about as long as its slowest part. In one project:

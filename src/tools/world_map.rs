@@ -183,6 +183,7 @@ pub async fn call(tools: &ToolManager, args: Value) -> ToolResult {
     ToolResult {
         content,
         is_error: false,
+        structured_content: None,
     }
 }
 
