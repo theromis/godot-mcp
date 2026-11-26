@@ -5262,6 +5262,74 @@ async fn created_scene_without_an_editor_loads_with_the_name_godot_keeps() {
     }
 }
 
+/// Without an editor, scene roots and resource classes are checked against the class list the
+/// engine gives: instantiable Node and Resource classes are taken, while an abstract class, a
+/// class of the other kind and an unknown name are refused, and nothing is written for them.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn class_checks_without_an_editor_follow_the_engine_class_list() {
+    let _ = IGNORE;
+    let project = project_dir_with_scripts();
+    let root = project.path();
+    let tools = manager(root);
+    let scene = |name: &str, root_type: &str| {
+        json!({"scene_path": format!("res://{name}.tscn"), "root_type": root_type,
+               "project_path": root})
+    };
+    let resource = |name: &str, class: &str| {
+        json!({"resource_path": format!("res://{name}.tres"), "class_name": class,
+               "project_path": root})
+    };
+    for (tool, args, file) in [
+        (
+            "godot_create_scene",
+            scene("body", "CharacterBody3D"),
+            "body.tscn",
+        ),
+        ("godot_create_scene", scene("ui", "Control"), "ui.tscn"),
+        (
+            "godot_create_resource",
+            resource("curve", "Curve"),
+            "curve.tres",
+        ),
+    ] {
+        let answer = call(&tools, tool, args).await;
+        assert!(!answer.is_error, "{tool}: {}", text_of(&answer));
+        assert!(root.join(file).is_file(), "{file} was not written");
+    }
+    for (tool, args, file) in [
+        (
+            "godot_create_scene",
+            scene("abstract", "CanvasItem"),
+            "abstract.tscn",
+        ),
+        (
+            "godot_create_scene",
+            scene("curve_root", "Curve"),
+            "curve_root.tscn",
+        ),
+        (
+            "godot_create_scene",
+            scene("unknown", "NoSuchClass"),
+            "unknown.tscn",
+        ),
+        (
+            "godot_create_resource",
+            resource("node", "Node2D"),
+            "node.tres",
+        ),
+        (
+            "godot_create_resource",
+            resource("abstract", "Shape3D"),
+            "abstract.tres",
+        ),
+    ] {
+        let answer = call(&tools, tool, args).await;
+        assert!(answer.is_error, "{tool} {file}: {}", text_of(&answer));
+        assert!(!root.join(file).exists(), "{file} was written");
+    }
+}
+
 fn project_dir_with_scripts() -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("script project");
     let root = dir.path();
