@@ -3240,14 +3240,23 @@ async fn the_fallbacks_refuse_a_class_the_engine_cannot_use_and_write_no_file() 
 #[tokio::test]
 async fn a_root_name_is_data_in_the_file_fallback_as_it_is_in_the_editor() {
     let project = project_dir();
-    for (name, expected) in [
-        ("with space", "with space"),
-        ("bad name!", "bad name!"),
-        ("a.b:c@d/e%f", "a_b_c_d_e_f"),
-        ("quote\"inside", "quote_inside"),
-        ("new\nline", "new_line"),
-    ] {
-        let file = format!("n_{}.tscn", expected.len());
+    // (requested, the name Godot's `Node.name` keeps, how Godot's scene writer quotes it)
+    for (index, (name, kept, written)) in [
+        ("with space", "with space", "\"with space\""),
+        ("bad name!", "bad name!", "\"bad name!\""),
+        ("a.b:c@d/e%f", "a_b_c_d_e_f", "\"a_b_c_d_e_f\""),
+        ("quote\"inside", "quote_inside", "\"quote_inside\""),
+        ("new\nline", "new\nline", "\"new\\nline\""),
+        ("Root\\", "Root\\", "\"Root\\\\\""),
+        ("Q\\\"R", "Q\\_R", "\"Q\\\\_R\""),
+        ("C[D]E", "C[D]E", "\"C[D]E\""),
+        ("tab\tctl\u{1}", "tab\tctl\u{1}", "\"tab\\tctl\\u0001\""),
+        ("", "Root", "\"Root\""),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let file = format!("n_{index}.tscn");
         let made = call_classified(
             "godot_create_scene",
             json!({"scene_path": format!("res://{file}"), "root_name": name,
@@ -3255,9 +3264,15 @@ async fn a_root_name_is_data_in_the_file_fallback_as_it_is_in_the_editor() {
         )
         .await;
         assert!(!made.is_error, "{name:?}: {}", text(&made));
+        let reported = serde_json::to_string(kept).expect("name");
+        assert!(
+            text(&made).contains(&format!("root node named {reported}")),
+            "{name:?}: {}",
+            text(&made)
+        );
         let body = std::fs::read_to_string(project.path().join(&file)).expect("scene");
         assert!(
-            body.contains(&format!("[node name=\"{expected}\" type=\"Node2D\"]")),
+            body.contains(&format!("[node name={written} type=\"Node2D\"]")),
             "{name:?}: {body}"
         );
         assert_eq!(

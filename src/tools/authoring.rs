@@ -223,7 +223,10 @@ async fn write_scene(tools: &ToolManager, args: &Value) -> ToolResult {
             );
         }
     };
-    let body = format!("[gd_scene format=3]\n\n[node name=\"{root_name}\" type=\"{root_type}\"]\n");
+    let body = format!(
+        "[gd_scene format=3]\n\n[node name={} type=\"{root_type}\"]\n",
+        godot_string(&root_name)
+    );
     match create_new_file(&file, &body) {
         Ok(()) => {}
         Err(error) if error.kind() == ErrorKind::AlreadyExists => {
@@ -240,7 +243,8 @@ async fn write_scene(tools: &ToolManager, args: &Value) -> ToolResult {
         }
     }
     ToolResult::text(format!(
-        "Created {scene_path} ({root_type}) in {} as text, because no editor has this project open.",
+        "Created {scene_path} ({root_type}, root node named {}) in {} as text, because no editor has this project open.",
+        serde_json::to_string(&root_name).unwrap_or_default(),
         project.display()
     ))
 }
@@ -392,24 +396,24 @@ fn class_check_failed(error: &McpError) -> ToolResult {
     )
 }
 
-/// A node name as Godot keeps it: the characters it forbids in a name become `_`. The name is
-/// data and goes into the scene file as a quoted value (TL-5).
+/// A node name as Godot keeps it: the characters it forbids in a name (`. : @ / " %`) become
+/// `_`, as `Node.name` does in the editor; every other character stays, and an empty name is
+/// `Root`, as in the editor's `create_scene`. NUL, which a Godot string cannot hold, becomes `_`
+/// too. The name is data: it goes into the scene file as an escaped, quoted value (TL-5).
 fn node_name(requested: &str) -> String {
-    let cleaned: String = requested
+    if requested.is_empty() {
+        return "Root".to_string();
+    }
+    requested
         .chars()
         .map(|c| {
-            if c.is_control() || matches!(c, '.' | ':' | '@' | '/' | '"' | '%') {
+            if matches!(c, '.' | ':' | '@' | '/' | '"' | '%' | '\0') {
                 '_'
             } else {
                 c
             }
         })
-        .collect();
-    if cleaned.trim().is_empty() {
-        "Root".to_string()
-    } else {
-        cleaned
-    }
+        .collect()
 }
 
 async fn editor_or_error(tools: &ToolManager, command: &str, args: &Value) -> ToolResult {
