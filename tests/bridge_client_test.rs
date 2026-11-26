@@ -102,6 +102,59 @@ async fn unanswered_commands_time_out_with_a_bridge_error() {
     assert!(matches!(err, McpError::Bridge(_)), "{err:?}");
 }
 
+/// Godot's `JSON.stringify` leaves U+0001..U+001F (other than \b \t \n \f \r) raw inside a
+/// string and writes U+000B as `\v`; JSON allows neither. A reply that echoes such text must
+/// still reach its caller instead of being dropped until the call times out.
+#[tokio::test]
+async fn replies_with_raw_control_characters_reach_the_caller() {
+    let bridge = MockBridge::start(|_| {
+        Reply::Raw(
+            "{\"commandId\":\"$ID\",\"result\":{\"name\":\"a\u{1}b\\vc\\\\vd\u{1f}\"},\"status\":\"success\"}"
+                .into(),
+        )
+    })
+    .await;
+    let client = BridgeClient::new(bridge.port).with_timeout(Duration::from_secs(5));
+
+    let started = Instant::now();
+    let value = client
+        .send_command("get_node", json!({}))
+        .await
+        .expect("the reply is read");
+    assert_eq!(value["name"], "a\u{1}b\u{b}c\\vd\u{1f}");
+    assert!(started.elapsed() < Duration::from_secs(2));
+}
+
+/// A reply that cannot be read even after the repair fails its own call at once, with a
+/// recovery hint, instead of leaving it to the timeout.
+#[tokio::test]
+async fn an_unreadable_reply_fails_its_command_at_once() {
+    let bridge =
+        MockBridge::start(|_| Reply::Raw("{\"commandId\":\"$ID\",\"status\":\"success\",".into()))
+            .await;
+    let client = BridgeClient::new(bridge.port).with_timeout(Duration::from_secs(10));
+
+    let started = Instant::now();
+    let err = client
+        .send_command("ping", json!({}))
+        .await
+        .expect_err("the reply is not JSON");
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "waited for the timeout"
+    );
+    match err {
+        McpError::Bridge(message) => {
+            assert!(message.contains("could not be read"), "{message}");
+            assert!(
+                message.contains("godot_update_addon") || message.contains("Retry"),
+                "{message}"
+            );
+        }
+        other => panic!("unexpected error class: {other:?}"),
+    }
+}
+
 /// The editor sends a big reply (a screenshot of a large viewport) as one frame. It must fit as
 /// long as the editor could send it; the library's default frame limit (16 MiB) refused it.
 #[tokio::test]

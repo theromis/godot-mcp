@@ -1,4 +1,5 @@
 use crate::error::{McpError, Result};
+use crate::godot::json_text;
 use crate::util::lock;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -321,16 +322,21 @@ async fn run_connection(
 }
 
 fn deliver(pending: &Pending, events: &EventSubs, text: &str) {
-    if let Ok(value) = serde_json::from_str::<Value>(text)
+    let text = json_text::repair(text);
+    if let Ok(value) = serde_json::from_str::<Value>(&text)
         && value.get("type").and_then(Value::as_str) == Some("event")
     {
         lock(events).retain(|subscriber| subscriber.send(value.clone()).is_ok());
         return;
     }
-    let response: BridgeResponse = match serde_json::from_str(text) {
+    let response: BridgeResponse = match serde_json::from_str(&text) {
         Ok(response) => response,
         Err(err) => {
-            warn!("Ignoring malformed bridge message: {err}");
+            warn!(
+                "Ignoring malformed bridge message ({err}): {}",
+                json_text::head(&text)
+            );
+            fail_unreadable_reply(pending, &text, &err);
             return;
         }
     };
@@ -348,6 +354,29 @@ fn deliver(pending: &Pending, events: &EventSubs, text: &str) {
         ))
     };
     let _ = reply.send(outcome);
+}
+
+/// Fails the command an unreadable reply names, so its caller learns at once instead of
+/// waiting for the timeout. The id is found by a plain scan for `"commandId":"..."`.
+fn fail_unreadable_reply(pending: &Pending, text: &str, err: &serde_json::Error) {
+    let Some(command_id) = scan_command_id(text) else {
+        return;
+    };
+    let Some(reply) = lock(pending).remove(command_id) else {
+        return;
+    };
+    let _ = reply.send(Err(McpError::Bridge(format!(
+        "The editor's reply to this command could not be read as JSON ({err}). Retry the command; if it fails again, update the editor's addon with godot_update_addon, and if the reply echoes unusual text (control characters in a name or a file), try the command with other input"
+    ))));
+}
+
+fn scan_command_id(text: &str) -> Option<&str> {
+    let key = "\"commandId\"";
+    let rest = &text[text.find(key)? + key.len()..];
+    let rest = rest.trim_start().strip_prefix(':')?.trim_start();
+    let rest = rest.strip_prefix('"')?;
+    let end = rest.find(['"', '\\'])?;
+    Some(&rest[..end])
 }
 
 /// Where the editor plugin publishes its per-port bridge token.
