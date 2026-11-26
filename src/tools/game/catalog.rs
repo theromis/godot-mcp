@@ -20,7 +20,7 @@ pub fn catalog() -> Vec<Tool> {
         ),
         tool(
             "godot_game_get",
-            "Reads a live node's properties, groups and optionally signals and methods. '/' reads a Dictionary key or Object property (get only); ':' steps through a Resource (material_override:shader_parameter/x). A missing segment goes to property_errors; the rest is returned. A name containing '/' (metadata/note, shader_parameter/x) is used whole. Private names are refused; script is omitted.",
+            "Reads a live node's properties, groups and optionally signals and methods. '/' reads a Dictionary key or Object property (get only); ':' steps through a Resource (material_override:shader_parameter/x). A missing segment goes to property_errors; the rest is returned. A name containing '/' (metadata/note, shader_parameter/x) is used whole. Private names are refused, except in a ':' resource step; script is omitted.",
             json!({"run_id": s(""), "path": s("Node path relative to the current scene, or /root/..."), "properties": {"type": "array", "items": {"type": "string"}}, "signals": b(), "methods": b()}),
             &[],
         ),
@@ -81,7 +81,7 @@ pub fn catalog() -> Vec<Tool> {
         tool(
             "godot_game_wait",
             "Waits for frames, for node to exist, for signal on node, for a property of node to satisfy op and value, or for a scene_generation newer than given (combinable with node and property; signal is not). Properties are read with get only, / for Dictionary keys or Object properties; a missing segment is an error naming it, not a timeout; private names, script and Array elements are refused. eq/ne need the same type (or null; a whole number matches an int), lt/gt numbers of one type; strings are never coerced. Answers carry the observed value and scene context. Refused while held: step with godot_game_physics.",
-            json!({"run_id": s(""), "frames": i("Frames to wait, default 1. Ignored when node, signal, property or scene_generation is set (then the default timeout)."), "node": s("Wait until this node exists. Required with property."), "signal": s("Signal of node to wait for."), "property": s("Public property path; / for a Dictionary key or Object property."), "op": s("eq, ne, lt, lte, gt, gte, or exists."), "value": {"type": ["string", "number", "integer", "boolean", "object", "array", "null"], "description": "Value to compare. null works with eq and ne on any property."}, "scene_generation": i("Wait until the running scene generation is greater than this."), "timeout": i("Frames before giving up. Default 180, max 600."), "time_scale": n("Engine.time_scale, 0 to 8, kept after this call until changed (restored when the game exits).")}),
+            json!({"run_id": s(""), "frames": i("Frames to wait, default 1. Ignored when node, signal, property or scene_generation is set (then only the default of timeout)."), "node": s("Wait until this node exists. Required with property."), "signal": s("Signal of node to wait for."), "property": s("Public property path; / for a Dictionary key or Object property."), "op": s("eq, ne, lt, lte, gt, gte, or exists."), "value": {"type": ["string", "number", "integer", "boolean", "object", "array", "null"], "description": "Value to compare. null works with eq and ne on any property."}, "scene_generation": i("Wait until the running scene generation is greater than this."), "timeout": i("Frames before giving up. Default: frames when given, else 180; max 600."), "time_scale": n("Engine.time_scale, 0 to 8, kept after this call until changed (restored when the game exits).")}),
             &[],
         ),
         tool(
@@ -254,8 +254,8 @@ fn aim_schema() -> Value {
             "position": vec3("Where the camera stands. Needs look_at."),
             "look_at": vec3("The point it looks at. Needs position."),
             "up": vec3("The picture's up. Default [0, 1, 0]."),
-            "size": {"type": "number", "minimum": 0.001, "maximum": 10000, "description": "Orthographic view size in metres (image height). Not with fov."},
-            "fov": {"type": "number", "minimum": 1, "maximum": 179, "description": "Perspective vertical view angle in degrees. Not with size."}
+            "size": {"type": "number", "minimum": 0.001, "maximum": 10000, "description": "Orthographic view size in metres (image height; width when the copied camera keeps width). Not with fov."},
+            "fov": {"type": "number", "minimum": 1, "maximum": 179, "description": "Perspective vertical view angle in degrees (horizontal when the copied camera keeps width). Not with size."}
         },
         "additionalProperties": false
     })
