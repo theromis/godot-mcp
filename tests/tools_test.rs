@@ -193,7 +193,7 @@ async fn overwriting_a_script_open_with_unsaved_changes_is_refused() {
         BridgeClient::new(bridge.port),
         CliRunner::new(PathBuf::from("unused-godot")),
     ));
-    let result = manager
+    let result = Arc::clone(&manager)
         .call_tool(
             "godot_create_script",
             json!({"script_path": "res://open.gd", "overwrite": true}),
@@ -221,7 +221,7 @@ async fn overwriting_a_script_open_in_a_clean_tab_reloads_the_tab() {
         BridgeClient::new(bridge.port),
         CliRunner::new(PathBuf::from("unused-godot")),
     ));
-    let result = manager
+    let result = Arc::clone(&manager)
         .call_tool(
             "godot_create_script",
             json!({"script_path": "res://open.gd", "overwrite": true}),
@@ -749,6 +749,98 @@ async fn create_resource_without_an_editor_never_replaces_a_file() {
     );
 }
 
+/// The engine is asked for its classes once: later scenes and resources are checked against the
+/// answer it gave, until the executable at that path changes.
+#[tokio::test]
+async fn class_checks_ask_the_engine_once_per_executable() {
+    let project = project_dir();
+    let cwd = tempfile::tempdir().expect("working dir");
+    let engine = tempfile::tempdir().expect("engine dir");
+    let godot = common::classifying_godot(engine.path());
+    let manager = manager_in(cwd.path(), godot.clone());
+    let scene = |name: &str, root: &str| {
+        json!({"scene_path": format!("res://{name}.tscn"), "root_type": root,
+               "project_path": project.path()})
+    };
+    let resource = |name: &str, class: &str| {
+        json!({"resource_path": format!("res://{name}.tres"), "class_name": class,
+               "project_path": project.path()})
+    };
+    for (tool, args) in [
+        ("godot_create_scene", scene("a", "Node2D")),
+        ("godot_create_scene", scene("b", "Control")),
+        ("godot_create_resource", resource("c", "Curve")),
+        ("godot_create_resource", resource("d", "Gradient")),
+    ] {
+        let result = manager.clone().call_tool(tool, args).await;
+        assert!(!result.is_error, "{tool}: {}", text(&result));
+    }
+    let refused = Arc::clone(&manager)
+        .call_tool("godot_create_scene", scene("e", "Curve"))
+        .await;
+    assert!(refused.is_error, "{}", text(&refused));
+    assert!(
+        text(&refused).contains("not a Node type"),
+        "{}",
+        text(&refused)
+    );
+    assert_eq!(
+        common::stand_in_count(engine.path(), "class_lists.txt"),
+        1,
+        "every class check started the engine again"
+    );
+
+    // Another build at the same path: its classes may differ, so it is asked again.
+    let mut script = std::fs::read(&godot).expect("read stand-in");
+    script.extend_from_slice(b"\n");
+    std::fs::write(&godot, script).expect("rewrite stand-in");
+    let result = Arc::clone(&manager)
+        .call_tool("godot_create_scene", scene("f", "Node3D"))
+        .await;
+    assert!(!result.is_error, "{}", text(&result));
+    assert_eq!(
+        common::stand_in_count(engine.path(), "class_lists.txt"),
+        2,
+        "a changed executable was not asked for its classes"
+    );
+}
+
+/// The headless version answer is kept for the executable it came from.
+#[tokio::test]
+async fn version_is_asked_once_per_executable() {
+    let cwd = tempfile::tempdir().expect("working dir");
+    let engine = tempfile::tempdir().expect("engine dir");
+    let godot = common::classifying_godot(engine.path());
+    let manager = manager_in(cwd.path(), godot.clone());
+    for _ in 0..2 {
+        let result = manager
+            .clone()
+            .call_tool("godot_get_version", json!({}))
+            .await;
+        assert!(!result.is_error, "{}", text(&result));
+        assert!(
+            text(&result).contains("4.8.beta1.stand-in"),
+            "{}",
+            text(&result)
+        );
+    }
+    assert_eq!(common::stand_in_count(engine.path(), "versions.txt"), 1);
+
+    let mut script = std::fs::read(&godot).expect("read stand-in");
+    script.extend_from_slice(b"\n");
+    std::fs::write(&godot, script).expect("rewrite stand-in");
+    let result = manager
+        .clone()
+        .call_tool("godot_get_version", json!({}))
+        .await;
+    assert!(!result.is_error, "{}", text(&result));
+    assert_eq!(
+        common::stand_in_count(engine.path(), "versions.txt"),
+        2,
+        "a changed executable was not asked for its version"
+    );
+}
+
 /// When the headless load check says Godot cannot read the resource it just wrote, the call
 /// is an error with Godot's message, and the file it made is gone again.
 #[cfg(unix)]
@@ -766,7 +858,7 @@ for last; do :; done
 case \"$last\" in
   res://*) echo 'made.tres:2 - Parse Error: Unexpected end of file' >&2
            echo 'GODOT_MCP_RESOURCE={\"loaded\":false,\"class\":\"\"}' ;;
-  *) echo GODOT_MCP_CLASS=resource ;;
+  *) echo 'GODOT_MCP_CLASSES={\"scene\":[],\"resource\":[\"Curve\"]}' ;;
 esac
 ",
     )
@@ -1390,6 +1482,45 @@ async fn editor_runtime_waits_for_hello_and_targets_the_ready_session() {
     assert!(!result.is_error, "{}", text(&result));
     assert!(text(&result).contains("count"), "{}", text(&result));
     assert!(polls.load(Ordering::SeqCst) >= 3);
+}
+
+/// The game's runtime writes its replies with Godot's `JSON.stringify`, which leaves U+0001
+/// raw inside a string; a node name carrying one must not turn the reply into an error.
+#[tokio::test]
+async fn editor_runtime_reply_with_a_raw_control_character_is_read() {
+    use common::{MockBridge, Reply};
+    let bridge = MockBridge::start(move |command| {
+        match command["type"].as_str().unwrap_or_default() {
+            "get_run_status" => Reply::Ok(json!({"running": true})),
+            "game_status" => Reply::Ok(json!({"sessions": [{"session": 7, "hello": "{}"}]})),
+            "game_send" => {
+                let request: Value = serde_json::from_str(command["params"]["data"][0].as_str().expect("request")).expect("JSON");
+                let reply = format!(
+                    "{{\"id\":{},\"result\":{{\"count\":1,\"nodes\":[{{\"name\":\"Bad\u{1}Name\\v\"}}]}}}}",
+                    request["id"]
+                );
+                Reply::OkWithEvent(json!({"sent": true}), json!({
+                    "type": "event", "event": "game.message", "data": {
+                        "session": 7, "message": "mcp:reply", "data": [reply]
+                    }
+                }))
+            }
+            _ => Reply::Err("unexpected command".into())
+        }
+    }).await;
+    let manager = ToolManager::new(
+        BridgeClient::new(bridge.port),
+        CliRunner::new(PathBuf::from("unused-godot")),
+    );
+    let result = Arc::new(manager)
+        .call_tool("godot_game_tree", json!({"run_id": "editor"}))
+        .await;
+    assert!(!result.is_error, "{}", text(&result));
+    assert!(
+        text(&result).contains("Bad\\u0001Name\\u000b"),
+        "{}",
+        text(&result)
+    );
 }
 
 #[tokio::test]
@@ -2947,7 +3078,10 @@ async fn each_failure_class_gets_its_own_hint_and_never_the_generic_one() {
             BridgeClient::new(bridge.port),
             CliRunner::new(PathBuf::from("unused-godot")),
         ));
-        let result = manager.call_tool("godot_get_scene_tree", json!({})).await;
+        let result = manager
+            .clone()
+            .call_tool("godot_get_scene_tree", json!({}))
+            .await;
         let shown = text(&result);
         assert!(result.is_error, "{shown}");
         assert!(
@@ -5552,7 +5686,7 @@ async fn close_editor_asks_the_connected_editor_to_quit_and_waits_for_its_proces
         .with_working_dir(cwd.path().to_path_buf()),
     );
 
-    let result = manager
+    let result = Arc::clone(&manager)
         .call_tool(
             "godot_close_editor",
             json!({"project_path": project.path()}),
@@ -5594,7 +5728,10 @@ async fn close_editor_reports_unsaved_changes_instead_of_closing() {
         .with_working_dir(project.path().to_path_buf()),
     );
 
-    let result = manager.call_tool("godot_close_editor", json!({})).await;
+    let result = manager
+        .clone()
+        .call_tool("godot_close_editor", json!({}))
+        .await;
     assert!(result.is_error, "{}", text(&result));
     let shown = text(&result);
     for needle in [
@@ -5624,7 +5761,7 @@ async fn close_editor_never_closes_an_editor_that_has_another_project_open() {
         CliRunner::new(PathBuf::from("unused-godot")),
     ));
 
-    let result = manager
+    let result = Arc::clone(&manager)
         .call_tool(
             "godot_close_editor",
             json!({"project_path": mine.path(), "discard": true}),
@@ -6174,7 +6311,7 @@ async fn a_preset_is_not_changed_while_the_editor_has_the_project_open() {
         BridgeClient::new(bridge.port),
         CliRunner::new(PathBuf::from("unused-godot")),
     ));
-    let result = manager
+    let result = Arc::clone(&manager)
         .call_tool(
             "godot_set_export_preset",
             json!({"name": "webOS", "create": true, "platform": "Linux",
@@ -6583,7 +6720,7 @@ async fn import_params_go_through_the_editor_that_has_the_project_and_name_dropp
         BridgeClient::new(bridge.port),
         CliRunner::new(PathBuf::from("unused-godot")),
     ));
-    let result = manager
+    let result = Arc::clone(&manager)
         .call_tool(
             "godot_set_import_params",
             json!({"path": "far.png", "copy_from": "res://sky.png",
@@ -6801,7 +6938,7 @@ async fn an_importer_change_goes_to_the_editor_that_has_the_project() {
         BridgeClient::new(bridge.port),
         CliRunner::new(PathBuf::from("unused-godot")),
     ));
-    let result = manager
+    let result = Arc::clone(&manager)
         .call_tool(
             "godot_set_import_params",
             json!({"path": "sky.png", "importer": "3d_texture",
