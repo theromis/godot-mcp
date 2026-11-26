@@ -5188,6 +5188,148 @@ async fn created_resource_without_an_editor_loads_and_takes_properties() {
     );
 }
 
+/// godot_create_scene without an editor writes a root name with characters the scene format
+/// quotes (a backslash, a newline, brackets) so that Godot loads it, and the name it reports is
+/// the one Godot itself keeps when the editor sets `Node.name` to the same text.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn created_scene_without_an_editor_loads_with_the_name_godot_keeps() {
+    let _ = IGNORE;
+    let project = project_dir_with_scripts();
+    let root = project.path();
+    let names = [
+        "Root\\",
+        "Q\\\"R",
+        "C[D]E",
+        "new\nline",
+        "tab\tctl\u{1}",
+        "a.b:c@d/e%f",
+        "S\\nT",
+    ];
+    std::fs::write(
+        root.join("names.json"),
+        serde_json::to_string(&names).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("scripts/load_names.gd"),
+        "extends SceneTree\n\nfunc _initialize() -> void:\n\tvar names: Array = JSON.parse_string(FileAccess.get_file_as_string(\"res://names.json\"))\n\tvar found: Array = []\n\tfor index in names.size():\n\t\tvar packed: PackedScene = ResourceLoader.load(\"res://n_%d.tscn\" % index, \"\", ResourceLoader.CACHE_MODE_IGNORE)\n\t\tvar loaded: String = \"<not loaded>\"\n\t\tif packed != null:\n\t\t\tvar scene: Node = packed.instantiate()\n\t\t\tloaded = String(scene.name)\n\t\t\tscene.free()\n\t\tvar named := Node.new()\n\t\tnamed.name = names[index]\n\t\tfound.append({\"loaded\": Array(loaded.to_utf8_buffer()), \"editor\": Array(String(named.name).to_utf8_buffer())})\n\t\tnamed.free()\n\tvar out := FileAccess.open(\"res://names_out.json\", FileAccess.WRITE)\n\tout.store_string(JSON.stringify(found))\n\tout.close()\n\tquit(0)\n",
+    )
+    .unwrap();
+    let tools = manager(root);
+
+    let mut reported = Vec::new();
+    for (index, name) in names.iter().enumerate() {
+        let created = call(
+            &tools,
+            "godot_create_scene",
+            json!({"scene_path": format!("res://n_{index}.tscn"), "root_name": name, "project_path": root}),
+        )
+        .await;
+        let created_text = text_of(&created);
+        assert!(!created.is_error, "{name:?}: {created_text}");
+        let quoted = created_text
+            .split("root node named ")
+            .nth(1)
+            .and_then(|rest| rest.split(") in ").next())
+            .unwrap_or_else(|| panic!("no name reported: {created_text}"));
+        reported.push(serde_json::from_str::<String>(quoted).expect("reported name"));
+    }
+
+    let loaded = call(
+        &tools,
+        "godot_run_script",
+        json!({"script": "res://scripts/load_names.gd", "project_path": root, "timeout_seconds": 30}),
+    )
+    .await;
+    let loaded_text = text_of(&loaded);
+    assert!(!loaded.is_error, "{loaded_text}");
+    assert!(
+        !loaded_text.contains("Parse Error"),
+        "a created scene has a parse error: {loaded_text}"
+    );
+    let written = std::fs::read_to_string(root.join("names_out.json")).expect("names written");
+    // The names travel as UTF-8 bytes: Godot's JSON.stringify leaves U+0001 raw in a string.
+    let found: Vec<Value> = serde_json::from_str(&written).expect("names JSON");
+    let text = |bytes: &Value| -> String {
+        let bytes: Vec<u8> = serde_json::from_value(bytes.clone()).expect("bytes");
+        String::from_utf8(bytes).expect("UTF-8")
+    };
+    for (index, name) in names.iter().enumerate() {
+        let loaded = text(&found[index]["loaded"]);
+        assert_eq!(loaded, text(&found[index]["editor"]), "{name:?}");
+        assert_eq!(loaded, reported[index], "{name:?}");
+    }
+}
+
+/// Without an editor, scene roots and resource classes are checked against the class list the
+/// engine gives: instantiable Node and Resource classes are taken, while an abstract class, a
+/// class of the other kind and an unknown name are refused, and nothing is written for them.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn class_checks_without_an_editor_follow_the_engine_class_list() {
+    let _ = IGNORE;
+    let project = project_dir_with_scripts();
+    let root = project.path();
+    let tools = manager(root);
+    let scene = |name: &str, root_type: &str| {
+        json!({"scene_path": format!("res://{name}.tscn"), "root_type": root_type,
+               "project_path": root})
+    };
+    let resource = |name: &str, class: &str| {
+        json!({"resource_path": format!("res://{name}.tres"), "class_name": class,
+               "project_path": root})
+    };
+    for (tool, args, file) in [
+        (
+            "godot_create_scene",
+            scene("body", "CharacterBody3D"),
+            "body.tscn",
+        ),
+        ("godot_create_scene", scene("ui", "Control"), "ui.tscn"),
+        (
+            "godot_create_resource",
+            resource("curve", "Curve"),
+            "curve.tres",
+        ),
+    ] {
+        let answer = call(&tools, tool, args).await;
+        assert!(!answer.is_error, "{tool}: {}", text_of(&answer));
+        assert!(root.join(file).is_file(), "{file} was not written");
+    }
+    for (tool, args, file) in [
+        (
+            "godot_create_scene",
+            scene("abstract", "CanvasItem"),
+            "abstract.tscn",
+        ),
+        (
+            "godot_create_scene",
+            scene("curve_root", "Curve"),
+            "curve_root.tscn",
+        ),
+        (
+            "godot_create_scene",
+            scene("unknown", "NoSuchClass"),
+            "unknown.tscn",
+        ),
+        (
+            "godot_create_resource",
+            resource("node", "Node2D"),
+            "node.tres",
+        ),
+        (
+            "godot_create_resource",
+            resource("abstract", "Shape3D"),
+            "abstract.tres",
+        ),
+    ] {
+        let answer = call(&tools, tool, args).await;
+        assert!(answer.is_error, "{tool} {file}: {}", text_of(&answer));
+        assert!(!root.join(file).exists(), "{file} was written");
+    }
+}
+
 fn project_dir_with_scripts() -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("script project");
     let root = dir.path();
@@ -8935,4 +9077,83 @@ async fn stopping_a_movie_run_lets_godot_finish_the_avi() {
         summary["movie"]["frames"].as_u64().unwrap_or(0) >= 20,
         "{summary}"
     );
+}
+
+/// A game that fills its window with random pixels, so a PNG of it does not compress.
+fn noise_project() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("project");
+    let root = dir.path();
+    std::fs::write(
+        root.join("project.godot"),
+        "config_version=5\n\n[application]\n\nconfig/name=\"Noise\"\nrun/main_scene=\"res://noise.tscn\"\nconfig/features=PackedStringArray(\"4.5\")\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("noise.gd"),
+        "extends Sprite2D\n\nfunc _ready() -> void:\n\tvar size := Vector2i(1152, 648)\n\tvar bytes := PackedByteArray()\n\tbytes.resize(size.x * size.y * 3)\n\tvar rng := RandomNumberGenerator.new()\n\tfor i in bytes.size():\n\t\tbytes[i] = rng.randi() & 255\n\tcentered = false\n\ttexture = ImageTexture.create_from_image(Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGB8, bytes))\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("noise.tscn"),
+        "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://noise.gd\" id=\"1\"]\n\n[node name=\"Noise\" type=\"Sprite2D\"]\nscript = ExtResource(\"1\")\n",
+    )
+    .unwrap();
+    dir
+}
+
+/// Godot's debugger drops a message over 8 MiB without telling anyone. A screenshot sheet of
+/// random pixels is far larger: the runtime has to refuse it with the reason at once, instead of
+/// leaving the call to time out, and the game must keep answering afterwards.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn a_screenshot_too_large_for_the_debugger_is_refused_with_the_reason() {
+    let _ = IGNORE;
+    if !windowed_game_can_open() {
+        eprintln!("skipped: a windowed screenshot needs a display server");
+        return;
+    }
+    let project = noise_project();
+    let tools = manager(project.path());
+    let started = call(
+        &tools,
+        "godot_run_project",
+        json!({
+            "project_path": project.path(),
+            "scene": "res://noise.tscn",
+            "mode": "process",
+            "headless": false
+        }),
+    )
+    .await;
+    assert!(!started.is_error, "{}", text_of(&started));
+    let run_id = run_id_of(&started);
+
+    let huge = call(
+        &tools,
+        "godot_game_screenshot",
+        json!({"run_id": run_id, "frames": 8, "every": 1, "max_dimension": 4096}),
+    )
+    .await;
+    assert!(huge.is_error, "{}", text_of(&huge));
+    let note = text_of(&huge);
+    assert!(
+        note.contains("more than the") && note.contains("debugger connection carries"),
+        "{note}"
+    );
+
+    let small = call(
+        &tools,
+        "godot_game_screenshot",
+        json!({"run_id": run_id, "max_dimension": 64}),
+    )
+    .await;
+    assert!(!small.is_error, "{}", text_of(&small));
+    assert!(
+        text_of(&small).contains("Game screenshot"),
+        "{}",
+        text_of(&small)
+    );
+
+    let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
+    assert!(!stopped.is_error, "{}", text_of(&stopped));
 }

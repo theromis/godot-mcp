@@ -34,13 +34,6 @@ const SHADER: TextKind = TextKind {
 /// What a clean check covered, for the answer and the tool description.
 const CHECKED: &str = "The saved file was preprocessed (#include, #define, #if) and compiled by Godot's shader compiler for its shader_type: syntax, types, unknown identifiers, built-ins and render modes of that type, and the includes it pulls in. Not checked: the GPU driver's own compile of the generated code, and warnings the shader editor shows (such as unused uniforms).";
 
-pub fn handles(name: &str) -> bool {
-    matches!(
-        name,
-        "godot_create_shader" | "godot_read_shader" | "godot_edit_shader" | "godot_validate_shader"
-    )
-}
-
 pub fn catalog() -> Vec<Tool> {
     vec![
         super::tool(
@@ -53,7 +46,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": {"type": "string"}
             }),
             &["shader_path", "code"],
-        ),
+        ).destructive_idempotent(),
         super::tool(
             "godot_read_shader",
             "Reads an existing .gdshader or .gdshaderinc as the editor would save it: the shader editor's unsaved text when the shader is open with unsaved changes (dirty: true, source: editor), otherwise the file. Returns {path, text, source, dirty, version}; the version label identifies the returned text. stale_tab: true means the shader is open in a tab without unsaved changes that still shows older text than the file; godot_edit_shader refuses until the tab shows the file. Without an editor it reads the file.",
@@ -62,7 +55,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": {"type": "string"}
             }),
             &["shader_path"],
-        ),
+        ).read_only(),
         super::tool(
             "godot_edit_shader",
             "Replaces one fragment of an existing .gdshader or .gdshaderinc: old_text must occur exactly once (any other count is refused with the count), and new_text takes its place. With the editor connected the shader is opened in the shader editor if it is not, the change is one undo step in its tab, the shader is saved, and the editor's shader and the materials using it get the new code; it is refused while the shader has unsaved changes in the editor. Without an editor the file is replaced as a whole. Pass the version from godot_read_shader to refuse the edit if the shader changed since. Never creates a file (use godot_create_shader); run godot_validate_shader after an edit.",
@@ -74,7 +67,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": {"type": "string"}
             }),
             &["shader_path", "old_text", "new_text"],
-        ),
+        ).destructive(),
         super::tool(
             "godot_validate_shader",
             &format!(
@@ -85,7 +78,7 @@ pub fn catalog() -> Vec<Tool> {
                 "project_path": {"type": "string"}
             }),
             &["shader_path"],
-        ),
+        ).read_only(),
     ]
 }
 
