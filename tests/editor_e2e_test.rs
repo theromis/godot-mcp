@@ -5067,6 +5067,85 @@ async fn resource_file_properties_are_set_saved_and_undone_through_the_editor() 
     );
 }
 
+/// One call sets a count and the entries it adds (streams_count, then stream_<n>/stream), and a
+/// truly unknown name still changes nothing. Undoing a smaller count brings back the entries it
+/// removed.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn resource_count_and_the_entries_it_adds_are_set_in_one_call() {
+    let editor = start_editor_with(
+        Some(UNDO_HOOK),
+        "",
+        &[
+            ("croak.tres", "[gd_resource type=\"AudioStreamRandomizer\" format=3]\n\n[resource]\n"),
+            ("beep.tres", "[gd_resource type=\"AudioStreamGenerator\" format=3]\n\n[resource]\n"),
+            ("chirp.tres", "[gd_resource type=\"AudioStreamGenerator\" format=3]\n\n[resource]\nmix_rate = 22050.0\n"),
+        ],
+        "",
+    )
+    .await;
+    let bridge = &editor.bridge;
+    let set = |properties: Value| async move {
+        bridge
+            .send_command(
+                "set_resource_properties",
+                json!({"resource_path": "res://croak.tres", "properties": properties}),
+            )
+            .await
+    };
+    let file = || std::fs::read_to_string(editor.project.join("croak.tres")).expect("tres");
+    let original = file();
+
+    expect_error(
+        set(json!({"streams_count": 1, "stream_0/stream": "res://beep.tres", "stream_9/stream": "res://beep.tres"})).await,
+        "Unknown property 'stream_9/stream' on AudioStreamRandomizer",
+    );
+    assert_eq!(file(), original, "a refused call changed the file");
+
+    let set_both = set(json!({
+        "streams_count": 2,
+        "stream_0/stream": "res://beep.tres",
+        "stream_1/stream": "res://chirp.tres",
+        "random_pitch": 1.08
+    }))
+    .await
+    .expect("set the count and its streams in one call");
+    assert_eq!(
+        set_both["changed"]["streams_count"],
+        json!({"before": "0", "after": "2"}),
+        "{set_both}"
+    );
+    assert_eq!(
+        set_both["changed"]["stream_1/stream"]["before"], "null",
+        "{set_both}"
+    );
+    let saved = file();
+    assert!(
+        saved.contains("streams_count = 2")
+            && saved.contains("res://beep.tres")
+            && saved.contains("res://chirp.tres")
+            && saved.contains("random_pitch = 1.08"),
+        "{saved}"
+    );
+
+    set(json!({"streams_count": 1}))
+        .await
+        .expect("shrink the count");
+    assert!(!file().contains("res://chirp.tres"), "{}", file());
+    bridge
+        .send_command(
+            "__test_undo_resource",
+            json!({"resource_path": "res://croak.tres"}),
+        )
+        .await
+        .expect("undo");
+    let restored = file();
+    assert!(
+        restored.contains("streams_count = 2") && restored.contains("res://chirp.tres"),
+        "undo did not bring back the stream a smaller count removed:\n{restored}"
+    );
+}
+
 /// A class_name script written to disk while the editor is open is not in the editor's class
 /// list until the editor rescans, so its language server calls the class unknown. Validation
 /// registers the declaring script through the editor and asks again.
