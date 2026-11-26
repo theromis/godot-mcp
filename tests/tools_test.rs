@@ -8798,3 +8798,82 @@ async fn an_aimed_sheet_on_an_older_runtime_names_the_update() {
         text(&refused)
     );
 }
+
+/// An editor game whose runtime answers every `input.wait` with `answer`, and the tool manager
+/// that reaches it.
+async fn editor_game_answering_waits(answer: Value) -> (common::MockBridge, Arc<ToolManager>) {
+    use common::{MockBridge, Reply};
+    let bridge =
+        MockBridge::start(
+            move |command| match command["type"].as_str().unwrap_or_default() {
+                "get_run_status" => Reply::Ok(json!({"running": true})),
+                "game_status" => Reply::Ok(json!({"sessions": [{"session": 7, "hello": "{}"}]})),
+                "game_send" => {
+                    let request: Value = serde_json::from_str(
+                        command["params"]["data"][0].as_str().expect("request"),
+                    )
+                    .expect("JSON");
+                    Reply::OkWithEvent(
+                        json!({"sent": true}),
+                        json!({
+                            "type": "event", "event": "game.message", "data": {
+                                "session": 7, "message": "mcp:reply",
+                                "data": [json!({"id": request["id"], "result": answer}).to_string()]
+                            }
+                        }),
+                    )
+                }
+                _ => Reply::Err("unexpected command".into()),
+            },
+        )
+        .await;
+    let manager = Arc::new(ToolManager::new(
+        BridgeClient::new(bridge.port),
+        CliRunner::new(PathBuf::from("unused-godot")),
+    ));
+    (bridge, manager)
+}
+
+/// A runtime older than `seconds` ignores it and waits one frame. Its answer has no `seconds`,
+/// and the tool says the wait did not happen instead of reporting it as done.
+#[tokio::test]
+async fn a_wait_in_seconds_on_a_runtime_without_seconds_is_an_error_that_names_the_update() {
+    let (_old_bridge, old) = editor_game_answering_waits(json!({"frames": 1})).await;
+    let refused = old
+        .clone()
+        .call_tool("godot_game_wait", json!({"run_id": "editor", "seconds": 2}))
+        .await;
+    assert!(refused.is_error, "{}", text(&refused));
+    assert!(
+        text(&refused).contains("godot_update_addon"),
+        "{}",
+        text(&refused)
+    );
+    // A frame wait on the same runtime is answered as before.
+    let frames = old
+        .clone()
+        .call_tool("godot_game_wait", json!({"run_id": "editor", "frames": 1}))
+        .await;
+    assert!(!frames.is_error, "{}", text(&frames));
+
+    let (_bridge, current) =
+        editor_game_answering_waits(json!({"frames": 290, "seconds": 2.0034})).await;
+    let waited = current
+        .clone()
+        .call_tool("godot_game_wait", json!({"run_id": "editor", "seconds": 2}))
+        .await;
+    assert!(!waited.is_error, "{}", text(&waited));
+    assert!(text(&waited).contains("2.0034"), "{}", text(&waited));
+}
+
+#[test]
+fn the_wait_tool_offers_game_seconds_next_to_frames() {
+    let wait = ToolManager::list_tools()
+        .into_iter()
+        .find(|tool| tool.name == "godot_game_wait")
+        .expect("godot_game_wait");
+    let wait = serde_json::to_value(&wait).expect("tool");
+    let seconds = &wait["inputSchema"]["properties"]["seconds"];
+    assert_eq!(seconds["type"], "number", "{seconds}");
+    assert_eq!(seconds["maximum"], 60, "{seconds}");
+}

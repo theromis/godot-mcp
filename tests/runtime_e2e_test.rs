@@ -9534,3 +9534,116 @@ async fn a_screenshot_too_large_for_the_debugger_is_refused_with_the_reason() {
     let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
     assert!(!stopped.is_error, "{}", text_of(&stopped));
 }
+
+/// A wait in game seconds lasts that much game time at any frame rate: scaled by
+/// Engine.time_scale, and as the timeout of a condition. It refuses frames with it and a
+/// time_scale of 0, when no game time passes.
+#[tokio::test]
+#[ignore = "needs GODOT_PATH pointing at a Godot 4.5+ executable"]
+async fn a_wait_in_game_seconds_follows_the_game_clock() {
+    let project = project();
+    let tools = manager(project.path());
+    let started = call(
+        &tools,
+        "godot_run_project",
+        json!({"project_path": project.path(), "mode": "process", "headless": true}),
+    )
+    .await;
+    assert!(!started.is_error, "{}", text_of(&started));
+    let run_id = run_id_of(&started);
+
+    let begun = std::time::Instant::now();
+    let plain = call(
+        &tools,
+        "godot_game_wait",
+        json!({"run_id": run_id, "seconds": 0.5, "time_scale": 1}),
+    )
+    .await;
+    let real = begun.elapsed().as_secs_f64();
+    assert!(!plain.is_error, "{}", text_of(&plain));
+    let plain = json_of(&plain);
+    let game = plain["seconds"].as_f64().expect("seconds");
+    assert!((0.5..0.75).contains(&game), "{plain}");
+    assert!(
+        plain["frames"].as_u64().is_some_and(|frames| frames > 0),
+        "{plain}"
+    );
+    assert!(
+        real >= 0.45,
+        "a half-second wait returned after {real} s: {plain}"
+    );
+
+    // Four times faster: two game seconds pass in about half a real second.
+    let begun = std::time::Instant::now();
+    let fast = call(
+        &tools,
+        "godot_game_wait",
+        json!({"run_id": run_id, "seconds": 2, "time_scale": 4}),
+    )
+    .await;
+    let real = begun.elapsed().as_secs_f64();
+    assert!(!fast.is_error, "{}", text_of(&fast));
+    let fast = json_of(&fast);
+    assert!(fast["seconds"].as_f64().is_some_and(|s| s >= 2.0), "{fast}");
+    assert!(
+        real < 1.8,
+        "two game seconds at time_scale 4 took {real} s: {fast}"
+    );
+
+    // As the timeout of a condition.
+    let missing = call(
+        &tools,
+        "godot_game_wait",
+        json!({"run_id": run_id, "node": "Nope", "seconds": 0.3, "time_scale": 1}),
+    )
+    .await;
+    assert!(missing.is_error, "{}", text_of(&missing));
+    assert!(
+        text_of(&missing).contains("after 0.3 game seconds"),
+        "{}",
+        text_of(&missing)
+    );
+    let found = call(
+        &tools,
+        "godot_game_wait",
+        json!({"run_id": run_id, "node": ".", "seconds": 1}),
+    )
+    .await;
+    assert!(!found.is_error, "{}", text_of(&found));
+    assert!(
+        json_of(&found)["seconds"].is_number(),
+        "{}",
+        text_of(&found)
+    );
+
+    let both = call(
+        &tools,
+        "godot_game_wait",
+        json!({"run_id": run_id, "seconds": 1, "frames": 10}),
+    )
+    .await;
+    assert!(both.is_error, "{}", text_of(&both));
+    assert!(text_of(&both).contains("not both"), "{}", text_of(&both));
+    let frozen = call(
+        &tools,
+        "godot_game_wait",
+        json!({"run_id": run_id, "seconds": 1, "time_scale": 0}),
+    )
+    .await;
+    assert!(frozen.is_error, "{}", text_of(&frozen));
+    assert!(
+        text_of(&frozen).contains("time_scale"),
+        "{}",
+        text_of(&frozen)
+    );
+
+    let restored = call(
+        &tools,
+        "godot_game_wait",
+        json!({"run_id": run_id, "frames": 0, "time_scale": 1}),
+    )
+    .await;
+    assert!(!restored.is_error, "{}", text_of(&restored));
+    let stopped = call(&tools, "godot_stop_project", json!({"run_id": run_id})).await;
+    assert!(!stopped.is_error, "{}", text_of(&stopped));
+}
