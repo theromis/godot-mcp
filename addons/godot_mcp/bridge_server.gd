@@ -46,9 +46,26 @@ const IMPORTED_EXTENSIONS: PackedStringArray = [
     "wav", "ogg", "mp3", "glb", "gltf", "fbx", "obj", "ttf", "otf", "woff", "woff2",
 ]
 
-## Expected JSON type of each parameter, checked before a handler runs so that a wrongly typed
-## value produces an error response instead of a script error that leaves the caller waiting.
+## The version of the commands and parameters this bridge understands, answered by get_version
+## with the list of them (commands). The server reads it once per connection. An addon that
+## answers no protocol field is protocol 1: it ignored parameters it did not know. Raise it when
+## a command or parameter changes meaning; adding one is announced by commands alone.
+const PROTOCOL: int = 2
+
+## Every command and the expected JSON type of each of its parameters, checked before a handler
+## runs so that a wrongly typed value produces an error response instead of a script error that
+## leaves the caller waiting. A parameter not listed is refused: it comes from a newer server,
+## and ignoring it would report success for something not done. TYPE_NIL accepts any type.
+## src/bridge_protocol.rs checks that the server sends only the parameters listed here.
 const PARAM_TYPES: Dictionary = {
+    "ping": {},
+    "get_version": {},
+    "get_project_info": {},
+    "get_open_scenes": {},
+    "save_scene": {},
+    "stop_project": {},
+    "get_run_status": {},
+    "game_status": {},
     "get_scene_tree": {"scene_path": TYPE_STRING},
     "add_node": {"parent_node_path": TYPE_STRING, "node_type": TYPE_STRING, "scene": TYPE_STRING, "node_name": TYPE_STRING, "properties": TYPE_DICTIONARY, "make_editable": TYPE_BOOL},
     "remove_node": {"node_path": TYPE_STRING},
@@ -70,14 +87,14 @@ const PARAM_TYPES: Dictionary = {
     "list_signals": {"node_path": TYPE_STRING},
     "create_resource": {"resource_path": TYPE_STRING, "class_name": TYPE_STRING},
     "set_resource_properties": {"resource_path": TYPE_STRING, "properties": TYPE_DICTIONARY},
-    "set_project_setting": {"key": TYPE_STRING, "value_text": TYPE_STRING, "replace_type": TYPE_BOOL, "remove": TYPE_BOOL},
+    "set_project_setting": {"key": TYPE_STRING, "value": TYPE_NIL, "value_text": TYPE_STRING, "replace_type": TYPE_BOOL, "remove": TYPE_BOOL},
     "get_project_settings": {"prefix": TYPE_STRING},
     "get_input_map": {"action": TYPE_STRING, "include_builtin": TYPE_BOOL},
     "edit_input_action": {"action": TYPE_STRING, "add_events": TYPE_ARRAY, "remove_events": TYPE_ARRAY, "deadzone": TYPE_FLOAT, "create": TYPE_BOOL, "delete": TYPE_BOOL},
     "delete_files": {"paths": TYPE_ARRAY, "force": TYPE_BOOL, "allow_empty_dir": TYPE_BOOL, "dry_run": TYPE_BOOL, "trash": TYPE_BOOL},
     "move_files_check": {"files": TYPE_ARRAY, "rewrite": TYPE_ARRAY, "binary": TYPE_ARRAY},
     "move_files_apply": {"files": TYPE_ARRAY, "folders": TYPE_ARRAY, "rewritten": TYPE_ARRAY, "binary": TYPE_ARRAY, "pairs": TYPE_ARRAY},
-    "game_send": {"command": TYPE_STRING},
+    "game_send": {"command": TYPE_STRING, "data": TYPE_ARRAY, "session": TYPE_FLOAT},
     "close_editor": {"discard": TYPE_BOOL},
     "import_params": {"path": TYPE_STRING, "action": TYPE_STRING, "params": TYPE_DICTIONARY, "copy_from": TYPE_STRING, "reimport": TYPE_BOOL, "importer": TYPE_STRING},
 }
@@ -333,18 +350,27 @@ func handle_message(peer: WebSocketPeer, raw_msg: String) -> void:
 
     dispatch_command(peer, cmd_id, cmd_type, params)
 
-## Returns a description of the first wrongly typed parameter, or "" if all are fine.
-## JSON null counts as "not provided".
+## Returns a description of the first unknown or wrongly typed parameter, or "" if all are fine.
+## JSON null counts as "not provided". A command without a PARAM_TYPES entry is left to
+## dispatch_command, which reports it as unknown.
 func validate_params(cmd_type: String, params: Dictionary) -> String:
-    var spec: Dictionary = PARAM_TYPES.get(cmd_type, {})
-    for key: String in spec:
-        if not params.has(key):
-            continue
-        var value: Variant = params[key]
+    if not PARAM_TYPES.has(cmd_type):
+        return ""
+    var spec: Dictionary = PARAM_TYPES[cmd_type]
+    for raw_key: Variant in params.keys():
+        var key: String = str(raw_key)
+        var value: Variant = params[raw_key]
         if value == null:
-            params.erase(key)
+            params.erase(raw_key)
             continue
+        if not spec.has(key):
+            var accepted: PackedStringArray = []
+            for accepted_key: String in spec:
+                accepted.append(accepted_key)
+            return "Unknown parameter '%s' for command '%s' (this addon accepts: %s). The server and the addon come from different builds: install this server's addon with godot_update_addon (restart_editor: true while the editor has the project open)." % [key, cmd_type, ", ".join(accepted) if not accepted.is_empty() else "none"]
         var expected: int = spec[key]
+        if expected == TYPE_NIL:
+            continue
         var actual: int = typeof(value)
         var numeric_ok: bool = expected == TYPE_FLOAT and actual == TYPE_INT
         if actual != expected and not numeric_ok:
@@ -576,8 +602,21 @@ func get_version(peer: WebSocketPeer, cmd_id: String) -> void:
         "major": info["major"],
         "minor": info["minor"],
         "patch": info["patch"],
-        "status": info["status"]
+        "status": info["status"],
+        "protocol": PROTOCOL,
+        "commands": command_parameters(),
     })
+
+## Every command this bridge answers, with the names of its parameters, for the server to check a
+## call against before sending it.
+func command_parameters() -> Dictionary:
+    var commands: Dictionary = {}
+    for command: String in PARAM_TYPES:
+        var names: Array[String] = []
+        for parameter: String in PARAM_TYPES[command]:
+            names.append(parameter)
+        commands[command] = names
+    return commands
 
 func get_project_info(peer: WebSocketPeer, cmd_id: String) -> void:
     var project_name: String = ProjectSettings.get_setting("application/config/name", "")

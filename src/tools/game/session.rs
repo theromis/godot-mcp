@@ -1,6 +1,7 @@
 //! Reaching the game: a managed run or the editor's Play session, with the time each kind of
 //! call may take.
 
+use crate::bridge_protocol::check_runtime_hello;
 use crate::error::McpError;
 use crate::tools::ToolManager;
 use serde_json::{Value, json};
@@ -169,15 +170,17 @@ async fn ready_editor_session(tools: &ToolManager) -> Result<i64, McpError> {
                 .get("sessions")
                 .and_then(Value::as_array)
                 .and_then(|sessions| sessions.first())
-                && session
+                && let Some(hello) = session
                     .get("hello")
                     .and_then(Value::as_str)
-                    .is_some_and(|hello| !hello.is_empty())
+                    .filter(|hello| !hello.is_empty())
                 && let Some(id) = session
                     .get("session")
                     .and_then(Value::as_i64)
                     .filter(|id| *id >= 0)
             {
+                let hello = serde_json::from_str::<Value>(hello).unwrap_or(Value::Null);
+                check_runtime_hello(&hello).map_err(McpError::Process)?;
                 return Ok(id);
             }
             let state = tools

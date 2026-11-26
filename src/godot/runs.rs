@@ -7,6 +7,7 @@
 //! they are copied to a private folder under `.godot/` (which the editor does not scan and
 //! version control ignores), and that copy is removed when the run ends.
 
+use crate::bridge_protocol::check_runtime_hello;
 use crate::error::{McpError, Result};
 use crate::godot::debug_ctl::DebugCtl;
 use crate::godot::debug_session::{DebugSession, GameMessage};
@@ -899,6 +900,7 @@ impl Run {
         let deadline = tokio::time::Instant::now() + wait;
         loop {
             if let Some(hello) = lock(&self.hello).clone() {
+                check_runtime_hello(&hello).map_err(McpError::Process)?;
                 return Ok(hello);
             }
             if !self.is_alive() {
